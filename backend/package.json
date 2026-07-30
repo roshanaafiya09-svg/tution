@@ -17,7 +17,9 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "migrate:up": "ts-node -r tsconfig-paths/register src/database/migrate.ts up",
+    "migrate:down": "ts-node -r tsconfig-paths/register src/database/migrate.ts down"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
@@ -28,11 +30,12 @@
     "@nestjs/platform-fastify": "^11.1.28",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
+    "dotenv": "^17.4.2",
     "kysely": "^0.29.4",
     "pg": "^8.22.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "uuid": "^14.0.1",
+    "uuidv7": "^1.2.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

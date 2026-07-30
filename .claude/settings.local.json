@@ -16,7 +16,19 @@
       "Bash(mkdir -p \"/e/projects/tution/.claude\")",
       "PowerShell(netsh winhttp show proxy)",
       "PowerShell($env:HTTP_PROXY)",
-      "PowerShell($env:HTTPS_PROXY)"
+      "PowerShell($env:HTTPS_PROXY)",
+      "Bash(npm install *)",
+      "Bash(npm remove *)",
+      "PowerShell(winget search \"postgresql\" --source winget 2>&1)",
+      "Bash(cp .env.example .env)",
+      "Bash(openssl rand *)",
+      "Bash(sed -i \"s|JWT_ACCESS_SECRET=.*|JWT_ACCESS_SECRET=$\\(openssl rand -base64 48 2>/dev/null || echo dev_access_secret_placeholder_32_chars_min_xxxxx\\)|\" .env)",
+      "Bash(sed -i \"s|JWT_REFRESH_SECRET=.*|JWT_REFRESH_SECRET=$\\(openssl rand -base64 48 2>/dev/null || echo dev_refresh_secret_placeholder_32_chars_min_xxxx\\)|\" .env)",
+      "Bash(timeout 12 npm run start:dev)",
+      "WebFetch(domain:www.enterprisedb.com)",
+      "Bash(curl -s http://localhost:3001/health)",
+      "Bash(echo \"started with PID $!\")",
+      "Bash(curl -sS http://localhost:3001/health)"
     ]
   }
 }

@@ -1,18 +1,26 @@
 import { z } from 'zod';
 
 export const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  NODE_ENV: z
+    .enum(['development', 'test', 'production'])
+    .default('development'),
   PORT: z.coerce.number().int().positive().default(3001),
 
   DATABASE_URL: z
     .string()
     .url()
-    .describe('Postgres connection string, e.g. postgres://user:pass@localhost:5432/tuition_dev'),
+    .describe(
+      'Postgres connection string, e.g. postgres://user:pass@localhost:5432/tuition_dev',
+    ),
 
   REDIS_URL: z.string().url().default('redis://localhost:6379'),
 
-  JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
-  JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
+  JWT_ACCESS_SECRET: z
+    .string()
+    .min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
+  JWT_REFRESH_SECRET: z
+    .string()
+    .min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
 
   CORS_ORIGINS: z
     .string()

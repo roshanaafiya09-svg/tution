@@ -1,5 +1,8 @@
 import { NestFactory } from '@nestjs/core';
-import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import {
+  FastifyAdapter,
+  NestFastifyApplication,
+} from '@nestjs/platform-fastify';
 import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from '@fastify/helmet';
@@ -40,7 +43,7 @@ async function bootstrap() {
 
   const port = config.get<number>('app.port') ?? 3001;
   await app.listen(port, '0.0.0.0');
-  // eslint-disable-next-line no-console
+
   console.log(`Tuition App API listening on http://localhost:${port}`);
 }
 bootstrap();

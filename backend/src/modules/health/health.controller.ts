@@ -1,4 +1,9 @@
-import { Controller, Get, Inject, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Inject,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { sql } from 'kysely';
 import type { Kysely } from 'kysely';
 import { KYSELY_CONNECTION } from '../../database/database.module';
@@ -12,7 +17,11 @@ export class HealthController {
   async check() {
     try {
       await sql`select 1`.execute(this.db);
-      return { status: 'ok', database: 'up', timestamp: new Date().toISOString() };
+      return {
+        status: 'ok',
+        database: 'up',
+        timestamp: new Date().toISOString(),
+      };
     } catch {
       throw new ServiceUnavailableException({
         status: 'error',

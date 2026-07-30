@@ -26,13 +26,17 @@ export class HttpExceptionFilter implements ExceptionFilter {
       : { message: 'Internal server error' };
 
     if (!isHttpException) {
-      this.logger.error(exception instanceof Error ? exception.stack : exception);
+      this.logger.error(
+        exception instanceof Error ? exception.stack : exception,
+      );
     }
 
-    reply.status(status).send(
-      typeof body === 'string'
-        ? { statusCode: status, message: body }
-        : { statusCode: status, ...body },
-    );
+    reply
+      .status(status)
+      .send(
+        typeof body === 'string'
+          ? { statusCode: status, message: body }
+          : { statusCode: status, ...body },
+      );
   }
 }
