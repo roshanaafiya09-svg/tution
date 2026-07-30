@@ -1,0 +1,110 @@
+import { Inject, Injectable } from '@nestjs/common';
+import type { Kysely } from 'kysely';
+import { KYSELY_CONNECTION } from '../../../database/database.module';
+import type { DB } from '../../../database/types';
+import { newId } from '../../../database/id';
+
+export type AttendanceStatus = 'present' | 'absent' | 'late';
+
+@Injectable()
+export class AttendanceRepository {
+  constructor(@Inject(KYSELY_CONNECTION) private readonly db: Kysely<DB>) {}
+
+  listForSession(sessionId: string) {
+    return this.db
+      .selectFrom('attendance')
+      .leftJoin(
+        'profiles_student',
+        'profiles_student.user_id',
+        'attendance.student_id',
+      )
+      .select([
+        'attendance.id',
+        'attendance.student_id',
+        'attendance.status',
+        'attendance.joined_at',
+        'attendance.method',
+        'profiles_student.display_name',
+      ])
+      .where('attendance.session_id', '=', sessionId)
+      .execute();
+  }
+
+  upsert(
+    sessionId: string,
+    studentId: string,
+    status: AttendanceStatus,
+    method: 'join_tap' | 'manual',
+    markedBy: string | null,
+    joinedAt: Date | null,
+  ) {
+    return this.db
+      .insertInto('attendance')
+      .values({
+        id: newId(),
+        session_id: sessionId,
+        student_id: studentId,
+        status,
+        method,
+        marked_by: markedBy,
+        joined_at: joinedAt,
+      })
+      .onConflict((oc) =>
+        oc.columns(['session_id', 'student_id']).doUpdateSet({
+          status,
+          method,
+          marked_by: markedBy,
+          joined_at: joinedAt,
+        }),
+      )
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
+
+  /** Attendance % and counts for a student in one batch — feeds the student progress view. */
+  async summaryForStudent(studentId: string, batchId: string) {
+    const row = await this.db
+      .selectFrom('attendance')
+      .innerJoin('class_sessions', 'class_sessions.id', 'attendance.session_id')
+      .select((eb) => [
+        eb.fn.countAll().as('total'),
+        eb.fn
+          .sum(
+            eb
+              .case()
+              .when('attendance.status', '=', 'present')
+              .then(1)
+              .else(0)
+              .end(),
+          )
+          .as('present'),
+        eb.fn
+          .sum(
+            eb
+              .case()
+              .when('attendance.status', '=', 'late')
+              .then(1)
+              .else(0)
+              .end(),
+          )
+          .as('late'),
+      ])
+      .where('attendance.student_id', '=', studentId)
+      .where('class_sessions.batch_id', '=', batchId)
+      .executeTakeFirstOrThrow();
+
+    const total = Number(row.total);
+    const present = Number(row.present ?? 0);
+    const late = Number(row.late ?? 0);
+
+    return {
+      total,
+      present,
+      late,
+      absent: total - present - late,
+      // "Attended" counts late arrivals — a late student was still in class.
+      attendanceRate:
+        total === 0 ? null : Math.round(((present + late) / total) * 100),
+    };
+  }
+}

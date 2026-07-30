@@ -1,0 +1,71 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import { JwtAuthGuard } from '../../identity/auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../identity/auth/guards/roles.guard';
+import { Roles } from '../../identity/auth/decorators/roles.decorator';
+import { CurrentUser } from '../../identity/auth/decorators/current-user.decorator';
+import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
+import { BatchesService } from './batches.service';
+import { CreateBatchDto } from './dto/create-batch.dto';
+
+@Controller('batches')
+@UseGuards(JwtAuthGuard, RolesGuard)
+export class BatchesController {
+  constructor(private readonly batchesService: BatchesService) {}
+
+  @Get('me')
+  @Roles('tutor')
+  listOwn(@CurrentUser() user: AccessTokenPayload) {
+    return this.batchesService.listForTutor(user.sub);
+  }
+
+  @Get('enrolled')
+  @Roles('student')
+  listEnrolled(@CurrentUser() user: AccessTokenPayload) {
+    return this.batchesService.listForStudent(user.sub);
+  }
+
+  @Post()
+  @Roles('tutor')
+  create(@CurrentUser() user: AccessTokenPayload, @Body() dto: CreateBatchDto) {
+    return this.batchesService.create(user.sub, dto);
+  }
+
+  @Get(':id')
+  @Roles('tutor')
+  get(@CurrentUser() user: AccessTokenPayload, @Param('id') id: string) {
+    return this.batchesService.getOwnedBatch(user.sub, id);
+  }
+
+  @Post(':id/archive')
+  @Roles('tutor')
+  archive(@CurrentUser() user: AccessTokenPayload, @Param('id') id: string) {
+    return this.batchesService.archive(user.sub, id);
+  }
+
+  @Get(':id/students')
+  @Roles('tutor')
+  listStudents(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id') id: string,
+  ) {
+    return this.batchesService.listEnrollments(user.sub, id);
+  }
+
+  @Delete(':id/students/:studentId')
+  @Roles('tutor')
+  removeStudent(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id') id: string,
+    @Param('studentId') studentId: string,
+  ) {
+    return this.batchesService.removeStudent(user.sub, id, studentId);
+  }
+}
