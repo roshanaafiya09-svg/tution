@@ -46,4 +46,4 @@ async function bootstrap() {
 
   console.log(`Tuition App API listening on http://localhost:${port}`);
 }
-bootstrap();
+void bootstrap();

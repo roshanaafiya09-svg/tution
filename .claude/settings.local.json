@@ -28,7 +28,17 @@
       "WebFetch(domain:www.enterprisedb.com)",
       "Bash(curl -s http://localhost:3001/health)",
       "Bash(echo \"started with PID $!\")",
-      "Bash(curl -sS http://localhost:3001/health)"
+      "Bash(curl -sS http://localhost:3001/health)",
+      "Bash(curl -s -X POST http://localhost:3001/auth/otp/request -H \"Content-Type: application/json\" -d '{\"phoneE164\":\"+919876543210\"}')",
+      "Bash(tail -n 10 \"C:\\\\Users\\\\Lenovo\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\E--projects-tution\\\\35249161-fb4f-4a98-a774-a0fc1621056e\\\\tasks\\\\bwbng9lq5.output\" 2>/dev/null; echo \"---or tmp log---\"; tail -n 10 /tmp/backend.log 2>/dev/null)",
+      "Bash(curl -s -X POST http://localhost:3001/auth/otp/verify -H \"Content-Type: application/json\" -d '{\"phoneE164\":\"+919876543210\",\"code\":\"274757\",\"signupRole\":\"tutor\",\"deviceLabel\":\"test-curl\"}')",
+      "Bash(curl -s http://localhost:3001/auth/me -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMTlmYjJjNy01YTZhLTdmOWYtOGFjOC0wNDc5M2ZkNTA0ZTMiLCJyb2xlcyI6WyJ0dXRvciJdLCJpYXQiOjE3ODU0MTA4MzcsImV4cCI6MTc4NTQxMTczN30.dQCiGDE-x16h_iJ4M2z4_zR9C9DZIFeIHjwXCdQz6b8')",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3001/auth/me)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3001/auth/me -H \"Authorization: Bearer garbage\")",
+      "Bash(curl -s -w '\\\\nHTTP %{http_code}\\\\n' -X POST http://localhost:3001/auth/refresh -H 'Content-Type: application/json' -d '{\"refreshToken\":\"__TRACKED_VAR__\"}')",
+      "Bash(curl -s -X POST http://localhost:3001/auth/otp/request -H \"Content-Type: application/json\" -d '{\"phoneE164\":\"+919876543211\"}')",
+      "Bash(curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" -X POST http://localhost:3001/auth/otp/verify -H \"Content-Type: application/json\" -d '{\"phoneE164\":\"+919876543211\",\"code\":\"000000\",\"signupRole\":\"student\"}')",
+      "Bash(curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" -X POST http://localhost:3001/auth/otp/request -H \"Content-Type: application/json\" -d '{\"phoneE164\":\"not-a-phone\"}')"
     ]
   }
 }

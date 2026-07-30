@@ -1,9 +1,14 @@
 import * as path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { Kysely, PostgresDialect } from 'kysely';
-import { Migrator, type Migration, type MigrationProvider } from 'kysely/migration';
+import {
+  Migrator,
+  type Migration,
+  type MigrationProvider,
+} from 'kysely/migration';
 import { Pool } from 'pg';
 import 'dotenv/config';
+import type { DB } from './types';
 
 /**
  * Loads .ts migration files via require() instead of Kysely's built-in
@@ -22,7 +27,9 @@ class TsRequireMigrationProvider implements MigrationProvider {
     for (const file of files) {
       const name = file.replace(/\.ts$/, '');
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      migrations[name] = require(path.join(this.migrationFolder, file));
+      migrations[name] = require(
+        path.join(this.migrationFolder, file),
+      ) as Migration;
     }
     return migrations;
   }
@@ -42,7 +49,7 @@ async function run() {
     );
   }
 
-  const db = new Kysely<any>({
+  const db = new Kysely<DB>({
     dialect: new PostgresDialect({
       pool: new Pool({ connectionString: databaseUrl }),
     }),
@@ -50,7 +57,9 @@ async function run() {
 
   const migrator = new Migrator({
     db,
-    provider: new TsRequireMigrationProvider(path.join(__dirname, 'migrations')),
+    provider: new TsRequireMigrationProvider(
+      path.join(__dirname, 'migrations'),
+    ),
   });
 
   const { error, results } =
@@ -75,4 +84,4 @@ async function run() {
   }
 }
 
-run();
+void run();
