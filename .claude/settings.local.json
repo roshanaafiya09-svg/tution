@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx --yes @nestjs/cli@latest new backend --package-manager npm --skip-git)",
+      "Bash(rm -rf web)",
+      "Bash(npx --yes create-next-app@14 web --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --use-npm)",
+      "Bash(tasklist //FI \"IMAGENAME eq node.exe\")",
+      "PowerShell(winget install --id EclipseAdoptium.Temurin.17.JDK -e --silent --accept-package-agreements --accept-source-agreements)",
+      "PowerShell(winget install --id EclipseAdoptium.Temurin.17.JDK -e --source winget --silent --accept-package-agreements --accept-source-agreements)",
+      "Bash(grep -iE \"^next$|tailwind\")",
+      "PowerShell(refreshenv 2>$null; $env:Path = [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"User\"\\); java -version)",
+      "PowerShell(winget list --id EclipseAdoptium.Temurin.17.JDK -e --source winget)",
+      "PowerShell(\\([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent\\(\\)\\).IsInRole\\([Security.Principal.WindowsBuiltInRole]::Administrator\\))",
+      "Bash(cat \"C:\\\\Users\\\\Lenovo\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\E--projects-tution\\\\35249161-fb4f-4a98-a774-a0fc1621056e\\\\tasks\\\\b8ybbecvc.output\" 2>/dev/null; echo \"---check file---\"; ls -la \"/c/Users/Lenovo/AppData/Local/Programs/\" 2>/dev/null)",
+      "Bash(npm run *)",
+      "Bash(mkdir -p \"/e/projects/tution/.claude\")",
+      "PowerShell(netsh winhttp show proxy)",
+      "PowerShell($env:HTTP_PROXY)",
+      "PowerShell($env:HTTPS_PROXY)"
+    ]
+  }
+}

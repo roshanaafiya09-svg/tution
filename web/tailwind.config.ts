@@ -1,0 +1,67 @@
+import type { Config } from "tailwindcss";
+import fs from "node:fs";
+import path from "node:path";
+
+// Single source of truth: shared/design-tokens/tokens.json (see docs/design-system.md).
+// Read via fs instead of `import ... .json` so it resolves the same way
+// regardless of which loader Tailwind uses to evaluate this config.
+const tokens = JSON.parse(
+  fs.readFileSync(
+    path.resolve(__dirname, "../shared/design-tokens/tokens.json"),
+    "utf-8",
+  ),
+) as {
+  color: {
+    brand: Record<string, string>;
+    accent: Record<string, string>;
+    neutral: Record<string, string>;
+    semantic: Record<string, { DEFAULT: string; bg: string }>;
+  };
+  typography: { fontFamily: { display: string[]; sans: string[] } };
+  radius: Record<string, string>;
+  shadow: Record<string, string>;
+};
+
+const config: Config = {
+  darkMode: "media",
+  content: [
+    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+  ],
+  theme: {
+    extend: {
+      colors: {
+        brand: tokens.color.brand,
+        accent: tokens.color.accent,
+        neutral: tokens.color.neutral,
+        success: tokens.color.semantic.success,
+        warning: tokens.color.semantic.warning,
+        error: tokens.color.semantic.error,
+        info: tokens.color.semantic.info,
+        background: "var(--background)",
+        foreground: "var(--foreground)",
+      },
+      fontFamily: {
+        display: tokens.typography.fontFamily.display,
+        sans: tokens.typography.fontFamily.sans,
+      },
+      borderRadius: {
+        sm: tokens.radius.sm,
+        md: tokens.radius.md,
+        lg: tokens.radius.lg,
+        xl: tokens.radius.xl,
+        "2xl": tokens.radius["2xl"],
+      },
+      boxShadow: {
+        xs: tokens.shadow.xs,
+        sm: tokens.shadow.sm,
+        md: tokens.shadow.md,
+        lg: tokens.shadow.lg,
+        "focus-ring": tokens.shadow["focus-ring"],
+      },
+    },
+  },
+  plugins: [],
+};
+export default config;

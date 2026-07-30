@@ -1,0 +1,54 @@
+# --- Node / npm ---
+node_modules/
+npm-debug.log*
+.pnpm-debug.log*
+
+# --- Env ---
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# --- NestJS (backend) ---
+backend/dist/
+backend/.env
+
+# --- Next.js (web) ---
+web/.next/
+web/out/
+web/.vercel/
+web/next-env.d.ts
+
+# --- Flutter (mobile) ---
+mobile/build/
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/.pub-cache/
+mobile/.pub/
+mobile/**/GeneratedPluginRegistrant.*
+mobile/*.iml
+mobile/android/local.properties
+mobile/android/**/GeneratedPluginRegistrant.java
+mobile/ios/Flutter/Generated.xcconfig
+mobile/ios/Flutter/flutter_export_environment.sh
+mobile/ios/Pods/
+
+# --- IDE / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Coverage ---
+coverage/
+
+# --- Terraform (later) ---
+*.tfstate
+*.tfstate.*
+.terraform/
