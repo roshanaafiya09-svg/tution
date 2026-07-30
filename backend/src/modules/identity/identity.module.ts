@@ -12,7 +12,11 @@ import { AuthService } from './auth/auth.service';
 import { TokensService } from './auth/tokens.service';
 import { RefreshTokenRepository } from './auth/refresh-token.repository';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { RolesGuard } from './auth/guards/roles.guard';
 import { GoogleAuthService } from './auth/google-auth.service';
+import { ProfilesController } from './profiles/profiles.controller';
+import { ProfilesService } from './profiles/profiles.service';
+import { ProfilesRepository } from './profiles/profiles.repository';
 
 const otpProviderLogger = new Logger('IdentityModule');
 
@@ -23,7 +27,7 @@ const otpProviderLogger = new Logger('IdentityModule');
  */
 @Module({
   imports: [JwtModule.register({})],
-  controllers: [AuthController],
+  controllers: [AuthController, ProfilesController],
   providers: [
     UsersRepository,
     OtpRepository,
@@ -59,7 +63,10 @@ const otpProviderLogger = new Logger('IdentityModule');
     AuthService,
     GoogleAuthService,
     JwtAuthGuard,
+    RolesGuard,
+    ProfilesRepository,
+    ProfilesService,
   ],
-  exports: [UsersRepository, TokensService, JwtAuthGuard],
+  exports: [UsersRepository, TokensService, JwtAuthGuard, RolesGuard],
 })
 export class IdentityModule {}
