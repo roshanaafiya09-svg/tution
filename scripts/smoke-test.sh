@@ -138,6 +138,67 @@ curl -sS "$API/notifications/unread-count" -H "Authorization: Bearer $STUDENT_TO
   grep -qE '"count":[1-9]' &&
   pass "unread notification count reflects it" || fail "notifications" "unread count wrong"
 
+echo "assignments"
+ASSIGNMENT_ID=$(curl -sS -X POST "$API/assignments" -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TUTOR_TOKEN" \
+  -d "{\"batchId\":\"$BATCH_ID\",\"title\":\"Newton's laws worksheet\",\"instructions\":\"Questions 1-10\",\"dueAtLocal\":\"2026-08-10T23:59\"}" |
+  json_field id)
+[ -n "$ASSIGNMENT_ID" ] && pass "assignment created" || fail "assignments" "no assignment id"
+
+curl -sS "$API/assignments/me" -H "Authorization: Bearer $STUDENT_TOKEN" |
+  grep -q "Newton's laws worksheet" &&
+  pass "assignment appears in student's homework list" || fail "assignments" "student cannot see it"
+
+SUB_UPLOAD=$(curl -sS -X POST "$API/assignments/$ASSIGNMENT_ID/upload-url" \
+  -H 'Content-Type: application/json' -H "Authorization: Bearer $STUDENT_TOKEN" \
+  -d '{"mime":"image/jpeg"}')
+SUB_KEY=$(echo "$SUB_UPLOAD" | json_field objectKey)
+SUB_URL=$(echo "$SUB_UPLOAD" | json_field uploadUrl)
+printf 'fake-jpeg-bytes' > /tmp/smoke-homework.jpg
+curl -sS -X PUT "$SUB_URL" -H 'Content-Type: image/jpeg' --data-binary @/tmp/smoke-homework.jpg > /dev/null
+pass "student uploaded homework photo"
+
+SUBMISSION_ID=$(curl -sS -X POST "$API/assignments/$ASSIGNMENT_ID/submit" \
+  -H 'Content-Type: application/json' -H "Authorization: Bearer $STUDENT_TOKEN" \
+  -d "{\"objectKeys\":[\"$SUB_KEY\"]}" | json_field id)
+[ -n "$SUBMISSION_ID" ] && pass "homework submitted" || fail "assignments" "submit failed"
+
+curl -sS -X POST "$API/assignments/submissions/$SUBMISSION_ID/grade" \
+  -H 'Content-Type: application/json' -H "Authorization: Bearer $TUTOR_TOKEN" \
+  -d '{"grade":"8/10","feedback":"Good work, revise Q7."}' | grep -q '8/10' &&
+  pass "tutor graded the submission" || fail "assignments" "grading failed"
+
+curl -sS "$API/notifications" -H "Authorization: Bearer $STUDENT_TOKEN" |
+  grep -q 'Good work, revise Q7' &&
+  pass "student notified of the grade" || fail "assignments" "no grade notification"
+
+curl -sS "$API/assignments/summary/batch/$BATCH_ID" -H "Authorization: Bearer $STUDENT_TOKEN" |
+  grep -q '"completionRate":100' &&
+  pass "assignment completion summary computed" || fail "assignments" "summary wrong"
+
+echo "fee ledger"
+curl -sS -X POST "$API/fees/batch/$BATCH_ID/generate" -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TUTOR_TOKEN" -d '{"periodLabel":"2026-08"}' |
+  grep -q '"expected_minor":150000' &&
+  pass "fee entries generated for the period" || fail "fees" "generate failed"
+
+FEE_ID=$(curl -sS "$API/fees/period?period=2026-08" -H "Authorization: Bearer $TUTOR_TOKEN" | json_field id)
+curl -sS "$API/fees/period/totals?period=2026-08" -H "Authorization: Bearer $TUTOR_TOKEN" |
+  grep -q '"outstandingMinor":150000' &&
+  pass "outstanding total reflects unpaid fees" || fail "fees" "totals wrong before payment"
+
+curl -sS -X POST "$API/fees/$FEE_ID/record-payment" -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TUTOR_TOKEN" -d '{"paidMinor":150000,"note":"UPI"}' |
+  grep -q '"status":"paid"' &&
+  pass "payment recorded, entry marked paid" || fail "fees" "record payment failed"
+
+curl -sS "$API/fees/period/totals?period=2026-08" -H "Authorization: Bearer $TUTOR_TOKEN" |
+  grep -q '"outstandingMinor":0' &&
+  pass "outstanding total updated after payment" || fail "fees" "totals wrong after payment"
+
+curl -sS "$API/fees/me" -H "Authorization: Bearer $STUDENT_TOKEN" | grep -q '"status":"paid"' &&
+  pass "student sees their own fee history" || fail "fees" "student fee history wrong"
+
 echo "authorization"
 curl -sS -o /dev/null -w '%{http_code}' "$API/batches/me" -H "Authorization: Bearer $STUDENT_TOKEN" |
   grep -q '403' &&

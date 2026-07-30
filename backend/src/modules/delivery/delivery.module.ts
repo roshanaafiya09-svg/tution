@@ -55,6 +55,6 @@ const storageLogger = new Logger('DeliveryModule');
     AnnouncementsService,
     AnnouncementsRepository,
   ],
-  exports: [MaterialsRepository],
+  exports: [MaterialsRepository, STORAGE_PROVIDER],
 })
 export class DeliveryModule {}
