@@ -37,6 +37,13 @@ export const envSchema = z.object({
 
   // --- Google Sign-In (web) — optional; endpoint 400s until set. ---
   GOOGLE_CLIENT_ID: z.string().optional(),
+
+  // --- Object storage (Cloudflare R2) — optional; falls back to local
+  // disk for dev when unset. See blueprint §6. ---
+  R2_ACCOUNT_ID: z.string().optional(),
+  R2_BUCKET: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

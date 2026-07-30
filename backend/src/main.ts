@@ -13,9 +13,22 @@ import { KYSELY_CONNECTION } from './database/database.module';
 import type { DB } from './database/types';
 
 async function bootstrap() {
+  const adapter = new FastifyAdapter();
+
+  // Raw binary bodies for the dev-only local upload endpoint that stands
+  // in for R2's presigned PUT (see LocalStorageProvider). In production
+  // uploads go straight to R2 and never reach the API.
+  adapter
+    .getInstance()
+    .addContentTypeParser(
+      ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'],
+      { parseAs: 'buffer' },
+      (_request, body, done) => done(null, body),
+    );
+
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter(),
+    adapter,
   );
 
   const config = app.get(ConfigService);

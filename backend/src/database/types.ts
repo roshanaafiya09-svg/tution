@@ -243,7 +243,9 @@ export interface SubmissionsTable {
   id: string;
   assignment_id: string;
   student_id: string;
-  object_keys: Generated<JSONColumnType<string[]>>;
+  // Insert type is optional because the column has a DB default.
+  // Generated<JSONColumnType<T>> would nest ColumnTypes and break.
+  object_keys: JSONColumnType<string[], string | undefined, string>;
   submitted_at: GeneratedTimestamp;
   grade: string | null;
   feedback: string | null;
@@ -306,7 +308,7 @@ export interface NotificationsTable {
   id: string;
   user_id: string;
   type: string;
-  payload: Generated<JSONColumnType<Record<string, unknown>>>;
+  payload: JSONColumnType<Record<string, unknown>, string | undefined, string>;
   read_at: Timestamp | null;
   created_at: GeneratedTimestamp;
 }

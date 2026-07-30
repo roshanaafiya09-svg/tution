@@ -29,6 +29,13 @@ export const googleAuthConfig = registerAs('googleAuth', () => ({
   clientId: process.env.GOOGLE_CLIENT_ID,
 }));
 
+export const storageConfig = registerAs('storage', () => ({
+  accountId: process.env.R2_ACCOUNT_ID,
+  bucket: process.env.R2_BUCKET,
+  accessKeyId: process.env.R2_ACCESS_KEY_ID,
+  secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+}));
+
 export const authConfig = registerAs('auth', () => ({
   jwtAccessSecret: process.env.JWT_ACCESS_SECRET as string,
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET as string,

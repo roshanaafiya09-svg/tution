@@ -51,7 +51,8 @@
       "Bash(curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" http://localhost:3001/health --max-time 5)",
       "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='node.exe' or Name='redis-server.exe' or Name='postgres.exe'\")",
       "Bash(./pg_ctl.exe -D \"/c/Users/Lenovo/AppData/Local/Programs/pg17/data\" -l \"/c/Users/Lenovo/AppData/Local/Programs/pg17/pg.log\" start)",
-      "Bash(curl -s -X POST http://localhost:3001/auth/otp/request -H \"Content-Type: application/json\" -d '{\"phoneE164\":\"+919876500003\"}')"
+      "Bash(curl -s -X POST http://localhost:3001/auth/otp/request -H \"Content-Type: application/json\" -d '{\"phoneE164\":\"+919876500003\"}')",
+      "Bash(bash scripts/smoke-test.sh)"
     ]
   }
 }

@@ -101,6 +101,43 @@ curl -sS "$API/attendance/summary/batch/$BATCH_ID" -H "Authorization: Bearer $ST
   grep -q '"attendanceRate":100' &&
   pass "student attendance summary computed" || fail "attendance" "summary wrong"
 
+echo "materials"
+UPLOAD_JSON=$(curl -sS -X POST "$API/materials/upload-url" -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TUTOR_TOKEN" \
+  -d "{\"batchId\":\"$BATCH_ID\",\"title\":\"Chapter 1 notes\",\"mime\":\"application/pdf\",\"sizeBytes\":1024}")
+UPLOAD_URL=$(echo "$UPLOAD_JSON" | grep -oE '"uploadUrl":"[^"]+"' | cut -d'"' -f4)
+MATERIAL_ID=$(echo "$UPLOAD_JSON" | json_field id)
+[ -n "$UPLOAD_URL" ] && pass "presigned upload URL issued" || fail "materials" "no upload url"
+
+printf '%%PDF-1.4 smoke test' > /tmp/smoke-material.pdf
+curl -sS -X PUT "$UPLOAD_URL" -H 'Content-Type: application/pdf' \
+  --data-binary @/tmp/smoke-material.pdf | grep -q '"stored":true' &&
+  pass "file uploaded directly to storage" || fail "materials" "upload failed"
+
+curl -sS "$API/materials/batch/$BATCH_ID" -H "Authorization: Bearer $STUDENT_TOKEN" |
+  grep -q 'Chapter 1 notes' &&
+  pass "enrolled student can see batch materials" || fail "materials" "student cannot list materials"
+
+DOWNLOAD_URL=$(curl -sS "$API/materials/$MATERIAL_ID/download-url" \
+  -H "Authorization: Bearer $STUDENT_TOKEN" | json_field url)
+curl -sS "$DOWNLOAD_URL" | grep -q 'smoke test' &&
+  pass "student downloaded the file" || fail "materials" "download failed"
+
+echo "announcements"
+curl -sS -X POST "$API/announcements/batch/$BATCH_ID" -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TUTOR_TOKEN" \
+  -d '{"body":"Class moved to 5pm tomorrow."}' | grep -q 'Class moved' &&
+  pass "announcement posted" || fail "announcements" "post failed"
+
+curl -sS "$API/notifications" -H "Authorization: Bearer $STUDENT_TOKEN" |
+  grep -q 'Class moved to 5pm tomorrow' &&
+  pass "announcement fanned out to enrolled student's notifications" ||
+  fail "notifications" "student did not receive announcement"
+
+curl -sS "$API/notifications/unread-count" -H "Authorization: Bearer $STUDENT_TOKEN" |
+  grep -qE '"count":[1-9]' &&
+  pass "unread notification count reflects it" || fail "notifications" "unread count wrong"
+
 echo "authorization"
 curl -sS -o /dev/null -w '%{http_code}' "$API/batches/me" -H "Authorization: Bearer $STUDENT_TOKEN" |
   grep -q '403' &&
