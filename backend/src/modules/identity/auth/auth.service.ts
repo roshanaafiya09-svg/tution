@@ -26,7 +26,7 @@ export class AuthService {
     signupRole: 'tutor' | 'student' | undefined,
     deviceLabel: string | undefined,
   ): Promise<AuthTokens> {
-    await this.otpService.verifyOtp(phoneE164, code);
+    await this.otpService.checkOtp(phoneE164, code);
 
     let user = await this.usersRepository.findByPhone(phoneE164);
     if (!user) {
@@ -37,6 +37,8 @@ export class AuthService {
       }
       user = await this.usersRepository.createWithRole(phoneE164, signupRole);
     }
+
+    await this.otpService.consumeOtp(phoneE164);
 
     const roles = await this.usersRepository.getRoles(user.id);
     const accessToken = this.tokensService.signAccessToken(user.id, roles);

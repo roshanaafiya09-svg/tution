@@ -42,7 +42,15 @@
       "WebFetch(domain:github.com)",
       "Bash(curl -s -X POST http://localhost:3001/auth/otp/request -H \"Content-Type: application/json\" -d '{\"phoneE164\":\"+919876500001\"}')",
       "Bash(./redis-cli.exe keys *)",
-      "Bash(curl -s -w '\\\\nHTTP %{http_code}\\\\n' -X POST http://localhost:3001/auth/refresh -H 'Content-Type: application/json' -d '{\"refreshToken\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMTlmYjJkOC0zMDMyLTcxZWEtYTBmNi01ZWY0NDBlNjhlNDAiLCJqdGkiOiI5NmZjNDFiMy1lNjVlLTRjNDEtOTgzMy1hZWY2MGZlODBjYmIiLCJpYXQiOjE3ODU0MTE5NDAsImV4cCI6MTc4ODAwMzk0MH0.XRsHXbddt7KvBOjy0guGUojXbu7d3pwaMsetixYNSB0\"}')"
+      "Bash(curl -s -w '\\\\nHTTP %{http_code}\\\\n' -X POST http://localhost:3001/auth/refresh -H 'Content-Type: application/json' -d '{\"refreshToken\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMTlmYjJkOC0zMDMyLTcxZWEtYTBmNi01ZWY0NDBlNjhlNDAiLCJqdGkiOiI5NmZjNDFiMy1lNjVlLTRjNDEtOTgzMy1hZWY2MGZlODBjYmIiLCJpYXQiOjE3ODU0MTE5NDAsImV4cCI6MTc4ODAwMzk0MH0.XRsHXbddt7KvBOjy0guGUojXbu7d3pwaMsetixYNSB0\"}')",
+      "Bash(curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" -X POST http://localhost:3001/auth/google -H \"Content-Type: application/json\" -d '{\"idToken\":\"fake-token-for-test\"}')",
+      "Bash(curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" -X POST http://localhost:3001/auth/google -H \"Content-Type: application/json\" -d '{\"idToken\":\"not.a.real.jwt\"}')",
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='node.exe'\")",
+      "PowerShell(Stop-Process -Id 14252,6180,3100 -Force -ErrorAction SilentlyContinue)",
+      "Bash(echo \"restarted, PID $!\")",
+      "Bash(curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" http://localhost:3001/health --max-time 5)",
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='node.exe' or Name='redis-server.exe' or Name='postgres.exe'\")",
+      "Bash(./pg_ctl.exe -D \"/c/Users/Lenovo/AppData/Local/Programs/pg17/data\" -l \"/c/Users/Lenovo/AppData/Local/Programs/pg17/pg.log\" start)"
     ]
   }
 }

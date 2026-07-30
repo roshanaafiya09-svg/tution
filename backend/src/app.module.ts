@@ -6,6 +6,8 @@ import {
   authConfig,
   databaseConfig,
   redisConfig,
+  whatsappConfig,
+  googleAuthConfig,
 } from './config/configuration';
 import { validateEnv } from './config/env.validation';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -27,7 +29,14 @@ import { TrustModule } from './modules/trust/trust.module';
     ConfigModule.forRoot({
       isGlobal: true,
       validate: validateEnv,
-      load: [appConfig, databaseConfig, authConfig, redisConfig],
+      load: [
+        appConfig,
+        databaseConfig,
+        authConfig,
+        redisConfig,
+        whatsappConfig,
+        googleAuthConfig,
+      ],
     }),
     DatabaseModule,
     RedisModule,

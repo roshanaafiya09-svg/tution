@@ -10,16 +10,19 @@ import { AuthService } from './auth.service';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RefreshDto } from './dto/refresh.dto';
+import { GoogleSignInDto } from './dto/google-signin.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import type { AccessTokenPayload } from './tokens.service';
 import { UsersRepository } from '../users/users.repository';
+import { GoogleAuthService } from './google-auth.service';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly usersRepository: UsersRepository,
+    private readonly googleAuthService: GoogleAuthService,
   ) {}
 
   @Post('otp/request')
@@ -44,6 +47,12 @@ export class AuthController {
   @HttpCode(200)
   refresh(@Body() dto: RefreshDto) {
     return this.authService.refresh(dto.refreshToken, undefined);
+  }
+
+  @Post('google')
+  @HttpCode(200)
+  googleSignIn(@Body() dto: GoogleSignInDto) {
+    return this.googleAuthService.signIn(dto.idToken, dto.deviceLabel);
   }
 
   @Get('me')

@@ -43,7 +43,13 @@ export class OtpService {
     await this.otpProvider.send(phoneE164, code);
   }
 
-  async verifyOtp(phoneE164: string, code: string): Promise<void> {
+  /**
+   * Validates the code but does NOT consume it — callers that might
+   * still need another round-trip (e.g. asking a first-time signer-upper
+   * which role to sign up as) must be able to re-check the same code.
+   * Call consumeOtp() once the caller is committing to the result.
+   */
+  async checkOtp(phoneE164: string, code: string): Promise<void> {
     const challenge = await this.otpRepository.findActive(phoneE164);
     if (!challenge) {
       throw new UnauthorizedException(
@@ -60,7 +66,9 @@ export class OtpService {
       await this.otpRepository.incrementAttempts(phoneE164);
       throw new UnauthorizedException('Incorrect OTP.');
     }
+  }
 
-    await this.otpRepository.consume(phoneE164);
+  consumeOtp(phoneE164: string): Promise<void> {
+    return this.otpRepository.consume(phoneE164);
   }
 }

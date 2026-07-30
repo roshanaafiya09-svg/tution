@@ -17,6 +17,15 @@ export class UsersRepository {
       .executeTakeFirst();
   }
 
+  findByEmail(email: string) {
+    return this.db
+      .selectFrom('users')
+      .selectAll()
+      .where('email', '=', email)
+      .where('deleted_at', 'is', null)
+      .executeTakeFirst();
+  }
+
   findById(id: string) {
     return this.db
       .selectFrom('users')
