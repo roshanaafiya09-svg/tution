@@ -9,9 +9,9 @@ import { OtpRepository } from './otp.repository';
 import { OTP_PROVIDER } from './providers/otp-provider.interface';
 import type { OtpProvider } from './providers/otp-provider.interface';
 
-const CODE_TTL_MS = 5 * 60 * 1000;
+const CODE_TTL_SECONDS = 5 * 60;
 const MAX_REQUESTS_PER_WINDOW = 5;
-const REQUEST_WINDOW_MS = 15 * 60 * 1000;
+const REQUEST_WINDOW_SECONDS = 15 * 60;
 const MAX_VERIFY_ATTEMPTS = 5;
 
 function hashCode(code: string): string {
@@ -26,11 +26,11 @@ export class OtpService {
   ) {}
 
   async requestOtp(phoneE164: string): Promise<void> {
-    const recentCount = await this.otpRepository.countRecentRequests(
+    const requestCount = await this.otpRepository.incrementRequestCount(
       phoneE164,
-      new Date(Date.now() - REQUEST_WINDOW_MS),
+      REQUEST_WINDOW_SECONDS,
     );
-    if (recentCount >= MAX_REQUESTS_PER_WINDOW) {
+    if (requestCount > MAX_REQUESTS_PER_WINDOW) {
       throw new BadRequestException('Too many OTP requests. Try again later.');
     }
 
@@ -38,20 +38,17 @@ export class OtpService {
     await this.otpRepository.create(
       phoneE164,
       hashCode(code),
-      new Date(Date.now() + CODE_TTL_MS),
+      CODE_TTL_SECONDS,
     );
     await this.otpProvider.send(phoneE164, code);
   }
 
   async verifyOtp(phoneE164: string, code: string): Promise<void> {
-    const challenge = await this.otpRepository.findLatestActive(phoneE164);
+    const challenge = await this.otpRepository.findActive(phoneE164);
     if (!challenge) {
       throw new UnauthorizedException(
         'No active OTP for this number. Request a new one.',
       );
-    }
-    if (new Date(challenge.expires_at) < new Date()) {
-      throw new UnauthorizedException('OTP expired. Request a new one.');
     }
     if (challenge.attempts >= MAX_VERIFY_ATTEMPTS) {
       throw new UnauthorizedException(
@@ -59,11 +56,11 @@ export class OtpService {
       );
     }
 
-    if (hashCode(code) !== challenge.code_hash) {
-      await this.otpRepository.incrementAttempts(challenge.id);
+    if (hashCode(code) !== challenge.codeHash) {
+      await this.otpRepository.incrementAttempts(phoneE164);
       throw new UnauthorizedException('Incorrect OTP.');
     }
 
-    await this.otpRepository.consume(challenge.id);
+    await this.otpRepository.consume(phoneE164);
   }
 }

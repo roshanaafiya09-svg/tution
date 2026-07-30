@@ -311,32 +311,9 @@ export interface NotificationsTable {
   created_at: GeneratedTimestamp;
 }
 
-// --- auth infra (not in blueprint §7 — see migration 0007) ---
-
-export interface OtpChallengesTable {
-  id: string;
-  phone_e164: string;
-  code_hash: string;
-  purpose: Generated<'login'>;
-  attempts: Generated<number>;
-  expires_at: ColumnType<Date, Date | string, Date | string>;
-  consumed_at: ColumnType<
-    Date | null,
-    Date | string | null | undefined,
-    Date | string | null
-  >;
-  created_at: GeneratedTimestamp;
-}
-
-export interface RefreshTokensTable {
-  id: string;
-  user_id: string;
-  jti: string;
-  device_label: string | null;
-  expires_at: Timestamp;
-  revoked_at: Timestamp | null;
-  created_at: GeneratedTimestamp;
-}
+// OTP challenges and refresh tokens live in Redis, not Postgres — see
+// modules/identity/otp/otp.repository.ts and
+// modules/identity/auth/refresh-token.repository.ts.
 
 export interface DB {
   users: UsersTable;
@@ -368,7 +345,4 @@ export interface DB {
   subscriptions: SubscriptionsTable;
   audit_logs: AuditLogsTable;
   notifications: NotificationsTable;
-
-  otp_challenges: OtpChallengesTable;
-  refresh_tokens: RefreshTokensTable;
 }

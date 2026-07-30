@@ -1,10 +1,16 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER } from '@nestjs/core';
-import { appConfig, authConfig, databaseConfig } from './config/configuration';
+import {
+  appConfig,
+  authConfig,
+  databaseConfig,
+  redisConfig,
+} from './config/configuration';
 import { validateEnv } from './config/env.validation';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { DatabaseModule } from './database/database.module';
+import { RedisModule } from './database/redis.module';
 import { HealthModule } from './modules/health/health.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
@@ -21,9 +27,10 @@ import { TrustModule } from './modules/trust/trust.module';
     ConfigModule.forRoot({
       isGlobal: true,
       validate: validateEnv,
-      load: [appConfig, databaseConfig, authConfig],
+      load: [appConfig, databaseConfig, authConfig, redisConfig],
     }),
     DatabaseModule,
+    RedisModule,
     HealthModule,
     IdentityModule,
     CatalogModule,

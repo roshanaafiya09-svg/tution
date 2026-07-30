@@ -13,6 +13,10 @@ export const databaseConfig = registerAs('database', () => ({
   url: process.env.DATABASE_URL as string,
 }));
 
+export const redisConfig = registerAs('redis', () => ({
+  url: process.env.REDIS_URL as string,
+}));
+
 export const authConfig = registerAs('auth', () => ({
   jwtAccessSecret: process.env.JWT_ACCESS_SECRET as string,
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET as string,

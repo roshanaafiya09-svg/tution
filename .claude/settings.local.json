@@ -38,7 +38,11 @@
       "Bash(curl -s -w '\\\\nHTTP %{http_code}\\\\n' -X POST http://localhost:3001/auth/refresh -H 'Content-Type: application/json' -d '{\"refreshToken\":\"__TRACKED_VAR__\"}')",
       "Bash(curl -s -X POST http://localhost:3001/auth/otp/request -H \"Content-Type: application/json\" -d '{\"phoneE164\":\"+919876543211\"}')",
       "Bash(curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" -X POST http://localhost:3001/auth/otp/verify -H \"Content-Type: application/json\" -d '{\"phoneE164\":\"+919876543211\",\"code\":\"000000\",\"signupRole\":\"student\"}')",
-      "Bash(curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" -X POST http://localhost:3001/auth/otp/request -H \"Content-Type: application/json\" -d '{\"phoneE164\":\"not-a-phone\"}')"
+      "Bash(curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" -X POST http://localhost:3001/auth/otp/request -H \"Content-Type: application/json\" -d '{\"phoneE164\":\"not-a-phone\"}')",
+      "WebFetch(domain:github.com)",
+      "Bash(curl -s -X POST http://localhost:3001/auth/otp/request -H \"Content-Type: application/json\" -d '{\"phoneE164\":\"+919876500001\"}')",
+      "Bash(./redis-cli.exe keys *)",
+      "Bash(curl -s -w '\\\\nHTTP %{http_code}\\\\n' -X POST http://localhost:3001/auth/refresh -H 'Content-Type: application/json' -d '{\"refreshToken\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMTlmYjJkOC0zMDMyLTcxZWEtYTBmNi01ZWY0NDBlNjhlNDAiLCJqdGkiOiI5NmZjNDFiMy1lNjVlLTRjNDEtOTgzMy1hZWY2MGZlODBjYmIiLCJpYXQiOjE3ODU0MTE5NDAsImV4cCI6MTc4ODAwMzk0MH0.XRsHXbddt7KvBOjy0guGUojXbu7d3pwaMsetixYNSB0\"}')"
     ]
   }
 }

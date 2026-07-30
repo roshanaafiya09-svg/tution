@@ -1,49 +1,62 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { Kysely } from 'kysely';
-import { KYSELY_CONNECTION } from '../../../database/database.module';
-import type { DB } from '../../../database/types';
-import { newId } from '../../../database/id';
+import type Redis from 'ioredis';
+import { REDIS_CONNECTION } from '../../../database/redis.module';
+
+interface StoredRefreshToken {
+  userId: string;
+  deviceLabel?: string;
+}
 
 @Injectable()
 export class RefreshTokenRepository {
-  constructor(@Inject(KYSELY_CONNECTION) private readonly db: Kysely<DB>) {}
+  constructor(@Inject(REDIS_CONNECTION) private readonly redis: Redis) {}
 
-  create(userId: string, jti: string, expiresAt: Date, deviceLabel?: string) {
-    return this.db
-      .insertInto('refresh_tokens')
-      .values({
-        id: newId(),
-        user_id: userId,
-        jti,
-        device_label: deviceLabel ?? null,
-        expires_at: expiresAt,
-      })
-      .execute();
+  private tokenKey(jti: string): string {
+    return `refresh:token:${jti}`;
   }
 
-  findActiveByJti(jti: string) {
-    return this.db
-      .selectFrom('refresh_tokens')
-      .selectAll()
-      .where('jti', '=', jti)
-      .where('revoked_at', 'is', null)
-      .executeTakeFirst();
+  private userIndexKey(userId: string): string {
+    return `refresh:user:${userId}`;
   }
 
-  revoke(jti: string) {
-    return this.db
-      .updateTable('refresh_tokens')
-      .set({ revoked_at: new Date() })
-      .where('jti', '=', jti)
-      .execute();
+  async create(
+    userId: string,
+    jti: string,
+    ttlSeconds: number,
+    deviceLabel?: string,
+  ): Promise<void> {
+    const value: StoredRefreshToken = { userId, deviceLabel };
+    await Promise.all([
+      this.redis.set(
+        this.tokenKey(jti),
+        JSON.stringify(value),
+        'EX',
+        ttlSeconds,
+      ),
+      this.redis.sadd(this.userIndexKey(userId), jti),
+      this.redis.expire(this.userIndexKey(userId), ttlSeconds),
+    ]);
   }
 
-  revokeAllForUser(userId: string) {
-    return this.db
-      .updateTable('refresh_tokens')
-      .set({ revoked_at: new Date() })
-      .where('user_id', '=', userId)
-      .where('revoked_at', 'is', null)
-      .execute();
+  async findActiveByJti(jti: string): Promise<StoredRefreshToken | null> {
+    const raw = await this.redis.get(this.tokenKey(jti));
+    return raw ? (JSON.parse(raw) as StoredRefreshToken) : null;
+  }
+
+  async revoke(jti: string): Promise<void> {
+    const stored = await this.findActiveByJti(jti);
+    await this.redis.del(this.tokenKey(jti));
+    if (stored) {
+      await this.redis.srem(this.userIndexKey(stored.userId), jti);
+    }
+  }
+
+  async revokeAllForUser(userId: string): Promise<void> {
+    const jtis = await this.redis.smembers(this.userIndexKey(userId));
+    if (jtis.length === 0) return;
+    await this.redis.del(
+      ...jtis.map((jti) => this.tokenKey(jti)),
+      this.userIndexKey(userId),
+    );
   }
 }
