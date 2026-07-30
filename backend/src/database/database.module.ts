@@ -3,8 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { Kysely, PostgresDialect } from 'kysely';
 import { Pool } from 'pg';
 import { DB } from './types';
+import { configurePgTypeParsers } from './pg-types';
 
 export const KYSELY_CONNECTION = 'KYSELY_CONNECTION';
+
+configurePgTypeParsers();
 
 @Global()
 @Module({
