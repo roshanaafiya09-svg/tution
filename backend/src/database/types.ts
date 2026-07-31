@@ -299,7 +299,14 @@ export interface AuditLogsTable {
   action: string;
   entity: string;
   entity_id: string;
-  diff: JSONColumnType<Record<string, unknown>> | null;
+  // Same insert-optional form as notifications.payload / submissions.object_keys
+  // above — the bare `JSONColumnType<T> | null` form types inserts as an
+  // object when the driver actually needs a JSON string (see milestone 5).
+  diff: JSONColumnType<
+    Record<string, unknown>,
+    string | undefined,
+    string
+  > | null;
   ip: string | null;
   created_at: GeneratedTimestamp;
 }

@@ -207,5 +207,102 @@ curl -sS -o /dev/null -w '%{http_code}' "$API/batches/me" -H "Authorization: Bea
 curl -sS -o /dev/null -w '%{http_code}' "$API/batches/me" | grep -q '401' &&
   pass "unauthenticated request rejected" || fail "authorization" "missing auth not rejected"
 
+echo "trust: tutor verification"
+REVIEWER_PHONE="${REVIEWER_PHONE:-+919876511003}"
+
+curl -sS -X PUT "$API/profiles/tutor" -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TUTOR_TOKEN" -d '{"displayName":"Smoke Test Tutor"}' > /dev/null
+pass "tutor profile created (verification_status defaults to pending)"
+
+upload_doc() {
+  local type="$1"
+  local resp
+  resp=$(curl -sS -X POST "$API/verifications/upload-url" -H 'Content-Type: application/json' \
+    -H "Authorization: Bearer $TUTOR_TOKEN" \
+    -d "{\"type\":\"$type\",\"mime\":\"application/pdf\",\"sizeBytes\":11}")
+  local url
+  url=$(echo "$resp" | json_field uploadUrl)
+  printf 'fake-pdf-bytes' > /tmp/smoke-verification.pdf
+  curl -sS -X PUT "$url" -H 'Content-Type: application/pdf' --data-binary @/tmp/smoke-verification.pdf > /dev/null
+  echo "$resp" | json_field id
+}
+
+ID_PROOF_ID=$(upload_doc id_proof)
+QUALIFICATION_ID=$(upload_doc qualification)
+[ -n "$ID_PROOF_ID" ] && [ -n "$QUALIFICATION_ID" ] &&
+  pass "tutor uploaded id_proof and qualification documents" || fail "trust" "verification upload failed"
+
+curl -sS "$API/verifications/me" -H "Authorization: Bearer $TUTOR_TOKEN" |
+  grep -q '"status":"pending"' &&
+  pass "tutor sees own submissions as pending" || fail "trust" "tutor cannot see own verifications"
+
+curl -sS -o /dev/null -w '%{http_code}' "$API/verifications/queue" -H "Authorization: Bearer $STUDENT_TOKEN" |
+  grep -q '403' &&
+  pass "non-reviewer blocked from the review queue" || fail "trust" "RBAC not enforced on queue"
+
+# No self-serve signup for admin roles (by design) — grant trust_safety
+# directly in the DB, matching how a real reviewer account is provisioned
+# out-of-band, then re-sign-in so the JWT picks up the new role.
+login "$REVIEWER_PHONE" tutor > /dev/null
+docker compose exec -T postgres psql -U tuition -d tuition_dev -c \
+  "insert into user_roles (user_id, role) select id, 'trust_safety' from users where phone_e164='$REVIEWER_PHONE' on conflict do nothing;" > /dev/null
+REVIEWER_TOKEN=$(login "$REVIEWER_PHONE" tutor)
+[ -n "$REVIEWER_TOKEN" ] && pass "reviewer account provisioned with trust_safety role" ||
+  fail "trust" "reviewer login failed"
+
+curl -sS "$API/verifications/queue" -H "Authorization: Bearer $REVIEWER_TOKEN" |
+  grep -q "$ID_PROOF_ID" &&
+  pass "both submissions appear in the reviewer's queue" || fail "trust" "queue missing submissions"
+
+curl -sS "$API/verifications/$ID_PROOF_ID/download-url" -H "Authorization: Bearer $REVIEWER_TOKEN" |
+  grep -q '"url"' &&
+  pass "reviewer can fetch the document" || fail "trust" "reviewer download-url failed"
+
+curl -sS -o /dev/null -w '%{http_code}' "$API/verifications/$ID_PROOF_ID/download-url" \
+  -H "Authorization: Bearer $STUDENT_TOKEN" | grep -q '403' &&
+  pass "unrelated student blocked from the document" || fail "trust" "document not access-controlled"
+
+curl -sS -X POST "$API/verifications/$ID_PROOF_ID/review" -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $REVIEWER_TOKEN" -d '{"status":"approved"}' |
+  grep -q '"status":"approved"' &&
+  pass "id_proof approved" || fail "trust" "review failed"
+
+curl -sS "$API/profiles/tutor/me" -H "Authorization: Bearer $TUTOR_TOKEN" |
+  grep -q '"verification_status":"pending"' &&
+  pass "badge stays pending with only one of two documents approved" ||
+  fail "trust" "badge flipped too early"
+
+curl -sS -X POST "$API/verifications/$QUALIFICATION_ID/review" -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $REVIEWER_TOKEN" -d '{"status":"approved"}' > /dev/null
+curl -sS "$API/profiles/tutor/me" -H "Authorization: Bearer $TUTOR_TOKEN" |
+  grep -q '"verification_status":"verified"' &&
+  pass "verified badge granted once both documents are approved" ||
+  fail "trust" "badge did not flip after both approvals"
+
+curl -sS -o /dev/null -w '%{http_code}' -X POST "$API/verifications/$QUALIFICATION_ID/review" \
+  -H 'Content-Type: application/json' -H "Authorization: Bearer $REVIEWER_TOKEN" \
+  -d '{"status":"approved"}' | grep -q '400' &&
+  pass "re-reviewing an already-decided submission is rejected" || fail "trust" "double review not blocked"
+
+echo "trust: consent"
+curl -sS -X POST "$API/consent" -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TUTOR_TOKEN" \
+  -d '{"consentType":"terms_of_service","policyVersion":"2026-07"}' |
+  grep -q '"consent_type":"terms_of_service"' &&
+  pass "consent grant recorded" || fail "trust" "consent record failed"
+
+curl -sS "$API/consent/me" -H "Authorization: Bearer $TUTOR_TOKEN" |
+  grep -q '"policy_version":"2026-07"' &&
+  pass "tutor sees own consent history" || fail "trust" "consent history missing"
+
+echo "trust: audit log"
+curl -sS "$API/audit-logs?entity=tutor_verifications&entityId=$QUALIFICATION_ID" \
+  -H "Authorization: Bearer $REVIEWER_TOKEN" | grep -q '"action":"verification.approved"' &&
+  pass "verification approvals wrote immutable audit-log entries" || fail "trust" "audit log missing entry"
+
+curl -sS -o /dev/null -w '%{http_code}' "$API/audit-logs" -H "Authorization: Bearer $STUDENT_TOKEN" |
+  grep -q '403' &&
+  pass "audit log restricted to admin roles" || fail "trust" "audit log not access-controlled"
+
 echo
 echo "all smoke tests passed"

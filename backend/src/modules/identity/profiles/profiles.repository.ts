@@ -17,6 +17,8 @@ export interface UpsertStudentProfileInput {
   schoolName?: string;
 }
 
+export type TutorVerificationStatus = 'pending' | 'verified' | 'rejected';
+
 @Injectable()
 export class ProfilesRepository {
   constructor(@Inject(KYSELY_CONNECTION) private readonly db: Kysely<DB>) {}
@@ -69,6 +71,16 @@ export class ProfilesRepository {
           years_experience: input.yearsExperience ?? null,
         }),
       )
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
+
+  /** Called from TrustModule once verification review lands on a decision. */
+  setTutorVerificationStatus(userId: string, status: TutorVerificationStatus) {
+    return this.db
+      .updateTable('profiles_tutor')
+      .set({ verification_status: status })
+      .where('user_id', '=', userId)
       .returningAll()
       .executeTakeFirstOrThrow();
   }

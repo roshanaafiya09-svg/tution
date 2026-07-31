@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   ProfilesRepository,
+  TutorVerificationStatus,
   UpsertStudentProfileInput,
   UpsertTutorProfileInput,
 } from './profiles.repository';
@@ -19,6 +20,12 @@ export class ProfilesService {
 
   getTutorProfile(userId: string) {
     return this.profilesRepository.findTutorByUserId(userId);
+  }
+
+  /** Owned by TrustModule's verification review flow — kept here because
+   *  profiles_tutor belongs to IdentityModule (no cross-module DB access). */
+  setVerificationStatus(userId: string, status: TutorVerificationStatus) {
+    return this.profilesRepository.setTutorVerificationStatus(userId, status);
   }
 
   async getPublicTutorProfile(slug: string) {

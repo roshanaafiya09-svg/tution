@@ -67,6 +67,12 @@ const otpProviderLogger = new Logger('IdentityModule');
     ProfilesRepository,
     ProfilesService,
   ],
-  exports: [UsersRepository, TokensService, JwtAuthGuard, RolesGuard],
+  exports: [
+    UsersRepository,
+    TokensService,
+    JwtAuthGuard,
+    RolesGuard,
+    ProfilesService,
+  ],
 })
 export class IdentityModule {}
