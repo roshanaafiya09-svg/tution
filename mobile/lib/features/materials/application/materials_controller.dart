@@ -14,6 +14,10 @@ final materialsApiProvider = Provider<MaterialsApi>(
   (ref) => MaterialsApi(ref.watch(apiClientProvider)),
 );
 
+final bookmarksStreamProvider = StreamProvider(
+  (ref) => ref.watch(appDatabaseProvider).watchBookmarks(),
+);
+
 /// Batch id -> its materials, across every batch the student is enrolled
 /// in — the flat "Materials" tab groups by batch client-side.
 final materialsControllerProvider =
@@ -70,6 +74,23 @@ class MaterialsController
     );
 
     await OpenFilex.open(localPath);
+  }
+
+  Future<void> toggleBookmark(MaterialItem material) async {
+    final db = ref.read(appDatabaseProvider);
+    if (await db.isBookmarked(material.id)) {
+      await db.removeBookmark(material.id);
+    } else {
+      await db.addBookmark(
+        BookmarksCompanion.insert(
+          materialId: material.id,
+          batchId: material.batchId,
+          title: material.title,
+          mime: material.mime,
+          bookmarkedAt: DateTime.now(),
+        ),
+      );
+    }
   }
 
   String _extensionFor(String mime) {

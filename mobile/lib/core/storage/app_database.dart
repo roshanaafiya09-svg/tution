@@ -19,7 +19,22 @@ class CachedMaterials extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-@DriftDatabase(tables: [CachedMaterials])
+/// Bookmarked materials (blueprint §3) — local-only, no backend table.
+/// Denormalized (title/mime carried alongside the id) so a bookmark
+/// still renders even if the material later drops out of the student's
+/// currently-enrolled-batches fetch.
+class Bookmarks extends Table {
+  TextColumn get materialId => text()();
+  TextColumn get batchId => text()();
+  TextColumn get title => text()();
+  TextColumn get mime => text()();
+  DateTimeColumn get bookmarkedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {materialId};
+}
+
+@DriftDatabase(tables: [CachedMaterials, Bookmarks])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
@@ -40,6 +55,26 @@ class AppDatabase extends _$AppDatabase {
     return (select(
       cachedMaterials,
     )..where((t) => t.batchId.equals(batchId))).get();
+  }
+
+  Stream<List<Bookmark>> watchBookmarks() =>
+      select(bookmarks).watch();
+
+  Future<bool> isBookmarked(String materialId) async {
+    final row = await (select(
+      bookmarks,
+    )..where((t) => t.materialId.equals(materialId))).getSingleOrNull();
+    return row != null;
+  }
+
+  Future<void> addBookmark(BookmarksCompanion entry) {
+    return into(bookmarks).insertOnConflictUpdate(entry);
+  }
+
+  Future<void> removeBookmark(String materialId) {
+    return (delete(
+      bookmarks,
+    )..where((t) => t.materialId.equals(materialId))).go();
   }
 }
 

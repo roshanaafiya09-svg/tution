@@ -7,6 +7,7 @@ import '../application/materials_controller.dart';
 import '../data/material_item.dart';
 
 /// Blueprint §4: "materials with offline reading cache on mobile".
+/// Blueprint §3: bookmarks — local-only, shown as a section up top.
 class MaterialsScreen extends ConsumerWidget {
   const MaterialsScreen({super.key});
 
@@ -14,6 +15,8 @@ class MaterialsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final batchesAsync = ref.watch(enrolledBatchesProvider);
     final materialsAsync = ref.watch(materialsControllerProvider);
+    final bookmarksAsync = ref.watch(bookmarksStreamProvider);
+    final bookmarkedIds = bookmarksAsync.value?.map((b) => b.materialId).toSet() ?? {};
 
     return Scaffold(
       appBar: AppBar(title: const Text('Materials')),
@@ -34,38 +37,70 @@ class MaterialsScreen extends ConsumerWidget {
                 error: (error, _) => _CenteredMessage(
                   error is ApiException ? error.message : 'Could not load materials.',
                 ),
-                data: (byBatch) => ListView(
-                  padding: const EdgeInsets.all(DesignTokens.pageGutter),
-                  children: [
-                    for (final batch in batches) ...[
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8, top: 8),
-                        child: Text(
-                          batch.title,
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      if ((byBatch[batch.id] ?? []).isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
-                          child: Text(
-                            'No materials yet.',
-                            style: Theme.of(context).textTheme.bodySmall,
+                data: (byBatch) {
+                  final bookmarked = byBatch.values
+                      .expand((list) => list)
+                      .where((m) => bookmarkedIds.contains(m.id))
+                      .toList();
+
+                  return ListView(
+                    padding: const EdgeInsets.all(DesignTokens.pageGutter),
+                    children: [
+                      if (bookmarked.isNotEmpty) ...[
+                        _SectionLabel('Bookmarked'),
+                        ...bookmarked.map(
+                          (m) => _MaterialTile(
+                            material: m,
+                            isBookmarked: true,
                           ),
-                        )
-                      else
-                        ...byBatch[batch.id]!.map(
-                          (m) => _MaterialTile(material: m),
                         ),
-                      const SizedBox(height: 8),
+                        const SizedBox(height: 16),
+                      ],
+                      for (final batch in batches) ...[
+                        _SectionLabel(batch.title),
+                        if ((byBatch[batch.id] ?? []).isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: Text(
+                              'No materials yet.',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          )
+                        else
+                          ...byBatch[batch.id]!.map(
+                            (m) => _MaterialTile(
+                              material: m,
+                              isBookmarked: bookmarkedIds.contains(m.id),
+                            ),
+                          ),
+                        const SizedBox(height: 8),
+                      ],
                     ],
-                  ],
-                ),
+                  );
+                },
               );
             },
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8, top: 8),
+      child: Text(
+        label,
+        style: Theme.of(
+          context,
+        ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -89,9 +124,10 @@ class _CenteredMessage extends StatelessWidget {
 }
 
 class _MaterialTile extends ConsumerStatefulWidget {
-  const _MaterialTile({required this.material});
+  const _MaterialTile({required this.material, required this.isBookmarked});
 
   final MaterialItem material;
+  final bool isBookmarked;
 
   @override
   ConsumerState<_MaterialTile> createState() => _MaterialTileState();
@@ -130,13 +166,29 @@ class _MaterialTileState extends ConsumerState<_MaterialTile> {
         leading: Icon(_icon, color: Theme.of(context).colorScheme.primary),
         title: Text(widget.material.title),
         subtitle: Text(_formatSize(widget.material.sizeBytes)),
-        trailing: _opening
-            ? const SizedBox(
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: Icon(
+                widget.isBookmarked ? Icons.star : Icons.star_border,
+                color: widget.isBookmarked ? DesignTokens.accent500 : null,
+              ),
+              tooltip: widget.isBookmarked ? 'Remove bookmark' : 'Bookmark',
+              onPressed: () => ref
+                  .read(materialsControllerProvider.notifier)
+                  .toggleBookmark(widget.material),
+            ),
+            if (_opening)
+              const SizedBox(
                 height: 20,
                 width: 20,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
-            : const Icon(Icons.download_outlined),
+            else
+              const Icon(Icons.download_outlined),
+          ],
+        ),
         onTap: _opening ? null : _open,
       ),
     );

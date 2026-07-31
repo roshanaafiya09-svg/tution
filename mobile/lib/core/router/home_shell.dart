@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/assignments/presentation/assignments_screen.dart';
 import '../../features/auth/application/auth_controller.dart';
 import '../../features/materials/presentation/materials_screen.dart';
+import '../../features/progress/presentation/progress_screen.dart';
 import '../../features/today/presentation/today_screen.dart';
 
 /// Students get bottom-nav tabs across the Phase 1 mobile surfaces
@@ -23,6 +24,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     TodayScreen(),
     MaterialsScreen(),
     AssignmentsScreen(),
+    ProgressScreen(),
   ];
 
   @override
@@ -53,6 +55,11 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             icon: Icon(Icons.assignment_outlined),
             selectedIcon: Icon(Icons.assignment),
             label: 'Homework',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.insights_outlined),
+            selectedIcon: Icon(Icons.insights),
+            label: 'Progress',
           ),
         ],
       ),
