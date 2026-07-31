@@ -68,6 +68,9 @@ dependencies:
   drift_flutter: ^0.2.4
   path_provider: ^2.1.5
 
+  # Opens a cached material (PDF/image) in the device's default viewer.
+  open_filex: ^4.6.0
+
 dev_dependencies:
   drift_dev: ^2.22.1
   build_runner: ^2.4.13

@@ -5,7 +5,7 @@ import '../../features/auth/application/auth_controller.dart';
 import '../../features/auth/application/auth_state.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/otp_screen.dart';
-import '../../features/today/presentation/today_screen.dart';
+import 'home_shell.dart';
 
 /// Rebuilt whenever [authControllerProvider] changes, so `redirect` below
 /// always sees the current auth status without a separate Listenable
@@ -21,7 +21,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/', builder: (_, _) => const _SplashScreen()),
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/otp', builder: (_, _) => const OtpScreen()),
-      GoRoute(path: '/today', builder: (_, _) => const TodayScreen()),
+      GoRoute(path: '/today', builder: (_, _) => const HomeShell()),
     ],
   );
 });
