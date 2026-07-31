@@ -60,4 +60,26 @@ export class UsersRepository {
       .execute()
       .then((rows) => rows.map((r) => r.role));
   }
+
+  /**
+   * DPDP Act 2023 data-principal deletion right (blueprint §4/§9). A hard
+   * delete would break referential integrity for historical records this
+   * user appears in (attendance, fee ledger, audit logs) that other
+   * parties legitimately still need — so this tombstones the contactable
+   * identity instead: phone/email are replaced so the number/address can
+   * be reused, sign-in becomes impossible, and `deleted_at`-gated finders
+   * (findByPhone/findByEmail/findById above) stop returning the account.
+   */
+  softDelete(userId: string) {
+    return this.db
+      .updateTable('users')
+      .set({
+        phone_e164: `deleted-${userId}`,
+        email: null,
+        status: 'deleted',
+        deleted_at: new Date(),
+      })
+      .where('id', '=', userId)
+      .execute();
+  }
 }

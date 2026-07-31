@@ -104,6 +104,16 @@ export class FeesRepository {
       .execute();
   }
 
+  /** Every fee entry a tutor has recorded, across all periods — feeds data export. */
+  listAllForTutor(tutorId: string) {
+    return this.db
+      .selectFrom('fee_ledger')
+      .selectAll()
+      .where('tutor_id', '=', tutorId)
+      .orderBy('period_label', 'desc')
+      .execute();
+  }
+
   listForStudent(studentId: string) {
     return this.db
       .selectFrom('fee_ledger')

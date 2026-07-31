@@ -30,6 +30,25 @@ export class AttendanceRepository {
       .execute();
   }
 
+  /** Every attendance record for a student, across all batches — feeds data export. */
+  listForStudent(studentId: string) {
+    return this.db
+      .selectFrom('attendance')
+      .innerJoin('class_sessions', 'class_sessions.id', 'attendance.session_id')
+      .select([
+        'attendance.id',
+        'attendance.session_id',
+        'attendance.status',
+        'attendance.joined_at',
+        'attendance.method',
+        'class_sessions.batch_id',
+        'class_sessions.scheduled_start_utc',
+      ])
+      .where('attendance.student_id', '=', studentId)
+      .orderBy('class_sessions.scheduled_start_utc', 'desc')
+      .execute();
+  }
+
   upsert(
     sessionId: string,
     studentId: string,

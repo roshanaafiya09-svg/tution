@@ -24,6 +24,7 @@ import { BillingModule } from './modules/billing/billing.module';
 import { AiModule } from './modules/ai/ai.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { TrustModule } from './modules/trust/trust.module';
+import { AccountModule } from './modules/account/account.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { TrustModule } from './modules/trust/trust.module';
     AiModule,
     NotificationsModule,
     TrustModule,
+    AccountModule,
   ],
   providers: [
     {

@@ -34,6 +34,6 @@ import { AuditLogRepository } from './audit/audit-log.repository';
     AuditLogRepository,
     AuditLogService,
   ],
-  exports: [AuditLogService],
+  exports: [AuditLogService, ConsentRepository, VerificationsRepository],
 })
 export class TrustModule {}

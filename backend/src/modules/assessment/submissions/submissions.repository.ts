@@ -71,6 +71,16 @@ export class SubmissionsRepository {
       .execute();
   }
 
+  /** Every submission a student has made, across all assignments — feeds data export. */
+  listForStudent(studentId: string) {
+    return this.db
+      .selectFrom('submissions')
+      .selectAll()
+      .where('student_id', '=', studentId)
+      .orderBy('submitted_at', 'desc')
+      .execute();
+  }
+
   grade(id: string, grade: string, feedback: string | null) {
     return this.db
       .updateTable('submissions')

@@ -209,16 +209,22 @@ curl -sS -o /dev/null -w '%{http_code}' "$API/batches/me" | grep -q '401' &&
 
 echo "trust: tutor verification"
 REVIEWER_PHONE="${REVIEWER_PHONE:-+919876511003}"
+# A dedicated tutor, not $TUTOR_PHONE: the badge-progression assertions
+# below depend on this account having zero approved verifications
+# beforehand, which only holds on a fresh phone number — $TUTOR_PHONE is
+# reused across repeated runs of this script against the same dev DB.
+VERIFY_TUTOR_PHONE="${VERIFY_TUTOR_PHONE:-+919876511004}"
+VERIFY_TUTOR_TOKEN=$(login "$VERIFY_TUTOR_PHONE" tutor)
 
 curl -sS -X PUT "$API/profiles/tutor" -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $TUTOR_TOKEN" -d '{"displayName":"Smoke Test Tutor"}' > /dev/null
+  -H "Authorization: Bearer $VERIFY_TUTOR_TOKEN" -d '{"displayName":"Smoke Test Tutor"}' > /dev/null
 pass "tutor profile created (verification_status defaults to pending)"
 
 upload_doc() {
   local type="$1"
   local resp
   resp=$(curl -sS -X POST "$API/verifications/upload-url" -H 'Content-Type: application/json' \
-    -H "Authorization: Bearer $TUTOR_TOKEN" \
+    -H "Authorization: Bearer $VERIFY_TUTOR_TOKEN" \
     -d "{\"type\":\"$type\",\"mime\":\"application/pdf\",\"sizeBytes\":11}")
   local url
   url=$(echo "$resp" | json_field uploadUrl)
@@ -232,7 +238,7 @@ QUALIFICATION_ID=$(upload_doc qualification)
 [ -n "$ID_PROOF_ID" ] && [ -n "$QUALIFICATION_ID" ] &&
   pass "tutor uploaded id_proof and qualification documents" || fail "trust" "verification upload failed"
 
-curl -sS "$API/verifications/me" -H "Authorization: Bearer $TUTOR_TOKEN" |
+curl -sS "$API/verifications/me" -H "Authorization: Bearer $VERIFY_TUTOR_TOKEN" |
   grep -q '"status":"pending"' &&
   pass "tutor sees own submissions as pending" || fail "trust" "tutor cannot see own verifications"
 
@@ -267,14 +273,14 @@ curl -sS -X POST "$API/verifications/$ID_PROOF_ID/review" -H 'Content-Type: appl
   grep -q '"status":"approved"' &&
   pass "id_proof approved" || fail "trust" "review failed"
 
-curl -sS "$API/profiles/tutor/me" -H "Authorization: Bearer $TUTOR_TOKEN" |
+curl -sS "$API/profiles/tutor/me" -H "Authorization: Bearer $VERIFY_TUTOR_TOKEN" |
   grep -q '"verification_status":"pending"' &&
   pass "badge stays pending with only one of two documents approved" ||
   fail "trust" "badge flipped too early"
 
 curl -sS -X POST "$API/verifications/$QUALIFICATION_ID/review" -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $REVIEWER_TOKEN" -d '{"status":"approved"}' > /dev/null
-curl -sS "$API/profiles/tutor/me" -H "Authorization: Bearer $TUTOR_TOKEN" |
+curl -sS "$API/profiles/tutor/me" -H "Authorization: Bearer $VERIFY_TUTOR_TOKEN" |
   grep -q '"verification_status":"verified"' &&
   pass "verified badge granted once both documents are approved" ||
   fail "trust" "badge did not flip after both approvals"
@@ -303,6 +309,45 @@ curl -sS "$API/audit-logs?entity=tutor_verifications&entityId=$QUALIFICATION_ID"
 curl -sS -o /dev/null -w '%{http_code}' "$API/audit-logs" -H "Authorization: Bearer $STUDENT_TOKEN" |
   grep -q '403' &&
   pass "audit log restricted to admin roles" || fail "trust" "audit log not access-controlled"
+
+echo "account: data export"
+curl -sS "$API/account/export" -H "Authorization: Bearer $STUDENT_TOKEN" |
+  grep -q '"batchesEnrolled"' &&
+  pass "student export includes enrolled batches" || fail "account" "student export missing batchesEnrolled"
+
+curl -sS "$API/account/export" -H "Authorization: Bearer $STUDENT_TOKEN" |
+  grep -q '"attendance"' &&
+  pass "student export includes attendance history" || fail "account" "student export missing attendance"
+
+curl -sS "$API/account/export" -H "Authorization: Bearer $TUTOR_TOKEN" |
+  grep -q '"batchesOwned"' &&
+  pass "tutor export includes owned batches" || fail "account" "tutor export missing batchesOwned"
+
+curl -sS "$API/account/export" -H "Authorization: Bearer $TUTOR_TOKEN" |
+  grep -q '"verifications"' &&
+  pass "tutor export includes verification submissions" || fail "account" "tutor export missing verifications"
+
+curl -sS -o /dev/null -w '%{http_code}' "$API/account/export" | grep -q '401' &&
+  pass "export requires authentication" || fail "account" "export not access-controlled"
+
+echo "account: deletion"
+DISPOSABLE_PHONE="${DISPOSABLE_PHONE:-+919876511009}"
+DISPOSABLE_TOKEN=$(login "$DISPOSABLE_PHONE" student)
+[ -n "$DISPOSABLE_TOKEN" ] && pass "disposable account created for deletion test" ||
+  fail "account" "could not create disposable account"
+
+curl -sS -X DELETE "$API/account/me" -H "Authorization: Bearer $DISPOSABLE_TOKEN" |
+  grep -q '"deleted":true' &&
+  pass "account deletion succeeds" || fail "account" "deletion did not confirm"
+
+curl -sS -X POST "$API/auth/otp/request" -H 'Content-Type: application/json' \
+  -d "{\"phoneE164\":\"$DISPOSABLE_PHONE\"}" > /dev/null
+sleep 0.6
+DISPOSABLE_CODE=$(grep "OTP for $DISPOSABLE_PHONE:" "$LOG" | tail -1 | sed -E 's/.*: ([0-9]{6}) .*/\1/')
+curl -sS -o /dev/null -w '%{http_code}' -X POST "$API/auth/otp/verify" -H 'Content-Type: application/json' \
+  -d "{\"phoneE164\":\"$DISPOSABLE_PHONE\",\"code\":\"$DISPOSABLE_CODE\"}" | grep -q '400' &&
+  pass "deleted account's phone number can be re-signed-up as new" ||
+  fail "account" "deleted phone number blocked from reuse"
 
 echo
 echo "all smoke tests passed"

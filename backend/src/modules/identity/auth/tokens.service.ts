@@ -90,4 +90,9 @@ export class TokensService {
     await this.refreshTokenRepository.revoke(oldJti);
     return this.issueRefreshToken(userId, deviceLabel);
   }
+
+  /** Account deletion (blueprint §4): every device is signed out immediately. */
+  revokeAllSessions(userId: string): Promise<void> {
+    return this.refreshTokenRepository.revokeAllForUser(userId);
+  }
 }
