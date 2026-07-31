@@ -1,4 +1,6 @@
+import { Suspense } from 'react';
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { LoginForm } from './login-form';
 
 export const metadata: Metadata = {
@@ -10,12 +12,14 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-neutral-50 px-6">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
-          <span className="font-display text-2xl font-semibold italic text-brand-800">
+          <Link href="/" className="font-display text-2xl font-semibold italic text-brand-800">
             Scholar
-          </span>
-          <p className="mt-2 text-sm text-neutral-500">Sign in with your phone number</p>
+          </Link>
+          <p className="mt-2 text-sm text-neutral-500">Sign in to run your classes</p>
         </div>
-        <LoginForm />
+        <Suspense fallback={<p className="text-center text-sm text-neutral-400">Loading…</p>}>
+          <LoginForm />
+        </Suspense>
       </div>
     </main>
   );
