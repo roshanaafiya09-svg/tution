@@ -6,6 +6,15 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "web", "run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "mobile-web",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd /d E:\\projects\\tution\\mobile && C:\\src\\flutter\\bin\\flutter.bat run -d web-server --web-port 5000"
+      ],
+      "port": 5000
     }
   ]
 }
