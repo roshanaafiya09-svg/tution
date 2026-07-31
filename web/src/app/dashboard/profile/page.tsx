@@ -1,16 +1,24 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import { api, tokenStore } from '@/lib/api';
 import type { TutorProfile } from '@/lib/types';
 import { Card, PageHeader, Button, Field, inputClass, StatusBadge } from '@/components/ui';
 
 export default function ProfilePage() {
+  const router = useRouter();
   const [profile, setProfile] = useState<TutorProfile | null>(null);
   const [form, setForm] = useState({ displayName: '', headline: '', bio: '', yearsExperience: '' });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     void api.get<TutorProfile | null>('/profiles/tutor/me').then((row) => {
@@ -43,6 +51,39 @@ export default function ProfilePage() {
       setError(err instanceof Error ? err.message : 'Could not save your profile.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  /** DPDP data-principal export right (blueprint §4/§9) — downloads the raw JSON. */
+  async function exportData() {
+    setExportError(null);
+    setExporting(true);
+    try {
+      const data = await api.get('/account/export');
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `tuition-app-data-export-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Could not export your data.');
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function deleteAccount() {
+    setDeleteError(null);
+    setDeleting(true);
+    try {
+      await api.delete('/account/me');
+      tokenStore.clear();
+      router.replace('/login');
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Could not delete your account.');
+      setDeleting(false);
     }
   }
 
@@ -105,6 +146,48 @@ export default function ProfilePage() {
           </Button>
           {saved && <span className="text-sm text-success">Saved</span>}
         </div>
+      </Card>
+
+      <Card className="mt-6 max-w-2xl border-error/20">
+        <h2 className="font-display text-lg font-semibold text-neutral-900">Your data</h2>
+        <p className="mt-1 text-sm text-neutral-500">
+          Export everything the app has on you, or permanently delete your account.
+        </p>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <Button variant="secondary" onClick={() => void exportData()} disabled={exporting}>
+            {exporting ? 'Preparing export…' : 'Export my data'}
+          </Button>
+          {!confirmingDelete && (
+            <Button variant="danger" onClick={() => setConfirmingDelete(true)}>
+              Delete my account
+            </Button>
+          )}
+        </div>
+        {exportError && <p className="mt-3 text-sm text-error">{exportError}</p>}
+
+        {confirmingDelete && (
+          <div className="mt-4 rounded-md border border-error/30 bg-error/5 p-4">
+            <p className="text-sm font-medium text-neutral-900">
+              This permanently deletes your account and signs you out everywhere. Your batches,
+              attendance and fee records are kept for other people they belong to, but your
+              contact details are removed and you can never sign back in with this number.
+            </p>
+            <div className="mt-3 flex items-center gap-3">
+              <Button variant="danger" onClick={() => void deleteAccount()} disabled={deleting}>
+                {deleting ? 'Deleting…' : 'Yes, permanently delete my account'}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setConfirmingDelete(false)}
+                disabled={deleting}
+              >
+                Cancel
+              </Button>
+            </div>
+            {deleteError && <p className="mt-3 text-sm text-error">{deleteError}</p>}
+          </div>
+        )}
       </Card>
     </div>
   );

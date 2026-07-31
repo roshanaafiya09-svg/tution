@@ -213,7 +213,10 @@ REVIEWER_PHONE="${REVIEWER_PHONE:-+919876511003}"
 # below depend on this account having zero approved verifications
 # beforehand, which only holds on a fresh phone number — $TUTOR_PHONE is
 # reused across repeated runs of this script against the same dev DB.
-VERIFY_TUTOR_PHONE="${VERIFY_TUTOR_PHONE:-+919876511004}"
+# A timestamp-derived number, not a fixed constant: a fixed one still
+# breaks on the 2nd+ run in the same dev DB, since verification rows
+# from an earlier run leave this tutor already fully approved.
+VERIFY_TUTOR_PHONE="${VERIFY_TUTOR_PHONE:-+91$(date +%s)}"
 VERIFY_TUTOR_TOKEN=$(login "$VERIFY_TUTOR_PHONE" tutor)
 
 curl -sS -X PUT "$API/profiles/tutor" -H 'Content-Type: application/json' \

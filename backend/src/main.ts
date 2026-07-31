@@ -37,6 +37,11 @@ async function bootstrap() {
   await app.register(cors, {
     origin: config.get<string[]>('app.corsOrigins'),
     credentials: true,
+    // @fastify/cors defaults to GET,HEAD,POST only — every PUT/DELETE
+    // route (profile edits, account deletion, batch/material removal,
+    // etc.) was silently unreachable from a real browser despite curl-
+    // based smoke tests passing, since curl never enforces CORS at all.
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
   });
 
   app.useGlobalPipes(
