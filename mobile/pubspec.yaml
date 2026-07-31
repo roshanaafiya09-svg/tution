@@ -55,7 +55,22 @@ dependencies:
 
   intl: ^0.20.2
 
+  # Opens the tutor's own Meet/Zoom link on "Join class" (blueprint §4:
+  # paste-a-link classes, not native video).
+  url_launcher: ^6.3.1
+
+  # Photo/PDF capture and pick for assignment submission.
+  image_picker: ^1.1.2
+  file_picker: ^8.1.4
+
+  # Offline reading cache for materials (blueprint §6).
+  drift: ^2.22.1
+  drift_flutter: ^0.2.4
+  path_provider: ^2.1.5
+
 dev_dependencies:
+  drift_dev: ^2.22.1
+  build_runner: ^2.4.13
   flutter_test:
     sdk: flutter
 

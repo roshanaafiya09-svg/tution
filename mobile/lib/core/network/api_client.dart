@@ -71,29 +71,28 @@ class ApiClient {
     }
   }
 
-  Future<Map<String, dynamic>> get(String path) => _request('GET', path);
+  /// Returns the decoded JSON body as-is — a `Map` for object responses,
+  /// a `List` for the many endpoints that return a bare array (Kysely's
+  /// `.execute()` result shape carries straight through most controllers
+  /// unwrapped). Callers cast to whichever they expect.
+  Future<dynamic> get(String path) => _request('GET', path);
 
-  Future<Map<String, dynamic>> post(String path, [Object? body]) =>
+  Future<dynamic> post(String path, [Object? body]) =>
       _request('POST', path, body);
 
-  Future<Map<String, dynamic>> put(String path, [Object? body]) =>
+  Future<dynamic> put(String path, [Object? body]) =>
       _request('PUT', path, body);
 
   Future<void> delete(String path) => _request('DELETE', path);
 
-  Future<Map<String, dynamic>> _request(
-    String method,
-    String path, [
-    Object? body,
-  ]) async {
+  Future<dynamic> _request(String method, String path, [Object? body]) async {
     try {
       final response = await _dio.request<dynamic>(
         path,
         data: body,
         options: Options(method: method),
       );
-      if (response.data == null) return const {};
-      return Map<String, dynamic>.from(response.data as Map);
+      return response.data;
     } on DioException catch (error) {
       throw _toApiException(error);
     }

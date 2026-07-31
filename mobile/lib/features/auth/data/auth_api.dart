@@ -16,16 +16,18 @@ class AuthApi {
     required String code,
     SignupRole? signupRole,
   }) async {
-    final data = await _client.post('/auth/otp/verify', {
-      'phoneE164': phoneE164,
-      'code': code,
-      if (signupRole != null) 'signupRole': signupRole.wireValue,
-    });
+    final data =
+        await _client.post('/auth/otp/verify', {
+              'phoneE164': phoneE164,
+              'code': code,
+              if (signupRole != null) 'signupRole': signupRole.wireValue,
+            })
+            as Map<String, dynamic>;
     return AuthTokens.fromJson(data);
   }
 
   Future<CurrentUser> me() async {
-    final data = await _client.get('/auth/me');
+    final data = await _client.get('/auth/me') as Map<String, dynamic>;
     return CurrentUser.fromJson(data);
   }
 }
