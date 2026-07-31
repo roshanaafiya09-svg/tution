@@ -4,7 +4,11 @@ import { EnvConfig } from './env.validation';
 export const appConfig = registerAs('app', () => ({
   nodeEnv: process.env.NODE_ENV as EnvConfig['NODE_ENV'],
   port: Number(process.env.PORT ?? 3001),
-  corsOrigins: (process.env.CORS_ORIGINS ?? 'http://localhost:3000')
+  // :3000 is the Next.js tutor dashboard, :5000 is `flutter run -d
+  // web-server` for previewing the mobile app without an Android SDK.
+  corsOrigins: (
+    process.env.CORS_ORIGINS ?? 'http://localhost:3000,http://localhost:5000'
+  )
     .split(',')
     .map((origin) => origin.trim()),
 }));
