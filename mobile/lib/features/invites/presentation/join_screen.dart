@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/design_tokens.dart';
+import '../../../l10n/gen/app_localizations.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../auth/application/auth_state.dart';
 import '../application/invites_provider.dart';
@@ -53,6 +54,7 @@ class _JoinScreenState extends ConsumerState<JoinScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context)!;
     final previewAsync = ref.watch(invitePreviewProvider(widget.token));
 
     return Scaffold(
@@ -70,8 +72,8 @@ class _JoinScreenState extends ConsumerState<JoinScreen> {
                       padding: EdgeInsets.symmetric(vertical: 32),
                       child: Center(child: CircularProgressIndicator()),
                     ),
-                    error: (_, _) => const Text(
-                      'This invite link is not valid.',
+                    error: (_, _) => Text(
+                      l10n.invalidInviteLink,
                       textAlign: TextAlign.center,
                     ),
                     data: (preview) {
@@ -80,20 +82,20 @@ class _JoinScreenState extends ConsumerState<JoinScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              "You're in",
+                              l10n.youreIn,
                               style: theme.textTheme.headlineMedium,
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              "You've joined ${preview.batchTitle}. Your classes and homework will show up in the app.",
+                              l10n.joinedBatchMessage(preview.batchTitle),
                               textAlign: TextAlign.center,
                               style: theme.textTheme.bodyMedium,
                             ),
                             const SizedBox(height: 16),
                             ElevatedButton(
                               onPressed: () => context.go('/today'),
-                              child: const Text('Go to Today'),
+                              child: Text(l10n.goToToday),
                             ),
                           ],
                         );
@@ -103,7 +105,7 @@ class _JoinScreenState extends ConsumerState<JoinScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            "You've been invited to join",
+                            l10n.invitedToJoin,
                             textAlign: TextAlign.center,
                             style: theme.textTheme.bodyMedium,
                           ),
@@ -116,7 +118,7 @@ class _JoinScreenState extends ConsumerState<JoinScreen> {
                           if (!preview.isActive) ...[
                             const SizedBox(height: 16),
                             Text(
-                              'This invite link is no longer active. Ask your tutor for a new one.',
+                              l10n.inviteInactive,
                               textAlign: TextAlign.center,
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 color: DesignTokens.warning,
@@ -139,7 +141,7 @@ class _JoinScreenState extends ConsumerState<JoinScreen> {
                               child: ElevatedButton(
                                 onPressed: _joining ? null : _join,
                                 child: Text(
-                                  _joining ? 'Joining…' : 'Join this batch',
+                                  _joining ? l10n.joining : l10n.joinThisBatch,
                                 ),
                               ),
                             ),

@@ -5,6 +5,7 @@ import '../../features/auth/application/auth_controller.dart';
 import '../../features/materials/presentation/materials_screen.dart';
 import '../../features/progress/presentation/progress_screen.dart';
 import '../../features/today/presentation/today_screen.dart';
+import '../../l10n/gen/app_localizations.dart';
 
 /// Students get bottom-nav tabs across the Phase 1 mobile surfaces
 /// (blueprint §3). Tutors see the bare Today screen — the mobile app is
@@ -35,31 +36,33 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       return const TodayScreen();
     }
 
+    final l10n = AppLocalizations.of(context)!;
+
     return Scaffold(
       body: IndexedStack(index: _index, children: _tabs),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.today_outlined),
-            selectedIcon: Icon(Icons.today),
-            label: 'Today',
+            icon: const Icon(Icons.today_outlined),
+            selectedIcon: const Icon(Icons.today),
+            label: l10n.navToday,
           ),
           NavigationDestination(
-            icon: Icon(Icons.folder_outlined),
-            selectedIcon: Icon(Icons.folder),
-            label: 'Materials',
+            icon: const Icon(Icons.folder_outlined),
+            selectedIcon: const Icon(Icons.folder),
+            label: l10n.navMaterials,
           ),
           NavigationDestination(
-            icon: Icon(Icons.assignment_outlined),
-            selectedIcon: Icon(Icons.assignment),
-            label: 'Homework',
+            icon: const Icon(Icons.assignment_outlined),
+            selectedIcon: const Icon(Icons.assignment),
+            label: l10n.navHomework,
           ),
           NavigationDestination(
-            icon: Icon(Icons.insights_outlined),
-            selectedIcon: Icon(Icons.insights),
-            label: 'Progress',
+            icon: const Icon(Icons.insights_outlined),
+            selectedIcon: const Icon(Icons.insights),
+            label: l10n.navProgress,
           ),
         ],
       ),

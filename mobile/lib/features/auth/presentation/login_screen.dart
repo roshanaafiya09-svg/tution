@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/design_tokens.dart';
+import '../../../l10n/gen/app_localizations.dart';
 import '../application/auth_controller.dart';
 
 /// Phone entry — India-only at launch (blueprint §0/§1: Chennai/Tamil
@@ -32,6 +33,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final authState = ref.watch(authControllerProvider);
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
       body: SafeArea(
@@ -54,7 +56,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'Your classes, materials and homework — in one place.',
+                    l10n.appTagline,
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyLarge?.copyWith(
                       color: theme.colorScheme.onSurface.withValues(
@@ -70,8 +72,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       keyboardType: TextInputType.phone,
                       autofillHints: const [AutofillHints.telephoneNumber],
                       style: theme.textTheme.bodyLarge,
-                      decoration: const InputDecoration(
-                        labelText: 'Mobile number',
+                      decoration: InputDecoration(
+                        labelText: l10n.mobileNumberLabel,
                         prefixText: '+91  ',
                         hintText: '98765 43210',
                       ),
@@ -79,7 +81,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         final digits = value?.trim() ?? '';
                         if (digits.length != 10 ||
                             int.tryParse(digits) == null) {
-                          return 'Enter a valid 10-digit mobile number';
+                          return l10n.mobileNumberError;
                         }
                         return null;
                       },
@@ -104,11 +106,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             width: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text('Send OTP'),
+                        : Text(l10n.sendOtp),
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    "We'll send a one-time code over WhatsApp.",
+                    l10n.otpDeliveryNote,
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurface.withValues(

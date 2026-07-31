@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/design_tokens.dart';
+import '../../../l10n/gen/app_localizations.dart';
 import '../application/auth_controller.dart';
 import '../data/auth_models.dart';
 
@@ -36,6 +37,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final authState = ref.watch(authControllerProvider);
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
       appBar: AppBar(
@@ -55,10 +57,10 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Enter the code', style: theme.textTheme.headlineMedium),
+                  Text(l10n.enterCodeTitle, style: theme.textTheme.headlineMedium),
                   const SizedBox(height: 8),
                   Text(
-                    'Sent via WhatsApp to +91 ${authState.phoneE164?.substring(3) ?? ''}',
+                    l10n.codeSentTo(authState.phoneE164?.substring(3) ?? ''),
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurface.withValues(
                         alpha: 0.7,
@@ -80,7 +82,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                       decoration: const InputDecoration(counterText: ''),
                       validator: (value) {
                         if (value == null || value.trim().length != 6) {
-                          return 'Enter the 6-digit code';
+                          return l10n.otpCodeError;
                         }
                         return null;
                       },
@@ -89,21 +91,21 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'New here? Tell us who you are:',
+                    l10n.newHerePrompt,
                     style: theme.textTheme.bodySmall,
                   ),
                   const SizedBox(height: 8),
                   SegmentedButton<SignupRole>(
-                    segments: const [
+                    segments: [
                       ButtonSegment(
                         value: SignupRole.student,
-                        label: Text('Student'),
-                        icon: Icon(Icons.school_outlined),
+                        label: Text(l10n.roleStudent),
+                        icon: const Icon(Icons.school_outlined),
                       ),
                       ButtonSegment(
                         value: SignupRole.tutor,
-                        label: Text('Tutor'),
-                        icon: Icon(Icons.person_outline),
+                        label: Text(l10n.roleTutor),
+                        icon: const Icon(Icons.person_outline),
                       ),
                     ],
                     selected: {_signupRole},
@@ -128,7 +130,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                             width: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text('Verify & continue'),
+                        : Text(l10n.verifyAndContinue),
                   ),
                 ],
               ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/design_tokens.dart';
+import '../../../l10n/gen/app_localizations.dart';
 import '../../batches/application/batches_provider.dart';
 import '../application/materials_controller.dart';
 import '../data/material_item.dart';
@@ -17,25 +18,24 @@ class MaterialsScreen extends ConsumerWidget {
     final materialsAsync = ref.watch(materialsControllerProvider);
     final bookmarksAsync = ref.watch(bookmarksStreamProvider);
     final bookmarkedIds = bookmarksAsync.value?.map((b) => b.materialId).toSet() ?? {};
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Materials')),
+      appBar: AppBar(title: Text(l10n.materialsTitle)),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () => ref.read(materialsControllerProvider.notifier).refresh(),
           child: batchesAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (_, _) => const _CenteredMessage('Could not load your batches.'),
+            error: (_, _) => _CenteredMessage(l10n.batchesLoadError),
             data: (batches) {
               if (batches.isEmpty) {
-                return const _CenteredMessage(
-                  "You're not enrolled in any batches yet.",
-                );
+                return _CenteredMessage(l10n.noEnrolledBatches);
               }
               return materialsAsync.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (error, _) => _CenteredMessage(
-                  error is ApiException ? error.message : 'Could not load materials.',
+                  error is ApiException ? error.message : l10n.materialsLoadError,
                 ),
                 data: (byBatch) {
                   final bookmarked = byBatch.values
@@ -47,7 +47,7 @@ class MaterialsScreen extends ConsumerWidget {
                     padding: const EdgeInsets.all(DesignTokens.pageGutter),
                     children: [
                       if (bookmarked.isNotEmpty) ...[
-                        _SectionLabel('Bookmarked'),
+                        _SectionLabel(l10n.bookmarkedSection),
                         ...bookmarked.map(
                           (m) => _MaterialTile(
                             material: m,
@@ -62,7 +62,7 @@ class MaterialsScreen extends ConsumerWidget {
                           Padding(
                             padding: const EdgeInsets.only(bottom: 16),
                             child: Text(
-                              'No materials yet.',
+                              l10n.noMaterialsYet,
                               style: Theme.of(context).textTheme.bodySmall,
                             ),
                           )
@@ -160,6 +160,7 @@ class _MaterialTileState extends ConsumerState<_MaterialTile> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
@@ -174,7 +175,7 @@ class _MaterialTileState extends ConsumerState<_MaterialTile> {
                 widget.isBookmarked ? Icons.star : Icons.star_border,
                 color: widget.isBookmarked ? DesignTokens.accent500 : null,
               ),
-              tooltip: widget.isBookmarked ? 'Remove bookmark' : 'Bookmark',
+              tooltip: widget.isBookmarked ? l10n.removeBookmark : l10n.addBookmark,
               onPressed: () => ref
                   .read(materialsControllerProvider.notifier)
                   .toggleBookmark(widget.material),

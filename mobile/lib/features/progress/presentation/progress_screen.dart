@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/design_tokens.dart';
+import '../../../l10n/gen/app_localizations.dart';
 import '../application/progress_controller.dart';
 import '../data/batch_progress.dart';
 
@@ -11,9 +12,10 @@ class ProgressScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final progressAsync = ref.watch(progressControllerProvider);
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Progress')),
+      appBar: AppBar(title: Text(l10n.progressTitle)),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () => ref.refresh(progressControllerProvider.future),
@@ -21,18 +23,18 @@ class ProgressScreen extends ConsumerWidget {
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (_, _) => ListView(
               padding: const EdgeInsets.all(DesignTokens.pageGutter),
-              children: const [
-                SizedBox(height: 64),
-                Center(child: Text('Could not load your progress.')),
+              children: [
+                const SizedBox(height: 64),
+                Center(child: Text(l10n.progressLoadError)),
               ],
             ),
             data: (rows) {
               if (rows.isEmpty) {
                 return ListView(
                   padding: const EdgeInsets.all(DesignTokens.pageGutter),
-                  children: const [
-                    SizedBox(height: 64),
-                    Center(child: Text("You're not enrolled in any batches yet.")),
+                  children: [
+                    const SizedBox(height: 64),
+                    Center(child: Text(l10n.noEnrolledBatches)),
                   ],
                 );
               }
@@ -56,6 +58,7 @@ class _BatchProgressCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context)!;
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
@@ -69,7 +72,7 @@ class _BatchProgressCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: _RateGauge(
-                    label: 'Attendance',
+                    label: l10n.attendanceLabel,
                     rate: progress.attendanceRate,
                     color: DesignTokens.brand500,
                   ),
@@ -77,7 +80,7 @@ class _BatchProgressCard extends StatelessWidget {
                 const SizedBox(width: 24),
                 Expanded(
                   child: _RateGauge(
-                    label: 'Homework done',
+                    label: l10n.homeworkDoneLabel,
                     rate: progress.completionRate,
                     color: DesignTokens.accent500,
                   ),

@@ -7,6 +7,7 @@ import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/otp_screen.dart';
 import '../../features/invites/application/pending_invite.dart';
 import '../../features/invites/presentation/join_screen.dart';
+import '../../features/settings/presentation/settings_screen.dart';
 import 'home_shell.dart';
 
 /// Rebuilt whenever [authControllerProvider] changes, so `redirect` below
@@ -30,6 +31,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/otp', builder: (_, _) => const OtpScreen()),
       GoRoute(path: '/today', builder: (_, _) => const HomeShell()),
+      GoRoute(path: '/settings', builder: (_, _) => const SettingsScreen()),
       GoRoute(
         path: '/join/:token',
         builder: (_, state) => JoinScreen(token: state.pathParameters['token']!),
@@ -57,7 +59,8 @@ String? _redirect(
         ref.read(pendingInviteTokenProvider.notifier).state = null;
         return '/join/$pendingInviteToken';
       }
-      return location == '/today' ? null : '/today';
+      const signedInRoutes = {'/today', '/settings'};
+      return signedInRoutes.contains(location) ? null : '/today';
     case AuthStatus.otpRequested:
       return location == '/otp' ? null : '/otp';
     case AuthStatus.signedOut:

@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/design_tokens.dart';
+import '../../../l10n/gen/app_localizations.dart';
 import '../application/assignments_controller.dart';
 import '../data/assignment.dart';
 
@@ -17,9 +18,10 @@ class AssignmentsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final assignmentsAsync = ref.watch(assignmentsControllerProvider);
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Homework')),
+      appBar: AppBar(title: Text(l10n.homeworkTitle)),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () => ref.read(assignmentsControllerProvider.notifier).refresh(),
@@ -31,7 +33,7 @@ class AssignmentsScreen extends ConsumerWidget {
                 const SizedBox(height: 64),
                 Center(
                   child: Text(
-                    error is ApiException ? error.message : 'Could not load homework.',
+                    error is ApiException ? error.message : l10n.homeworkLoadError,
                   ),
                 ),
               ],
@@ -40,9 +42,9 @@ class AssignmentsScreen extends ConsumerWidget {
               if (assignments.isEmpty) {
                 return ListView(
                   padding: const EdgeInsets.all(DesignTokens.pageGutter),
-                  children: const [
-                    SizedBox(height: 64),
-                    Center(child: Text('No homework yet.')),
+                  children: [
+                    const SizedBox(height: 64),
+                    Center(child: Text(l10n.noHomeworkYet)),
                   ],
                 );
               }
@@ -73,6 +75,7 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
   bool _submitting = false;
 
   Future<void> _pickAndSubmit() async {
+    final l10n = AppLocalizations.of(context)!;
     final choice = await showModalBottomSheet<String>(
       context: context,
       builder: (context) => SafeArea(
@@ -81,17 +84,17 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
           children: [
             ListTile(
               leading: const Icon(Icons.camera_alt_outlined),
-              title: const Text('Take a photo'),
+              title: Text(l10n.takePhoto),
               onTap: () => Navigator.pop(context, 'camera'),
             ),
             ListTile(
               leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Choose from gallery'),
+              title: Text(l10n.chooseFromGallery),
               onTap: () => Navigator.pop(context, 'gallery'),
             ),
             ListTile(
               leading: const Icon(Icons.picture_as_pdf_outlined),
-              title: const Text('Choose a PDF'),
+              title: Text(l10n.choosePdf),
               onTap: () => Navigator.pop(context, 'pdf'),
             ),
           ],
@@ -146,6 +149,7 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context)!;
     final a = widget.assignment;
 
     return Card(
@@ -165,7 +169,10 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
             ),
             const SizedBox(height: 4),
             Text(
-              '${a.batchTitle} · Due ${DateFormat.yMMMd().add_jm().format(a.dueAtLocal)}',
+              l10n.assignmentDueLine(
+                a.batchTitle,
+                DateFormat.yMMMd().add_jm().format(a.dueAtLocal),
+              ),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
               ),
@@ -177,7 +184,7 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
             if (a.status == AssignmentStatus.graded) ...[
               const SizedBox(height: 8),
               Text(
-                'Grade: ${a.grade}',
+                l10n.gradeLabel(a.grade ?? ''),
                 style: theme.textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
@@ -193,7 +200,7 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
                         width: 16,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Submit homework'),
+                    : Text(l10n.submitHomework),
               ),
             ],
           ],
@@ -210,10 +217,11 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final (label, color) = switch (status) {
-      AssignmentStatus.pending => ('Pending', DesignTokens.warning),
-      AssignmentStatus.submitted => ('Submitted', DesignTokens.info),
-      AssignmentStatus.graded => ('Graded', DesignTokens.success),
+      AssignmentStatus.pending => (l10n.statusPending, DesignTokens.warning),
+      AssignmentStatus.submitted => (l10n.statusSubmitted, DesignTokens.info),
+      AssignmentStatus.graded => (l10n.statusGraded, DesignTokens.success),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

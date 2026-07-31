@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/design_tokens.dart';
+import '../../../l10n/gen/app_localizations.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../auth/data/auth_models.dart';
 import '../application/today_controller.dart';
@@ -19,16 +21,16 @@ class TodayScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authControllerProvider).user;
     final sessionsAsync = ref.watch(todayControllerProvider);
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Today'),
+        title: Text(l10n.navToday),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Sign out',
-            onPressed: () =>
-                ref.read(authControllerProvider.notifier).signOut(),
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: l10n.settingsTitle,
+            onPressed: () => context.push('/settings'),
           ),
         ],
       ),
@@ -44,7 +46,7 @@ class TodayScreen extends ConsumerWidget {
                   error: (error, _) => _ErrorView(
                     message: error is ApiException
                         ? error.message
-                        : 'Could not load your classes.',
+                        : l10n.todayLoadError,
                     onRetry: () =>
                         ref.read(todayControllerProvider.notifier).refresh(),
                   ),
@@ -64,10 +66,11 @@ class _TutorPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context)!;
     return ListView(
       padding: const EdgeInsets.all(DesignTokens.pageGutter),
       children: [
-        Text('Welcome, tutor', style: theme.textTheme.headlineMedium),
+        Text(l10n.welcomeTutor, style: theme.textTheme.headlineMedium),
         if (user?.phoneE164 != null) ...[
           const SizedBox(height: 4),
           Text(
@@ -81,10 +84,13 @@ class _TutorPlaceholder extends StatelessWidget {
         Card(
           child: Padding(
             padding: const EdgeInsets.all(DesignTokens.cardPadding),
-            child: Text(
-              'Run your teaching business from the web dashboard. This app '
-              'is for on-the-go attendance and announcements — coming soon.',
-              style: theme.textTheme.bodyMedium,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(l10n.tutorPlaceholderTitle, style: theme.textTheme.titleMedium),
+                const SizedBox(height: 4),
+                Text(l10n.tutorPlaceholderBody, style: theme.textTheme.bodyMedium),
+              ],
             ),
           ),
         ),
@@ -101,6 +107,7 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return ListView(
       padding: const EdgeInsets.all(DesignTokens.pageGutter),
       children: [
@@ -114,7 +121,7 @@ class _ErrorView extends StatelessWidget {
         Text(message, textAlign: TextAlign.center),
         const SizedBox(height: 16),
         Center(
-          child: OutlinedButton(onPressed: onRetry, child: const Text('Retry')),
+          child: OutlinedButton(onPressed: onRetry, child: Text(l10n.retry)),
         ),
       ],
     );
@@ -128,16 +135,15 @@ class _SessionList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+
     if (sessions.isEmpty) {
       return ListView(
         padding: const EdgeInsets.all(DesignTokens.pageGutter),
-        children: const [
-          SizedBox(height: 48),
+        children: [
+          const SizedBox(height: 48),
           Center(
-            child: Text(
-              'No classes scheduled in the next two weeks.\nPull down to refresh.',
-              textAlign: TextAlign.center,
-            ),
+            child: Text(l10n.todayEmptyState, textAlign: TextAlign.center),
           ),
         ],
       );
@@ -155,12 +161,12 @@ class _SessionList extends StatelessWidget {
       padding: const EdgeInsets.all(DesignTokens.pageGutter),
       children: [
         if (today.isNotEmpty) ...[
-          _SectionLabel('Today'),
+          _SectionLabel(l10n.todaySectionToday),
           ...today.map((s) => _SessionCard(session: s)),
           const SizedBox(height: 24),
         ],
         if (upcoming.isNotEmpty) ...[
-          _SectionLabel('Upcoming'),
+          _SectionLabel(l10n.todaySectionUpcoming),
           ...upcoming.map((s) => _SessionCard(session: s)),
         ],
       ],
@@ -203,6 +209,7 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
   bool _joining = false;
 
   Future<void> _join() async {
+    final l10n = AppLocalizations.of(context)!;
     setState(() => _joining = true);
     try {
       final meetingUrl = await ref
@@ -212,9 +219,7 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
         await launchUrl(Uri.parse(meetingUrl), mode: LaunchMode.externalApplication);
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Attendance recorded — your tutor hasn't added a link yet."),
-          ),
+          SnackBar(content: Text(l10n.joinNoLinkYet)),
         );
       }
     } on ApiException catch (e) {
@@ -231,6 +236,7 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context)!;
     final session = widget.session;
     final timeRange =
         '${DateFormat.jm().format(session.startLocal)} – ${DateFormat.jm().format(session.endLocal)}';
@@ -256,7 +262,7 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
                   if (session.isCancelled) ...[
                     const SizedBox(height: 4),
                     Text(
-                      'Cancelled',
+                      l10n.classCancelled,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: DesignTokens.error,
                       ),
@@ -274,7 +280,7 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
                         width: 16,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Join'),
+                    : Text(l10n.joinClass),
               ),
           ],
         ),
