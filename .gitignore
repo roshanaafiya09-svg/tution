@@ -53,3 +53,6 @@ coverage/
 *.tfstate.*
 .terraform/
 backend/uploads/
+
+# --- Local Redis dump (created when redis-server runs from repo root) ---
+dump.rdb

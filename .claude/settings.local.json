@@ -171,7 +171,16 @@
       "Bash(echo \"Started PID $!\")",
       "Bash(curl -s --max-time 15 \"http://127.0.0.1:57506/iMfB5JEnE2I=/getVM\")",
       "Bash(echo \"=== exit $? ===\")",
-      "Bash(curl -s --max-time 25 \"http://127.0.0.1:57506/iMfB5JEnE2I=/ext.flutter.debugDumpApp?isolateId=isolates/649833408379967\")"
+      "Bash(curl -s --max-time 25 \"http://127.0.0.1:57506/iMfB5JEnE2I=/ext.flutter.debugDumpApp?isolateId=isolates/649833408379967\")",
+      "Bash(./gradlew.bat :app:assembleDebug)",
+      "Read(//c/Users/Lenovo/AppData/Local/Programs/pg17/bin/**)",
+      "Read(//c/Users/Lenovo/AppData/Local/Programs/**)",
+      "Bash(echo \"=== pg17 contents ===\" *)",
+      "Bash(echo \"Started backend PID $!\")",
+      "Bash(curl -s --max-time 3 http://localhost:3001/health)",
+      "Bash(curl -s --max-time 10 -X POST http://localhost:3001/auth/otp/request -H \"Content-Type: application/json\" -d '{\"phoneE164\":\"+919876500003\"}')",
+      "Bash(nohup flutter run -d emulator-5554 --dart-define=API_BASE_URL=http://10.0.2.2:3001)",
+      "Bash(adb reverse *)"
     ]
   }
 }
