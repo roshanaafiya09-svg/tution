@@ -115,7 +115,7 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
       bytes = await file.readAsBytes();
       mime = 'image/jpeg';
     } else {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf'],
         withData: true,
