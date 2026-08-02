@@ -5,9 +5,15 @@ import { getMessaging, TokenMessage } from 'firebase-admin/messaging';
 import { DeviceTokensRepository } from '../device-tokens/device-tokens.repository';
 import { PushMessage, PushProvider } from './push-provider.interface';
 
+// FCM's actual error code for a garbage/malformed token is
+// 'messaging/invalid-argument', not 'invalid-registration-token' as the
+// docs suggest — confirmed against the live API. Without this, a
+// malformed token (e.g. from a buggy client build) would log a warning
+// on every single push forever instead of ever being cleaned up.
 const STALE_TOKEN_ERROR_CODES = new Set([
   'messaging/registered-token-not-registered',
   'messaging/invalid-registration-token',
+  'messaging/invalid-argument',
 ]);
 
 const SEND_CHUNK_SIZE = 500; // FCM's per-batch limit
