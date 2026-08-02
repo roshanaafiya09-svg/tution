@@ -320,6 +320,15 @@ export interface NotificationsTable {
   created_at: GeneratedTimestamp;
 }
 
+export interface DeviceTokensTable {
+  id: string;
+  user_id: string;
+  token: string;
+  platform: Generated<'android' | 'ios'>;
+  created_at: GeneratedTimestamp;
+  last_seen_at: GeneratedTimestamp;
+}
+
 // OTP challenges and refresh tokens live in Redis, not Postgres — see
 // modules/identity/otp/otp.repository.ts and
 // modules/identity/auth/refresh-token.repository.ts.
@@ -354,4 +363,5 @@ export interface DB {
   subscriptions: SubscriptionsTable;
   audit_logs: AuditLogsTable;
   notifications: NotificationsTable;
+  device_tokens: DeviceTokensTable;
 }

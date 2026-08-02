@@ -70,6 +70,8 @@ dependencies:
 
   # Opens a cached material (PDF/image) in the device's default viewer.
   open_filex: ^4.6.0
+  firebase_core: ^4.12.1
+  firebase_messaging: ^16.4.3
 
 dev_dependencies:
   drift_dev: ^2.22.1

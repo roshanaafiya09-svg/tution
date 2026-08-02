@@ -20,7 +20,8 @@ export class LocalStorageProvider implements StorageProvider {
   constructor(config: ConfigService) {
     this.root = path.resolve(process.cwd(), 'uploads');
     const port = config.get<number>('app.port') ?? 3001;
-    this.apiBaseUrl = `http://localhost:${port}`;
+    this.apiBaseUrl =
+      config.get<string>('storage.localBaseUrl') ?? `http://localhost:${port}`;
   }
 
   createPresignedUpload(

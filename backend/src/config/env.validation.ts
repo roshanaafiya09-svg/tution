@@ -44,6 +44,16 @@ export const envSchema = z.object({
   R2_BUCKET: z.string().optional(),
   R2_ACCESS_KEY_ID: z.string().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),
+
+  // --- Local storage provider dev override — the URL the API is
+  // reachable at from the *client* (mobile emulator, physical device),
+  // which is not always http://localhost:<port>. ---
+  LOCAL_STORAGE_BASE_URL: z.string().url().optional(),
+
+  // --- Push notifications (Firebase Cloud Messaging, Android only for
+  // now) — optional; falls back to a console-logging dev provider when
+  // unset. See blueprint §6. ---
+  FCM_SERVICE_ACCOUNT_JSON_BASE64: z.string().optional(),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

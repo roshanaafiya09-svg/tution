@@ -8,10 +8,10 @@ export interface PushMessage {
 }
 
 /**
- * Blueprint §6: "FCM/APNs behind a notification service (preferences +
- * quiet hours)". Device-token registration lands with the mobile app;
- * this interface is the seam so the in-app notification path can ship
- * and be used now.
+ * Blueprint §6: "FCM/APNs behind a notification service". Android
+ * delivery is real (see FcmPushProvider); iOS/APNs is a later addition
+ * behind this same seam — PushMessage.data is already platform-neutral.
+ * Preferences + quiet hours are deliberately out of scope for now.
  */
 export interface PushProvider {
   send(messages: PushMessage[]): Promise<void>;

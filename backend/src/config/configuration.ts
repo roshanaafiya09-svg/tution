@@ -38,6 +38,13 @@ export const storageConfig = registerAs('storage', () => ({
   bucket: process.env.R2_BUCKET,
   accessKeyId: process.env.R2_ACCESS_KEY_ID,
   secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+  localBaseUrl: process.env.LOCAL_STORAGE_BASE_URL,
+}));
+
+export const fcmConfig = registerAs('fcm', () => ({
+  // Base64 of the full Firebase service-account JSON (its private_key
+  // field has literal newlines that don't survive a single .env line).
+  serviceAccountJsonBase64: process.env.FCM_SERVICE_ACCOUNT_JSON_BASE64,
 }));
 
 export const authConfig = registerAs('auth', () => ({

@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { NotificationsRepository } from './notifications.repository';
 import { PUSH_PROVIDER } from './push/push-provider.interface';
 import type { PushProvider } from './push/push-provider.interface';
@@ -13,16 +13,17 @@ export interface NotifyInput {
 
 @Injectable()
 export class NotificationsService {
+  private readonly logger = new Logger(NotificationsService.name);
+
   constructor(
     private readonly repository: NotificationsRepository,
     @Inject(PUSH_PROVIDER) private readonly push: PushProvider,
   ) {}
 
   /**
-   * Writes the in-app notification rows, then pushes. Push failures are
-   * intentionally not awaited into the caller's critical path — a
-   * dropped push must never fail the action that triggered it (posting
-   * an announcement, say).
+   * Writes the in-app notification rows, then pushes. A dropped push must
+   * never fail the action that triggered it (posting an announcement,
+   * say), so send() errors are caught and logged rather than propagated.
    */
   async notify(input: NotifyInput): Promise<void> {
     if (input.userIds.length === 0) return;
@@ -35,13 +36,20 @@ export class NotificationsService {
       })),
     );
 
-    await this.push.send(
-      input.userIds.map((userId) => ({
-        userId,
-        title: input.title,
-        body: input.body,
-      })),
-    );
+    try {
+      await this.push.send(
+        input.userIds.map((userId) => ({
+          userId,
+          title: input.title,
+          body: input.body,
+        })),
+      );
+    } catch (err) {
+      this.logger.error(
+        'Push delivery failed',
+        err instanceof Error ? err.stack : err,
+      );
+    }
   }
 
   listForUser(userId: string) {

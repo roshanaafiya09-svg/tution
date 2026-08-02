@@ -35,6 +35,11 @@ mobile/ios/Flutter/Generated.xcconfig
 mobile/ios/Flutter/flutter_export_environment.sh
 mobile/ios/Pods/
 
+# Firebase config — tied to a specific Firebase project, provided by
+# each developer via the Milestone 17 manual handoff, not checked in.
+mobile/android/app/google-services.json
+mobile/ios/Runner/GoogleService-Info.plist
+
 # --- IDE / OS ---
 .vscode/
 .idea/

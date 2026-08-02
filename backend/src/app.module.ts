@@ -9,6 +9,7 @@ import {
   whatsappConfig,
   googleAuthConfig,
   storageConfig,
+  fcmConfig,
 } from './config/configuration';
 import { validateEnv } from './config/env.validation';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -39,6 +40,7 @@ import { AccountModule } from './modules/account/account.module';
         whatsappConfig,
         googleAuthConfig,
         storageConfig,
+        fcmConfig,
       ],
     }),
     DatabaseModule,
