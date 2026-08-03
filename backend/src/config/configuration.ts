@@ -52,6 +52,13 @@ export const posthogConfig = registerAs('posthog', () => ({
   host: process.env.POSTHOG_HOST ?? 'https://us.i.posthog.com',
 }));
 
+export const aiConfig = registerAs('ai', () => ({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+  // Blueprint §8: "mid model (workhorse)" for digests/quiz generation —
+  // model IDs live here, never hardcoded deep in a provider or client.
+  model: process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-5',
+}));
+
 export const authConfig = registerAs('auth', () => ({
   jwtAccessSecret: process.env.JWT_ACCESS_SECRET as string,
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET as string,

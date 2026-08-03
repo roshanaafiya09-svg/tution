@@ -11,6 +11,7 @@ import {
   storageConfig,
   fcmConfig,
   posthogConfig,
+  aiConfig,
 } from './config/configuration';
 import { validateEnv } from './config/env.validation';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -30,6 +31,7 @@ import { AccountModule } from './modules/account/account.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { ParentsModule } from './modules/parents/parents.module';
 import { MessagingModule } from './modules/messaging/messaging.module';
+import { DigestsModule } from './modules/ai/digests/digests.module';
 
 @Module({
   imports: [
@@ -46,6 +48,7 @@ import { MessagingModule } from './modules/messaging/messaging.module';
         storageConfig,
         fcmConfig,
         posthogConfig,
+        aiConfig,
       ],
     }),
     DatabaseModule,
@@ -64,6 +67,7 @@ import { MessagingModule } from './modules/messaging/messaging.module';
     AccountModule,
     ParentsModule,
     MessagingModule,
+    DigestsModule,
   ],
   providers: [
     {

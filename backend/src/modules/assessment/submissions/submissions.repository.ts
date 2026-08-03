@@ -81,6 +81,25 @@ export class SubmissionsRepository {
       .execute();
   }
 
+  /** Submissions a student made within [from, to), with assignment/batch
+   *  titles and grade — feeds the AI weekly parent digest (blueprint §8). */
+  listForStudentBetween(studentId: string, from: Date, to: Date) {
+    return this.db
+      .selectFrom('submissions')
+      .innerJoin('assignments', 'assignments.id', 'submissions.assignment_id')
+      .innerJoin('batches', 'batches.id', 'assignments.batch_id')
+      .select([
+        'submissions.grade',
+        'submissions.submitted_at',
+        'assignments.title as assignment_title',
+        'batches.title as batch_title',
+      ])
+      .where('submissions.student_id', '=', studentId)
+      .where('submissions.submitted_at', '>=', from)
+      .where('submissions.submitted_at', '<', to)
+      .execute();
+  }
+
   grade(id: string, grade: string, feedback: string | null) {
     return this.db
       .updateTable('submissions')

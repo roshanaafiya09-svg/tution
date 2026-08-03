@@ -348,7 +348,8 @@
       "Bash(curl -s http://localhost:3001/messages/mine -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMTlmYzVmNS0zYTg1LTczNDAtOWY2My1hYjI0OTUzYmNhZDAiLCJyb2xlcyI6WyJwYXJlbnQiXSwiaWF0IjoxNzg1NzMyNjEwLCJleHAiOjE3ODU3MzM1MTB9.2f9WDqViseb7BuiZe0iwRS7hy7TbZWRFK5DIVHXXNYc')",
       "Bash(curl -s http://localhost:3001/messages/mine -H 'Authorization: Bearer __TRACKED_VAR__')",
       "Bash(powershell -NoProfile -Command \"\\(Get-NetTCPConnection -LocalPort 3001 -ErrorAction SilentlyContinue\\).OwningProcess\")",
-      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 29000 -Force -ErrorAction SilentlyContinue\")"
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 29000 -Force -ErrorAction SilentlyContinue\")",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 10944 -Force -ErrorAction SilentlyContinue\")"
     ]
   }
 }

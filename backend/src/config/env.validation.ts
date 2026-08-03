@@ -64,6 +64,11 @@ export const envSchema = z.object({
   // process.env in main.ts since Sentry.init() must run before Nest's
   // DI container exists. ---
   SENTRY_DSN: z.string().optional(),
+
+  // --- Claude (AI weekly digest, quiz generator) — optional; AI
+  // endpoints return 503 until set. See blueprint §8. ---
+  ANTHROPIC_API_KEY: z.string().optional(),
+  ANTHROPIC_MODEL: z.string().default('claude-sonnet-5'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
