@@ -23,7 +23,7 @@ export class AuthService {
   async verifyOtpAndIssueTokens(
     phoneE164: string,
     code: string,
-    signupRole: 'tutor' | 'student' | undefined,
+    signupRole: 'tutor' | 'student' | 'parent' | undefined,
     deviceLabel: string | undefined,
   ): Promise<AuthTokens> {
     await this.otpService.checkOtp(phoneE164, code);
@@ -32,7 +32,7 @@ export class AuthService {
     if (!user) {
       if (!signupRole) {
         throw new BadRequestException(
-          'No account with this number yet — pass signupRole ("tutor" or "student") to create one.',
+          'No account with this number yet — pass signupRole ("tutor", "student", or "parent") to create one.',
         );
       }
       user = await this.usersRepository.createWithRole(phoneE164, signupRole);

@@ -54,6 +54,16 @@ export const envSchema = z.object({
   // now) — optional; falls back to a console-logging dev provider when
   // unset. See blueprint §6. ---
   FCM_SERVICE_ACCOUNT_JSON_BASE64: z.string().optional(),
+
+  // --- PostHog (server-side event capture) — optional; events are
+  // dropped with a warning when unset. See blueprint §4 Platform row. ---
+  POSTHOG_API_KEY: z.string().optional(),
+  POSTHOG_HOST: z.string().url().default('https://us.i.posthog.com'),
+
+  // --- Sentry (error tracking) — optional; read directly from
+  // process.env in main.ts since Sentry.init() must run before Nest's
+  // DI container exists. ---
+  SENTRY_DSN: z.string().optional(),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

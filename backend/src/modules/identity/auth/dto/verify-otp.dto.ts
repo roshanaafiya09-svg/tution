@@ -22,8 +22,8 @@ export class VerifyOtpDto {
    * caller must say which role they're signing up as.
    */
   @IsOptional()
-  @IsIn(['tutor', 'student'])
-  signupRole?: 'tutor' | 'student';
+  @IsIn(['tutor', 'student', 'parent'])
+  signupRole?: 'tutor' | 'student' | 'parent';
 
   @IsOptional()
   @IsString()

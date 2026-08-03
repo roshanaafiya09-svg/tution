@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Script from 'next/script';
+import posthog from 'posthog-js';
 import { apiPost, tokenStore, ApiError } from '@/lib/api';
 import { Button, Field, inputClass } from '@/components/ui';
 
@@ -14,6 +15,18 @@ interface AuthTokens {
 type Phase = 'phone' | 'otp' | 'choose-role';
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+
+/** Reads the `sub` claim straight out of the access token — no server
+ * round-trip needed just to identify the PostHog session. */
+function decodeJwtSubject(accessToken: string): string | null {
+  try {
+    const payload = accessToken.split('.')[1];
+    const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+    return typeof decoded.sub === 'string' ? decoded.sub : null;
+  } catch {
+    return null;
+  }
+}
 
 export function LoginForm() {
   const router = useRouter();
@@ -30,6 +43,10 @@ export function LoginForm() {
 
   function onAuthenticated(tokens: AuthTokens, roles?: string[]) {
     tokenStore.set(tokens.accessToken, tokens.refreshToken);
+    if (posthog.__loaded) {
+      const userId = decodeJwtSubject(tokens.accessToken);
+      if (userId) posthog.identify(userId);
+    }
     if (next) {
       router.replace(next);
       return;

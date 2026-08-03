@@ -17,6 +17,7 @@ import { GoogleAuthService } from './auth/google-auth.service';
 import { ProfilesController } from './profiles/profiles.controller';
 import { ProfilesService } from './profiles/profiles.service';
 import { ProfilesRepository } from './profiles/profiles.repository';
+import { SubscriptionsModule } from '../billing/subscriptions/subscriptions.module';
 
 const otpProviderLogger = new Logger('IdentityModule');
 
@@ -26,7 +27,7 @@ const otpProviderLogger = new Logger('IdentityModule');
  * Owns tables: users, user_roles, profiles_tutor, profiles_student.
  */
 @Module({
-  imports: [JwtModule.register({})],
+  imports: [JwtModule.register({}), SubscriptionsModule],
   controllers: [AuthController, ProfilesController],
   providers: [
     UsersRepository,

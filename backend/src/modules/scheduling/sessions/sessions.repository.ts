@@ -119,6 +119,17 @@ export class SessionsRepository {
       .execute();
   }
 
+  /** Feeds the trial-end value-recap paywall (blueprint §5). */
+  async countCompletedForTutor(tutorId: string): Promise<number> {
+    const row = await this.db
+      .selectFrom('class_sessions')
+      .select((eb) => eb.fn.countAll().as('count'))
+      .where('tutor_id', '=', tutorId)
+      .where('status', '=', 'completed')
+      .executeTakeFirstOrThrow();
+    return Number(row.count);
+  }
+
   updateStatus(id: string, status: 'scheduled' | 'completed' | 'cancelled') {
     return this.db
       .updateTable('class_sessions')

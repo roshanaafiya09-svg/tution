@@ -329,6 +329,62 @@ export interface DeviceTokensTable {
   last_seen_at: GeneratedTimestamp;
 }
 
+// --- Phase 2: billing & parents ---
+
+export interface PaymentsTable {
+  id: string;
+  fee_ledger_id: string;
+  payer_id: string;
+  amount_minor: number;
+  currency: Generated<string>;
+  status: Generated<
+    'created' | 'authorized' | 'captured' | 'failed' | 'refunded'
+  >;
+  provider: Generated<string>;
+  provider_order_id: string | null;
+  provider_payment_id: string | null;
+  failure_reason: string | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+export interface PayoutsTable {
+  id: string;
+  tutor_id: string;
+  amount_minor: number;
+  currency: Generated<string>;
+  status: Generated<'pending' | 'processing' | 'paid' | 'failed'>;
+  provider: Generated<string>;
+  provider_payout_id: string | null;
+  period_start: string;
+  period_end: string;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+export interface ParentChildLinksTable {
+  id: string;
+  parent_id: string;
+  student_id: string;
+  status: Generated<'pending' | 'active' | 'revoked'>;
+  consent_record_id: string | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+export interface DigestsTable {
+  id: string;
+  parent_id: string;
+  student_id: string;
+  period_start: string;
+  period_end: string;
+  locale: Generated<string>;
+  narrative: string;
+  stats: JSONColumnType<Record<string, unknown>, string | undefined, string>;
+  sent_at: Timestamp | null;
+  created_at: GeneratedTimestamp;
+}
+
 // OTP challenges and refresh tokens live in Redis, not Postgres — see
 // modules/identity/otp/otp.repository.ts and
 // modules/identity/auth/refresh-token.repository.ts.
@@ -364,4 +420,9 @@ export interface DB {
   audit_logs: AuditLogsTable;
   notifications: NotificationsTable;
   device_tokens: DeviceTokensTable;
+
+  payments: PaymentsTable;
+  payouts: PayoutsTable;
+  parent_child_links: ParentChildLinksTable;
+  digests: DigestsTable;
 }

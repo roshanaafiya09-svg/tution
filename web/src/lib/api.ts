@@ -1,3 +1,6 @@
+import * as Sentry from '@sentry/nextjs';
+import posthog from 'posthog-js';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
 const ACCESS_TOKEN_KEY = 'accessToken';
@@ -35,7 +38,20 @@ async function parseError(res: Response): Promise<never> {
     typeof data === 'object' && data !== null && 'message' in data
       ? String((data as { message: unknown }).message)
       : 'Something went wrong. Try again.';
-  throw new ApiError(message, res.status);
+  const error = new ApiError(message, res.status);
+
+  // Single choke point every api.get/post/put/delete call funnels
+  // through — captures every API failure without per-call-site wiring.
+  Sentry.addBreadcrumb({
+    category: 'api',
+    message: `${res.status} ${res.url}`,
+    level: 'error',
+  });
+  if (posthog.__loaded) {
+    posthog.capture('api_error', { status: res.status, url: res.url });
+  }
+
+  throw error;
 }
 
 /**

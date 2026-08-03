@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import posthog from 'posthog-js';
 import { api, tokenStore, ApiError } from '@/lib/api';
 import type { Me } from '@/lib/types';
 
@@ -39,6 +40,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
   function signOut() {
     tokenStore.clear();
+    if (posthog.__loaded) posthog.reset();
     router.replace('/login');
   }
 

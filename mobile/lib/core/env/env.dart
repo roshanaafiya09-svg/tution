@@ -18,4 +18,19 @@ abstract final class Env {
     }
     return 'http://localhost:3001';
   }
+
+  /// Error tracking, set at build time with `--dart-define=SENTRY_DSN=...`.
+  /// Leave unset to disable Sentry entirely (local dev default).
+  static const sentryDsn = String.fromEnvironment('SENTRY_DSN');
+
+  /// Analytics, set at build time with `--dart-define=POSTHOG_API_KEY=...`.
+  /// Leave unset to disable event capture entirely (local dev default).
+  static const posthogApiKey = String.fromEnvironment('POSTHOG_API_KEY');
+
+  static const _posthogHostOverride = String.fromEnvironment('POSTHOG_HOST');
+
+  static String get posthogHost =>
+      _posthogHostOverride.isNotEmpty
+          ? _posthogHostOverride
+          : 'https://us.i.posthog.com';
 }

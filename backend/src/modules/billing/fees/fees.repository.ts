@@ -165,6 +165,16 @@ export class FeesRepository {
     };
   }
 
+  /** All-time total across every period — feeds the trial-end value-recap paywall (blueprint §5). */
+  async sumExpectedForTutor(tutorId: string): Promise<number> {
+    const row = await this.db
+      .selectFrom('fee_ledger')
+      .select((eb) => eb.fn.sum('expected_minor').as('total'))
+      .where('tutor_id', '=', tutorId)
+      .executeTakeFirstOrThrow();
+    return Number(row.total ?? 0);
+  }
+
   /** Active students in a batch, for generating a period's ledger rows. */
   listActiveStudentIds(batchId: string) {
     return this.db

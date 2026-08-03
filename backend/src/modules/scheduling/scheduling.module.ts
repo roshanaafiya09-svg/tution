@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { IdentityModule } from '../identity/identity.module';
+import { SubscriptionsModule } from '../billing/subscriptions/subscriptions.module';
 import { BatchesController } from './batches/batches.controller';
 import { BatchesService } from './batches/batches.service';
 import { BatchesRepository } from './batches/batches.repository';
@@ -19,7 +20,7 @@ import { AttendanceRepository } from './attendance/attendance.repository';
  * Owns tables: batches, enrollments, invites, class_sessions, attendance.
  */
 @Module({
-  imports: [IdentityModule],
+  imports: [IdentityModule, SubscriptionsModule],
   controllers: [
     BatchesController,
     InvitesController,

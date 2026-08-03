@@ -72,6 +72,8 @@ dependencies:
   open_filex: ^4.6.0
   firebase_core: ^4.12.1
   firebase_messaging: ^16.4.3
+  sentry_flutter: ^8.14.2
+  posthog_flutter: ^5.34.2
 
 dev_dependencies:
   drift_dev: ^2.22.1

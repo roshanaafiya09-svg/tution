@@ -47,6 +47,11 @@ export const fcmConfig = registerAs('fcm', () => ({
   serviceAccountJsonBase64: process.env.FCM_SERVICE_ACCOUNT_JSON_BASE64,
 }));
 
+export const posthogConfig = registerAs('posthog', () => ({
+  apiKey: process.env.POSTHOG_API_KEY,
+  host: process.env.POSTHOG_HOST ?? 'https://us.i.posthog.com',
+}));
+
 export const authConfig = registerAs('auth', () => ({
   jwtAccessSecret: process.env.JWT_ACCESS_SECRET as string,
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET as string,

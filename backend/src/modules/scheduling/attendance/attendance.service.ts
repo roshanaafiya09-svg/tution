@@ -3,6 +3,7 @@ import { AttendanceRepository } from './attendance.repository';
 import type { AttendanceStatus } from './attendance.repository';
 import { SessionsService } from '../sessions/sessions.service';
 import { BatchesRepository } from '../batches/batches.repository';
+import { AnalyticsService } from '../../analytics/analytics.service';
 
 /**
  * A student tapping "Join" is what makes attendance real without the
@@ -16,6 +17,7 @@ export class AttendanceService {
     private readonly repository: AttendanceRepository,
     private readonly sessionsService: SessionsService,
     private readonly batchesRepository: BatchesRepository,
+    private readonly analytics: AnalyticsService,
   ) {}
 
   async listForSession(tutorId: string, sessionId: string) {
@@ -30,7 +32,7 @@ export class AttendanceService {
     status: AttendanceStatus,
   ) {
     await this.sessionsService.getOwnedSession(tutorId, sessionId);
-    return this.repository.upsert(
+    const result = await this.repository.upsert(
       sessionId,
       studentId,
       status,
@@ -38,6 +40,14 @@ export class AttendanceService {
       tutorId,
       status === 'absent' ? null : new Date(),
     );
+
+    this.analytics.capture(tutorId, 'attendance_marked_manually', {
+      sessionId,
+      studentId,
+      status,
+    });
+
+    return result;
   }
 
   /** Student-initiated: records attendance and hands back the meeting link. */
@@ -63,6 +73,11 @@ export class AttendanceService {
       null,
       new Date(),
     );
+
+    this.analytics.capture(studentId, 'class_joined', {
+      sessionId,
+      batchId: session.batch_id,
+    });
 
     return {
       meetingUrl: session.meeting_url,

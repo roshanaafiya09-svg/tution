@@ -6,6 +6,7 @@ import {
 import { FeesRepository } from './fees.repository';
 import { BatchesService } from '../../scheduling/batches/batches.service';
 import type { GeneratePeriodDto } from './dto/generate-period.dto';
+import { AnalyticsService } from '../../analytics/analytics.service';
 
 /**
  * Phase 1 is fee *tracking* only — the tutor records what they expect
@@ -17,6 +18,7 @@ export class FeesService {
   constructor(
     private readonly repository: FeesRepository,
     private readonly batchesService: BatchesService,
+    private readonly analytics: AnalyticsService,
   ) {}
 
   /** Creates a ledger row per active student for the given period. */
@@ -30,7 +32,7 @@ export class FeesService {
 
     const studentIds = await this.repository.listActiveStudentIds(batchId);
 
-    return Promise.all(
+    const result = await Promise.all(
       studentIds.map((studentId) =>
         this.repository.upsert({
           tutorId,
@@ -41,6 +43,14 @@ export class FeesService {
         }),
       ),
     );
+
+    this.analytics.capture(tutorId, 'fee_batch_generated', {
+      batchId,
+      periodLabel: dto.periodLabel,
+      studentCount: studentIds.length,
+    });
+
+    return result;
   }
 
   listForPeriod(tutorId: string, periodLabel: string) {
@@ -63,7 +73,20 @@ export class FeesService {
   ) {
     const entry = await this.getOwnedEntry(tutorId, entryId);
     const status = paidMinor >= entry.expected_minor ? 'paid' : 'partial';
-    return this.repository.recordPayment(entryId, paidMinor, status, note);
+    const result = await this.repository.recordPayment(
+      entryId,
+      paidMinor,
+      status,
+      note,
+    );
+
+    this.analytics.capture(tutorId, 'fee_payment_recorded', {
+      entryId,
+      paidMinor,
+      status,
+    });
+
+    return result;
   }
 
   async waive(tutorId: string, entryId: string, note: string | null) {

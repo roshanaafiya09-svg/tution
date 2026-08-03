@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/nestjs';
 import { NestFactory } from '@nestjs/core';
 import {
   FastifyAdapter,
@@ -11,6 +12,15 @@ import type { Kysely } from 'kysely';
 import { AppModule } from './app.module';
 import { KYSELY_CONNECTION } from './database/database.module';
 import type { DB } from './database/types';
+
+// Must run before anything else, including NestFactory.create — Sentry's
+// own docs require init() to happen before the app/DI container exists.
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV,
+  });
+}
 
 async function bootstrap() {
   const adapter = new FastifyAdapter();

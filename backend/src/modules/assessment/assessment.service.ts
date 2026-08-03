@@ -15,6 +15,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { STORAGE_PROVIDER } from '../delivery/materials/storage/storage-provider.interface';
 import type { StorageProvider } from '../delivery/materials/storage/storage-provider.interface';
 import type { CreateAssignmentDto } from './assignments/dto/create-assignment.dto';
+import { AnalyticsService } from '../analytics/analytics.service';
 
 const DEFAULT_TIMEZONE = 'Asia/Kolkata';
 
@@ -34,6 +35,7 @@ export class AssessmentService {
     private readonly batchesRepository: BatchesRepository,
     private readonly notificationsService: NotificationsService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
+    private readonly analytics: AnalyticsService,
   ) {}
 
   async createAssignment(tutorId: string, dto: CreateAssignmentDto) {
@@ -62,6 +64,11 @@ export class AssessmentService {
       title: `New homework: ${dto.title}`,
       body: `${batch.title} — due ${dueAt.toFormat('d LLL, h:mm a')}`,
       payload: { batchId: dto.batchId, assignmentId: assignment.id },
+    });
+
+    this.analytics.capture(tutorId, 'assignment_created', {
+      batchId: dto.batchId,
+      assignmentId: assignment.id,
     });
 
     return assignment;
@@ -106,7 +113,18 @@ export class AssessmentService {
     const assignment = await this.getAssignmentOrThrow(assignmentId);
     await this.assertEnrolled(studentId, assignment.batch_id);
 
-    return this.submissions.upsert(assignmentId, studentId, objectKeys);
+    const submission = await this.submissions.upsert(
+      assignmentId,
+      studentId,
+      objectKeys,
+    );
+
+    this.analytics.capture(studentId, 'assignment_submitted', {
+      assignmentId,
+      batchId: assignment.batch_id,
+    });
+
+    return submission;
   }
 
   async listSubmissions(tutorId: string, assignmentId: string) {
@@ -143,6 +161,11 @@ export class AssessmentService {
       title: `Graded: ${assignment.title}`,
       body: feedback ? `${grade} — ${feedback}` : grade,
       payload: { assignmentId: assignment.id, submissionId },
+    });
+
+    this.analytics.capture(tutorId, 'assignment_graded', {
+      assignmentId: assignment.id,
+      submissionId,
     });
 
     return graded;

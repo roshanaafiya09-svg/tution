@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/analytics/analytics.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/providers.dart';
 import '../../notifications/application/push_registration.dart';
@@ -39,6 +40,7 @@ class AuthController extends Notifier<AuthState> {
       final user = await _api.me();
       state = state.copyWith(status: AuthStatus.signedIn, user: user);
       unawaited(registerDeviceToken(ref));
+      unawaited(Analytics.identify(user.id));
     } on ApiException {
       await ref.read(tokenStorageProvider).clear();
       state = state.copyWith(status: AuthStatus.signedOut);
@@ -83,6 +85,8 @@ class AuthController extends Notifier<AuthState> {
         isSubmitting: false,
       );
       unawaited(registerDeviceToken(ref));
+      unawaited(Analytics.identify(user.id));
+      unawaited(Analytics.capture('login'));
     } on ApiException catch (e) {
       state = state.copyWith(error: e.message, isSubmitting: false);
     }
@@ -94,6 +98,8 @@ class AuthController extends Notifier<AuthState> {
   }
 
   Future<void> signOut() async {
+    await Analytics.capture('logout');
+    await Analytics.reset();
     await ref.read(tokenStorageProvider).clear();
     state = const AuthState(status: AuthStatus.signedOut);
   }

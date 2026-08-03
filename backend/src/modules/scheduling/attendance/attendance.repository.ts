@@ -80,6 +80,17 @@ export class AttendanceRepository {
       .executeTakeFirstOrThrow();
   }
 
+  /** Feeds the trial-end value-recap paywall (blueprint §5). */
+  async countForTutor(tutorId: string): Promise<number> {
+    const row = await this.db
+      .selectFrom('attendance')
+      .innerJoin('class_sessions', 'class_sessions.id', 'attendance.session_id')
+      .select((eb) => eb.fn.countAll().as('count'))
+      .where('class_sessions.tutor_id', '=', tutorId)
+      .executeTakeFirstOrThrow();
+    return Number(row.count);
+  }
+
   /** Attendance % and counts for a student in one batch — feeds the student progress view. */
   async summaryForStudent(studentId: string, batchId: string) {
     const row = await this.db

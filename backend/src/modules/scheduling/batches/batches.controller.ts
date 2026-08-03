@@ -10,6 +10,7 @@ import {
 import { JwtAuthGuard } from '../../identity/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../identity/auth/guards/roles.guard';
 import { Roles } from '../../identity/auth/decorators/roles.decorator';
+import { ActiveSubscriptionGuard } from '../../billing/subscriptions/guards/active-subscription.guard';
 import { CurrentUser } from '../../identity/auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
 import { BatchesService } from './batches.service';
@@ -34,6 +35,7 @@ export class BatchesController {
 
   @Post()
   @Roles('tutor')
+  @UseGuards(ActiveSubscriptionGuard)
   create(@CurrentUser() user: AccessTokenPayload, @Body() dto: CreateBatchDto) {
     return this.batchesService.create(user.sub, dto);
   }

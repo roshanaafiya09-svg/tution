@@ -6,16 +6,30 @@ import {
   UpsertTutorProfileInput,
 } from './profiles.repository';
 import { randomSlugSuffix, slugify } from './slug.util';
+import { SubscriptionsService } from '../../billing/subscriptions/subscriptions.service';
 
 @Injectable()
 export class ProfilesService {
-  constructor(private readonly profilesRepository: ProfilesRepository) {}
+  constructor(
+    private readonly profilesRepository: ProfilesRepository,
+    private readonly subscriptionsService: SubscriptionsService,
+  ) {}
 
   async upsertTutorProfile(userId: string, input: UpsertTutorProfileInput) {
     const existing = await this.profilesRepository.findTutorByUserId(userId);
     const slug =
       existing?.slug ?? (await this.generateUniqueSlug(input.displayName));
-    return this.profilesRepository.upsertTutor(userId, slug, input);
+    const profile = await this.profilesRepository.upsertTutor(
+      userId,
+      slug,
+      input,
+    );
+    if (!existing) {
+      // First time this tutor has a profile — starts their 90-day trial
+      // (blueprint §5). Idempotent via unique(tutor_id), so a retry is safe.
+      await this.subscriptionsService.startTrial(userId);
+    }
+    return profile;
   }
 
   getTutorProfile(userId: string) {

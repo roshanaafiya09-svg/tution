@@ -10,6 +10,7 @@ import {
   googleAuthConfig,
   storageConfig,
   fcmConfig,
+  posthogConfig,
 } from './config/configuration';
 import { validateEnv } from './config/env.validation';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -26,6 +27,8 @@ import { AiModule } from './modules/ai/ai.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { TrustModule } from './modules/trust/trust.module';
 import { AccountModule } from './modules/account/account.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { ParentsModule } from './modules/parents/parents.module';
 
 @Module({
   imports: [
@@ -41,10 +44,12 @@ import { AccountModule } from './modules/account/account.module';
         googleAuthConfig,
         storageConfig,
         fcmConfig,
+        posthogConfig,
       ],
     }),
     DatabaseModule,
     RedisModule,
+    AnalyticsModule,
     HealthModule,
     IdentityModule,
     CatalogModule,
@@ -56,6 +61,7 @@ import { AccountModule } from './modules/account/account.module';
     NotificationsModule,
     TrustModule,
     AccountModule,
+    ParentsModule,
   ],
   providers: [
     {

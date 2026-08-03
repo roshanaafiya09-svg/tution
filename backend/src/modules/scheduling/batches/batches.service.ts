@@ -6,10 +6,14 @@ import {
 } from '@nestjs/common';
 import { BatchesRepository } from './batches.repository';
 import type { CreateBatchDto } from './dto/create-batch.dto';
+import { AnalyticsService } from '../../analytics/analytics.service';
 
 @Injectable()
 export class BatchesService {
-  constructor(private readonly repository: BatchesRepository) {}
+  constructor(
+    private readonly repository: BatchesRepository,
+    private readonly analytics: AnalyticsService,
+  ) {}
 
   listForTutor(tutorId: string) {
     return this.repository.listForTutor(tutorId);
@@ -19,8 +23,10 @@ export class BatchesService {
     return this.repository.listForStudent(studentId);
   }
 
-  create(tutorId: string, dto: CreateBatchDto) {
-    return this.repository.create(tutorId, dto);
+  async create(tutorId: string, dto: CreateBatchDto) {
+    const batch = await this.repository.create(tutorId, dto);
+    this.analytics.capture(tutorId, 'batch_created', { batchId: batch.id });
+    return batch;
   }
 
   /** Loads a batch and asserts the given tutor owns it. */
@@ -50,7 +56,11 @@ export class BatchesService {
     return this.repository.listEnrollments(batchId);
   }
 
-  async enroll(batchId: string, studentId: string) {
+  async enroll(
+    batchId: string,
+    studentId: string,
+    source: 'direct' | 'invite' = 'direct',
+  ) {
     const batch = await this.repository.findById(batchId);
     if (!batch) throw new NotFoundException('Batch not found');
     if (batch.status !== 'active') {
@@ -67,7 +77,14 @@ export class BatchesService {
       throw new BadRequestException('This batch is full');
     }
 
-    return this.repository.enroll(batchId, studentId);
+    const enrollment = await this.repository.enroll(batchId, studentId);
+
+    this.analytics.capture(studentId, 'student_enrolled', {
+      batchId,
+      enrollmentSource: source,
+    });
+
+    return enrollment;
   }
 
   async removeStudent(

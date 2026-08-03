@@ -7,6 +7,7 @@ import {
 import { InvitesRepository } from './invites.repository';
 import { BatchesService } from '../batches/batches.service';
 import type { CreateInviteDto } from './dto/create-invite.dto';
+import { AnalyticsService } from '../../analytics/analytics.service';
 
 const DEFAULT_MAX_USES = 50;
 const DEFAULT_EXPIRY_DAYS = 30;
@@ -16,6 +17,7 @@ export class InvitesService {
   constructor(
     private readonly repository: InvitesRepository,
     private readonly batchesService: BatchesService,
+    private readonly analytics: AnalyticsService,
   ) {}
 
   async create(tutorId: string, batchId: string, dto: CreateInviteDto) {
@@ -27,13 +29,17 @@ export class InvitesService {
         (dto.expiresInDays ?? DEFAULT_EXPIRY_DAYS) * 24 * 60 * 60 * 1000,
     );
 
-    return this.repository.create(
+    const invite = await this.repository.create(
       tutorId,
       batchId,
       token,
       expiresAt,
       dto.maxUses ?? DEFAULT_MAX_USES,
     );
+
+    this.analytics.capture(tutorId, 'invite_created', { batchId });
+
+    return invite;
   }
 
   async listForBatch(tutorId: string, batchId: string) {
@@ -70,6 +76,6 @@ export class InvitesService {
       );
     }
 
-    return this.batchesService.enroll(invite.batch_id, studentId);
+    return this.batchesService.enroll(invite.batch_id, studentId, 'invite');
   }
 }
