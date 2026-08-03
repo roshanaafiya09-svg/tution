@@ -360,6 +360,10 @@ export interface PaymentsTable {
   provider_order_id: string | null;
   provider_payment_id: string | null;
   failure_reason: string | null;
+  /** Which payout (below) this captured fee-collection payment was
+   *  aggregated into — see migration 0015. Null for subscription
+   *  payments and for fee payments not yet paid out. */
+  payout_id: string | null;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
 }
@@ -374,6 +378,17 @@ export interface PayoutsTable {
   provider_payout_id: string | null;
   period_start: string;
   period_end: string;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+/** Razorpay Route linked-account onboarding status — KYC/bank details
+ *  happen entirely out of band; this just records the resulting id. */
+export interface TutorPayoutAccountsTable {
+  tutor_id: string;
+  provider: Generated<string>;
+  provider_account_id: string | null;
+  status: Generated<'pending' | 'active' | 'rejected'>;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
 }
@@ -440,6 +455,7 @@ export interface DB {
 
   payments: PaymentsTable;
   payouts: PayoutsTable;
+  tutor_payout_accounts: TutorPayoutAccountsTable;
   parent_child_links: ParentChildLinksTable;
   digests: DigestsTable;
 }

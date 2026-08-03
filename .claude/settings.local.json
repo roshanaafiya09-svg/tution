@@ -359,7 +359,10 @@
       "Bash(curl -s -w '\\\\nHTTP %{http_code}\\\\n' -X POST http://localhost:3001/payments/webhook -H 'Content-Type: application/json' -H 'X-Razorpay-Signature: 0000000000000000000000000000000000000000000000000000000000000' -d '{\"event\":\"payment.captured\",\"payload\":{\"payment\":{\"entity\":{\"id\":\"pay_fakeTest123\",\"order_id\":\"order_fakeTest123\"}}}}')",
       "Bash(powershell -NoProfile -Command \"Stop-Process -Id 28996 -Force -ErrorAction SilentlyContinue\")",
       "Bash(powershell -NoProfile -Command \"Stop-Process -Id 25404 -Force -ErrorAction SilentlyContinue\")",
-      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 24212 -Force -ErrorAction SilentlyContinue\")"
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 24212 -Force -ErrorAction SilentlyContinue\")",
+      "Bash(curl -s -X POST http://localhost:3001/auth/otp/verify -H \"Content-Type: application/json\" -d '{\"phoneE164\":\"+919876543210\",\"code\":\"317525\"}')",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 29236 -Force -ErrorAction SilentlyContinue\")",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 8100 -Force -ErrorAction SilentlyContinue\")"
     ]
   }
 }

@@ -63,6 +63,12 @@ export const razorpayConfig = registerAs('razorpay', () => ({
   keyId: process.env.RAZORPAY_KEY_ID,
   keySecret: process.env.RAZORPAY_KEY_SECRET,
   webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
+  // Blueprint §5: the tutor's flat/per-student subscription is the
+  // actual revenue model — tuition fee collection is pass-through by
+  // default. A per-transaction cut on tuition itself isn't part of the
+  // committed pricing anywhere in the blueprint, so this defaults to 0
+  // rather than guessing a number; set it only if that changes.
+  platformFeePercent: Number(process.env.PLATFORM_FEE_PERCENT ?? '0'),
 }));
 
 export const authConfig = registerAs('auth', () => ({

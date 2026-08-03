@@ -79,6 +79,12 @@ export const envSchema = z.object({
   RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+
+  // --- Platform commission on tuition fee collection — optional,
+  // defaults to 0 (pure pass-through). Not a number the blueprint
+  // commits to anywhere; the tutor subscription is the actual revenue
+  // model. See razorpayConfig's comment in configuration.ts. ---
+  PLATFORM_FEE_PERCENT: z.coerce.number().min(0).max(100).default(0),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

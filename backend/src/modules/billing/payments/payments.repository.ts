@@ -85,4 +85,30 @@ export class PaymentsRepository {
       .returningAll()
       .executeTakeFirstOrThrow();
   }
+
+  /** Captured fee-collection payments for this tutor's students, not
+   *  yet folded into a payout, within [from, to) — the candidates for
+   *  the next payout run. Filtered on updated_at since capture is the
+   *  last write a payment row gets in the happy path (see markCaptured). */
+  listUnpaidOutCapturedForTutor(tutorId: string, from: Date, to: Date) {
+    return this.db
+      .selectFrom('payments')
+      .innerJoin('fee_ledger', 'fee_ledger.id', 'payments.fee_ledger_id')
+      .select(['payments.id', 'payments.amount_minor', 'payments.currency'])
+      .where('fee_ledger.tutor_id', '=', tutorId)
+      .where('payments.status', '=', 'captured')
+      .where('payments.payout_id', 'is', null)
+      .where('payments.updated_at', '>=', from)
+      .where('payments.updated_at', '<', to)
+      .execute();
+  }
+
+  assignPayout(paymentIds: string[], payoutId: string | null) {
+    if (paymentIds.length === 0) return Promise.resolve();
+    return this.db
+      .updateTable('payments')
+      .set({ payout_id: payoutId })
+      .where('id', 'in', paymentIds)
+      .execute();
+  }
 }
