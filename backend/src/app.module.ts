@@ -29,6 +29,7 @@ import { TrustModule } from './modules/trust/trust.module';
 import { AccountModule } from './modules/account/account.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { ParentsModule } from './modules/parents/parents.module';
+import { MessagingModule } from './modules/messaging/messaging.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { ParentsModule } from './modules/parents/parents.module';
     TrustModule,
     AccountModule,
     ParentsModule,
+    MessagingModule,
   ],
   providers: [
     {

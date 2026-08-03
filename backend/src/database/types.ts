@@ -261,6 +261,17 @@ export interface AnnouncementsTable {
   created_at: GeneratedTimestamp;
 }
 
+/** Thread key is (batch_id, student_id) — see migration 0013. */
+export interface MessagesTable {
+  id: string;
+  batch_id: string;
+  student_id: string;
+  sender_id: string;
+  sender_role: 'tutor' | 'student' | 'parent';
+  body: string;
+  created_at: GeneratedTimestamp;
+}
+
 // --- billing & platform ---
 
 export interface FeeLedgerTable {
@@ -414,6 +425,7 @@ export interface DB {
   assignments: AssignmentsTable;
   submissions: SubmissionsTable;
   announcements: AnnouncementsTable;
+  messages: MessagesTable;
 
   fee_ledger: FeeLedgerTable;
   subscriptions: SubscriptionsTable;

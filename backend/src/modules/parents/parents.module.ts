@@ -19,5 +19,6 @@ import { ParentInviteRepository } from './parent-invite.repository';
   imports: [IdentityModule, TrustModule],
   controllers: [ParentLinksController],
   providers: [ParentLinksService, ParentLinksRepository, ParentInviteRepository],
+  exports: [ParentLinksRepository],
 })
 export class ParentsModule {}
