@@ -3,6 +3,9 @@ import { AI_PROVIDER } from './ai-provider.interface';
 import type {
   AiProvider,
   DigestNarrativeInput,
+  DoubtSolverCallResult,
+  DoubtSolverChunk,
+  ModerationResult,
   QuizQuestionDraft,
 } from './ai-provider.interface';
 
@@ -19,5 +22,24 @@ export class AiService {
     count: number,
   ): Promise<QuizQuestionDraft[]> {
     return this.provider.generateQuizQuestions(materialText, count);
+  }
+
+  generateDoubtHint(
+    question: string,
+    chunks: DoubtSolverChunk[],
+  ): Promise<DoubtSolverCallResult> {
+    return this.provider.generateDoubtHint(question, chunks);
+  }
+
+  generateDoubtAnswer(
+    question: string,
+    studentAttempt: string,
+    chunks: DoubtSolverChunk[],
+  ): Promise<DoubtSolverCallResult> {
+    return this.provider.generateDoubtAnswer(question, studentAttempt, chunks);
+  }
+
+  moderateQuestion(question: string): Promise<ModerationResult> {
+    return this.provider.moderateQuestion(question);
   }
 }

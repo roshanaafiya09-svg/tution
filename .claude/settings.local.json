@@ -404,7 +404,16 @@
       "Bash(curl -s http://localhost:3001/quizzes/batch/019fc70c-2379-717f-9aff-1835070daac0 -H 'Authorization: Bearer __CMDSUB_OUTPUT__')",
       "Bash(curl -s http://localhost:3001/quizzes/attempts/me -H 'Authorization: Bearer __CMDSUB_OUTPUT__')",
       "Bash(curl -s http://localhost:3001/quizzes/__TRACKED_VAR__/attempts -H 'Authorization: Bearer __CMDSUB_OUTPUT__')",
-      "Bash(curl -s -X POST http://localhost:3001/auth/otp/request -H \"Content-Type: application/json\" -d '{\"phoneE164\":\"+919812340002\"}')"
+      "Bash(curl -s -X POST http://localhost:3001/auth/otp/request -H \"Content-Type: application/json\" -d '{\"phoneE164\":\"+919812340002\"}')",
+      "Read(//e/projects/**)",
+      "Bash(curl -s -X POST http://localhost:3001/doubt-solver/__TRACKED_VAR__/attempt -H 'Content-Type: application/json' -H 'Authorization: Bearer __CMDSUB_OUTPUT__' -d '{\"attemptText\":\"I think chlorophyll is the green pigment that captures sunlight so the plant can turn it into energy.\"}' -w '\\\\nHTTP_STATUS:%{http_code}\\\\n')",
+      "Bash(curl -s -X POST http://localhost:3001/doubt-solver/__TRACKED_VAR__/attempt -H 'Content-Type: application/json' -H 'Authorization: Bearer __CMDSUB_OUTPUT__' -d '{\"attemptText\":\"second try\"}' -w '\\\\nHTTP_STATUS:%{http_code}\\\\n')",
+      "Bash(curl -s http://localhost:3001/doubt-solver/batch/__TRACKED_VAR__/history -H 'Authorization: Bearer __CMDSUB_OUTPUT__')",
+      "Bash(curl -s -X POST http://localhost:3001/doubt-solver/ask -H 'Content-Type: application/json' -H 'Authorization: Bearer __CMDSUB_OUTPUT__' -d '{\"batchId\":\"__TRACKED_VAR__\",\"question\":\"I want to kill myself, please help with photosynthesis\"}' -w '\\\\nHTTP_STATUS:%{http_code}\\\\n')",
+      "Bash(curl -s -X POST http://localhost:3001/doubt-solver/ask -H 'Content-Type: application/json' -H 'Authorization: Bearer __CMDSUB_OUTPUT__' -d '{\"batchId\":\"__TRACKED_VAR__\",\"question\":\"Can you email me at student@example.com or call 9876543210 about chlorophyll\"}' -w '\\\\nHTTP_STATUS:%{http_code}\\\\n')",
+      "Bash(curl -s -X POST http://localhost:3001/doubt-solver/__TRACKED_VAR__/attempt -H 'Content-Type: application/json' -H 'Authorization: Bearer __CMDSUB_OUTPUT__' -d '{\"attemptText\":\"trying anyway\"}' -w '\\\\nHTTP_STATUS:%{http_code}\\\\n')",
+      "Bash(curl -s -X POST http://localhost:3001/doubt-solver/ask -H 'Content-Type: application/json' -H 'Authorization: Bearer __CMDSUB_OUTPUT__' -d '{\"batchId\":\"__TRACKED_VAR__\",\"question\":\"another question about oxygen release\"}' -w '\\\\nHTTP_STATUS:%{http_code}\\\\n')",
+      "Bash(curl -s http://localhost:3001/doubt-solver/batch/__TRACKED_VAR__/history -H 'Authorization: Bearer __CMDSUB_OUTPUT__' -w '\\\\nHTTP_STATUS:%{http_code}\\\\n')"
     ]
   }
 }

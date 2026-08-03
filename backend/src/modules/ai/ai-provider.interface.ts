@@ -38,6 +38,24 @@ export interface QuizQuestionDraft {
   difficulty: 'easy' | 'medium' | 'hard';
 }
 
+export interface DoubtSolverChunk {
+  materialId: string;
+  materialTitle: string;
+  chunkIndex: number;
+  content: string;
+}
+
+export interface DoubtSolverCallResult {
+  text: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface ModerationResult {
+  flagged: boolean;
+  reason: string | null;
+}
+
 export interface AiProvider {
   /** Blueprint §8: "attendance, submissions, score trend, one narrative
    *  paragraph, in English or Tamil." The stats themselves are computed
@@ -54,4 +72,27 @@ export interface AiProvider {
     materialText: string,
     count: number,
   ): Promise<QuizQuestionDraft[]>;
+
+  /** Blueprint §8 Socratic gate: a hint grounded in `chunks`, never the
+   *  final answer. The gate is enforced server-side by DoubtSolverService
+   *  only calling this from the initial ask — this method has no way to
+   *  return a full answer even if prompted to. */
+  generateDoubtHint(
+    question: string,
+    chunks: DoubtSolverChunk[],
+  ): Promise<DoubtSolverCallResult>;
+
+  /** Only reachable after the student has submitted their own attempt —
+   *  DoubtSolverService calls this exclusively from the submit-attempt
+   *  endpoint, never the initial ask. */
+  generateDoubtAnswer(
+    question: string,
+    studentAttempt: string,
+    chunks: DoubtSolverChunk[],
+  ): Promise<DoubtSolverCallResult>;
+
+  /** Blueprint §8 "small/fast model: moderation, PII scrub, intent
+   *  routing" — runs before any RAG call; a flagged question never
+   *  reaches generateDoubtHint/generateDoubtAnswer. */
+  moderateQuestion(question: string): Promise<ModerationResult>;
 }

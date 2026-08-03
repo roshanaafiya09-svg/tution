@@ -1,4 +1,4 @@
-import { ColumnType, Generated, JSONColumnType } from 'kysely';
+import { ColumnType, Generated, JSONColumnType, RawBuilder } from 'kysely';
 
 /** Timestamp column the caller always supplies. */
 type Timestamp = ColumnType<Date, Date | string, Date | string>;
@@ -469,6 +469,45 @@ export interface QuizAttemptsTable {
   submitted_at: GeneratedTimestamp;
 }
 
+/** `embedding` is pgvector, not a Kysely-native type. The Insert/Update
+ *  type is `RawBuilder<unknown>` on purpose — it forces every write to
+ *  go through a `sql`-tagged `::vector` cast (see
+ *  material-chunks.repository.ts's vectorLiteral helper) rather than a
+ *  plain string that node-postgres wouldn't know how to cast. Selected
+ *  type is `string` (pgvector's text form) but application code never
+ *  actually selects it — searches only need id/content/material_id. */
+export interface MaterialChunksTable {
+  id: string;
+  material_id: string;
+  batch_id: string;
+  tutor_id: string;
+  chunk_index: number;
+  content: string;
+  embedding: ColumnType<string, RawBuilder<unknown>, RawBuilder<unknown>>;
+  created_at: GeneratedTimestamp;
+}
+
+export interface AiInteractionCitation {
+  materialId: string;
+  materialTitle: string;
+  chunkIndex: number;
+}
+
+export interface AiInteractionsTable {
+  id: string;
+  student_id: string;
+  batch_id: string;
+  parent_id: string | null;
+  kind: 'hint' | 'full_answer';
+  question_text: string;
+  answer_text: string;
+  citations: JSONColumnType<AiInteractionCitation[]>;
+  flagged: Generated<boolean>;
+  input_tokens: Generated<number>;
+  output_tokens: Generated<number>;
+  created_at: GeneratedTimestamp;
+}
+
 // OTP challenges and refresh tokens live in Redis, not Postgres — see
 // modules/identity/otp/otp.repository.ts and
 // modules/identity/auth/refresh-token.repository.ts.
@@ -516,4 +555,6 @@ export interface DB {
   quizzes: QuizzesTable;
   quiz_questions: QuizQuestionsTable;
   quiz_attempts: QuizAttemptsTable;
+  material_chunks: MaterialChunksTable;
+  ai_interactions: AiInteractionsTable;
 }

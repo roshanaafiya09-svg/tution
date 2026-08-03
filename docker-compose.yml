@@ -1,6 +1,10 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # pgvector/pgvector:pg16 = postgres:16 + the pgvector extension
+    # binaries, needed for Phase 3's RAG doubt solver (material_chunks).
+    # Same base image otherwise; the named volume below is untouched by
+    # the image change, so existing data survives the swap.
+    image: pgvector/pgvector:pg16
     container_name: tuition_postgres
     restart: unless-stopped
     environment:

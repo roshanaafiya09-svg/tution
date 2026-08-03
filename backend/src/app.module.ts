@@ -12,6 +12,7 @@ import {
   fcmConfig,
   posthogConfig,
   aiConfig,
+  embeddingsConfig,
   razorpayConfig,
 } from './config/configuration';
 import { validateEnv } from './config/env.validation';
@@ -34,6 +35,7 @@ import { ParentsModule } from './modules/parents/parents.module';
 import { MessagingModule } from './modules/messaging/messaging.module';
 import { DigestsModule } from './modules/ai/digests/digests.module';
 import { QuizzesModule } from './modules/ai/quizzes/quizzes.module';
+import { DoubtSolverModule } from './modules/ai/doubt-solver/doubt-solver.module';
 
 @Module({
   imports: [
@@ -51,6 +53,7 @@ import { QuizzesModule } from './modules/ai/quizzes/quizzes.module';
         fcmConfig,
         posthogConfig,
         aiConfig,
+        embeddingsConfig,
         razorpayConfig,
       ],
     }),
@@ -72,6 +75,7 @@ import { QuizzesModule } from './modules/ai/quizzes/quizzes.module';
     MessagingModule,
     DigestsModule,
     QuizzesModule,
+    DoubtSolverModule,
   ],
   providers: [
     {

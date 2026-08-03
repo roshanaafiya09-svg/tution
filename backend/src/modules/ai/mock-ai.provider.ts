@@ -2,8 +2,18 @@ import { Injectable, Logger } from '@nestjs/common';
 import type {
   AiProvider,
   DigestNarrativeInput,
+  DoubtSolverCallResult,
+  DoubtSolverChunk,
+  ModerationResult,
   QuizQuestionDraft,
 } from './ai-provider.interface';
+
+/** Same rough chars-per-token heuristic used to eyeball English text
+ *  cost everywhere in this codebase's comments — good enough for the
+ *  mock provider's token-budget bookkeeping; the real provider reports
+ *  Anthropic's actual usage figures instead. */
+const CHARS_PER_TOKEN = 4;
+const BANNED_KEYWORDS = ['kill myself', 'suicide', 'self harm', 'self-harm'];
 
 const DIFFICULTIES: QuizQuestionDraft['difficulty'][] = [
   'easy',
@@ -147,6 +157,84 @@ export class MockAiProvider implements AiProvider {
 
     return questions;
   }
+
+  /** No real reasoning — surfaces the single best-matching retrieved
+   *  chunk (already ranked by the caller's vector search) as a pointer,
+   *  never a worked answer. Good enough to prove the Socratic-gate
+   *  plumbing end to end; real hint quality comes from Claude. */
+  generateDoubtHint(
+    question: string,
+    chunks: DoubtSolverChunk[],
+  ): Promise<DoubtSolverCallResult> {
+    this.logger.warn(
+      `Generating MOCK doubt hint (ANTHROPIC_API_KEY unset — pointer to source material, not a real hint)`,
+    );
+
+    const top = chunks[0];
+    const text = top
+      ? `Here's a pointer, not the answer: re-read "${top.materialTitle}" — the part starting "${snippet(top.content)}" is directly relevant to your question. Work through it, then send me your own attempt at an answer and I'll help you check it.`
+      : `I couldn't find anything in this batch's materials about "${question}" — ask your tutor directly.`;
+
+    return Promise.resolve({
+      text,
+      inputTokens: estimateTokens(
+        question + chunks.map((c) => c.content).join(''),
+      ),
+      outputTokens: estimateTokens(text),
+    });
+  }
+
+  /** Templated, not reasoned — echoes the top chunk's content back as
+   *  an "explanation" alongside a canned acknowledgement of the
+   *  student's attempt. Real synthesis comes from Claude. */
+  generateDoubtAnswer(
+    question: string,
+    studentAttempt: string,
+    chunks: DoubtSolverChunk[],
+  ): Promise<DoubtSolverCallResult> {
+    this.logger.warn(
+      `Generating MOCK doubt answer (ANTHROPIC_API_KEY unset — templated, not reasoned)`,
+    );
+
+    const top = chunks[0];
+    const text = top
+      ? `Nice work attempting it. Based on "${top.materialTitle}": ${snippet(top.content, 400)} That's the core idea behind your question — compare it against what you wrote and see where they line up.`
+      : `I don't have source material to check your attempt against — ask your tutor to confirm.`;
+
+    return Promise.resolve({
+      text,
+      inputTokens: estimateTokens(
+        question + studentAttempt + chunks.map((c) => c.content).join(''),
+      ),
+      outputTokens: estimateTokens(text),
+    });
+  }
+
+  /** Keyword-list check, not a real moderation model — flags an
+   *  obvious, narrow list of self-harm phrasing so the pipeline (flag ->
+   *  block RAG call -> "ask your tutor") is genuinely exercisable
+   *  pre-commercialization. Real moderation comes from a small Claude
+   *  model, per blueprint §8. */
+  moderateQuestion(question: string): Promise<ModerationResult> {
+    const lower = question.toLowerCase();
+    const hit = BANNED_KEYWORDS.find((kw) => lower.includes(kw));
+    return Promise.resolve(
+      hit
+        ? { flagged: true, reason: `Contains flagged phrase: "${hit}"` }
+        : { flagged: false, reason: null },
+    );
+  }
+}
+
+function snippet(text: string, maxLength = 160): string {
+  const trimmed = text.trim().replace(/\s+/g, ' ');
+  return trimmed.length > maxLength
+    ? `${trimmed.slice(0, maxLength)}...`
+    : trimmed;
+}
+
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / CHARS_PER_TOKEN);
 }
 
 function escapeRegExp(value: string): string {

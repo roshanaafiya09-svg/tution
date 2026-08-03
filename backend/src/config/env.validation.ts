@@ -71,6 +71,19 @@ export const envSchema = z.object({
   // commercialization. See blueprint §8. ---
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default('claude-sonnet-5'),
+  ANTHROPIC_FAST_MODEL: z.string().default('claude-haiku-4-5-20251001'),
+  AI_DOUBT_SOLVER_MONTHLY_TOKEN_CAP: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(200_000),
+
+  // --- Voyage AI (doubt-solver embeddings) — optional; falls back to a
+  // deterministic hashed mock embedding when unset, so RAG retrieval is
+  // fully testable pre-commercialization. Claude has no embeddings
+  // endpoint; Voyage is Anthropic's recommended embeddings partner. ---
+  VOYAGE_API_KEY: z.string().optional(),
+  VOYAGE_MODEL: z.string().default('voyage-3'),
 
   // --- Razorpay (fee collection, Route split, tutor payouts) —
   // optional; falls back to a mock provider that fakes order

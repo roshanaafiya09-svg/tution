@@ -57,6 +57,26 @@ export const aiConfig = registerAs('ai', () => ({
   // Blueprint §8: "mid model (workhorse)" for digests/quiz generation —
   // model IDs live here, never hardcoded deep in a provider or client.
   model: process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-5',
+  // Blueprint §8: "small/fast model" for moderation/PII/intent routing
+  // — the doubt solver's abuse pre-screen uses this, not the workhorse.
+  fastModel: process.env.ANTHROPIC_FAST_MODEL ?? 'claude-haiku-4-5-20251001',
+  // Blueprint §5 unit-economics guardrail: "AI cost creep... server-
+  // side budgets." A flat per-student monthly token ceiling on the
+  // doubt solver specifically — hard-stopped in DoubtSolverService, not
+  // advisory. Tune once real usage/pricing data exists.
+  doubtSolverMonthlyTokenCap: Number(
+    process.env.AI_DOUBT_SOLVER_MONTHLY_TOKEN_CAP ?? '200000',
+  ),
+}));
+
+export const embeddingsConfig = registerAs('embeddings', () => ({
+  // Voyage AI, not Anthropic — Claude has no embeddings endpoint;
+  // Voyage is Anthropic's own recommended embeddings partner. Same
+  // env-gated shape as every other provider here: unset -> deterministic
+  // mock (hashed bag-of-words, real cosine-similarity behaviour, not
+  // real semantic search), set -> real Voyage calls. No code changes.
+  apiKey: process.env.VOYAGE_API_KEY,
+  model: process.env.VOYAGE_MODEL ?? 'voyage-3',
 }));
 
 export const razorpayConfig = registerAs('razorpay', () => ({
