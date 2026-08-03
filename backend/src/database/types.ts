@@ -440,6 +440,35 @@ export interface QuizDraftQuestionsTable {
   updated_at: GeneratedTimestamp;
 }
 
+export interface QuizzesTable {
+  id: string;
+  quiz_draft_id: string;
+  batch_id: string;
+  tutor_id: string;
+  title: string;
+  created_at: GeneratedTimestamp;
+}
+
+export interface QuizQuestionsTable {
+  id: string;
+  quiz_id: string;
+  order_index: number;
+  question_text: string;
+  choices: JSONColumnType<string[]>;
+  correct_choice_index: number;
+  difficulty: 'easy' | 'medium' | 'hard';
+}
+
+export interface QuizAttemptsTable {
+  id: string;
+  quiz_id: string;
+  student_id: string;
+  answers: JSONColumnType<number[]>;
+  score: number;
+  total: number;
+  submitted_at: GeneratedTimestamp;
+}
+
 // OTP challenges and refresh tokens live in Redis, not Postgres — see
 // modules/identity/otp/otp.repository.ts and
 // modules/identity/auth/refresh-token.repository.ts.
@@ -484,4 +513,7 @@ export interface DB {
   digests: DigestsTable;
   quiz_drafts: QuizDraftsTable;
   quiz_draft_questions: QuizDraftQuestionsTable;
+  quizzes: QuizzesTable;
+  quiz_questions: QuizQuestionsTable;
+  quiz_attempts: QuizAttemptsTable;
 }

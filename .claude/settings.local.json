@@ -393,7 +393,18 @@
       "Bash(git stash *)",
       "Bash(grep -vE '^\\\\+\\\\s*\\(\\\\\\)|,|\\\\{|\\\\}|await|\\\\.|;\\)?\\\\s*$')",
       "Bash(grep -vE '^\\\\+\\\\s+[a-zA-Z_$][a-zA-Z0-9_$]*\\(,|:\\)?\\\\s*$')",
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "Bash(curl -s -X POST http://localhost:3001/quizzes/__TRACKED_VAR__/publish -H 'Authorization: Bearer __CMDSUB_OUTPUT__' -w '\\\\nHTTP_STATUS:%{http_code}\\\\n')",
+      "Bash(curl -s -X POST http://localhost:3001/auth/otp/request -H \"Content-Type: application/json\" -d '{\"phoneE164\":\"+919812340001\"}')",
+      "Bash(curl -s -X POST http://localhost:3001/invites/kX7bF0SSfSn4bkd3/redeem -H 'Authorization: Bearer __CMDSUB_OUTPUT__' -w '\\\\nHTTP_STATUS:%{http_code}\\\\n')",
+      "Bash(curl -s http://localhost:3001/quizzes/batch/__TRACKED_VAR__ -H 'Authorization: Bearer __CMDSUB_OUTPUT__')",
+      "Bash(curl -s http://localhost:3001/quizzes/__TRACKED_VAR__/take -H 'Authorization: Bearer __CMDSUB_OUTPUT__')",
+      "Bash(curl -s -X POST http://localhost:3001/quizzes/__TRACKED_VAR__/submit -H 'Content-Type: application/json' -H 'Authorization: Bearer __CMDSUB_OUTPUT__' -d '{\"answers\":[2,3,2,0,0]}' -w '\\\\nHTTP_STATUS:%{http_code}\\\\n')",
+      "Bash(curl -s -X POST http://localhost:3001/quizzes/__TRACKED_VAR__/submit -H 'Content-Type: application/json' -H 'Authorization: Bearer __CMDSUB_OUTPUT__' -d '{\"answers\":[2,3,2,3,2]}' -w '\\\\nHTTP_STATUS:%{http_code}\\\\n')",
+      "Bash(curl -s http://localhost:3001/quizzes/batch/019fc70c-2379-717f-9aff-1835070daac0 -H 'Authorization: Bearer __CMDSUB_OUTPUT__')",
+      "Bash(curl -s http://localhost:3001/quizzes/attempts/me -H 'Authorization: Bearer __CMDSUB_OUTPUT__')",
+      "Bash(curl -s http://localhost:3001/quizzes/__TRACKED_VAR__/attempts -H 'Authorization: Bearer __CMDSUB_OUTPUT__')",
+      "Bash(curl -s -X POST http://localhost:3001/auth/otp/request -H \"Content-Type: application/json\" -d '{\"phoneE164\":\"+919812340002\"}')"
     ]
   }
 }
