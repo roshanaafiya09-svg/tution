@@ -43,6 +43,7 @@
     "luxon": "^3.7.2",
     "pg": "^8.22.0",
     "posthog-node": "^5.47.3",
+    "razorpay": "^2.9.8",
     "reflect-metadata": "^0.2.2",
     "rrule": "^2.8.1",
     "rxjs": "^7.8.1",

@@ -65,10 +65,20 @@ export const envSchema = z.object({
   // DI container exists. ---
   SENTRY_DSN: z.string().optional(),
 
-  // --- Claude (AI weekly digest, quiz generator) — optional; AI
-  // endpoints return 503 until set. See blueprint §8. ---
+  // --- Claude (AI weekly digest, quiz generator) — optional; falls
+  // back to a templated mock provider (real stats, templated prose)
+  // when unset, so these features are fully testable pre-
+  // commercialization. See blueprint §8. ---
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default('claude-sonnet-5'),
+
+  // --- Razorpay (fee collection, Route split, tutor payouts) —
+  // optional; falls back to a mock provider that fakes order
+  // creation/capture so the payment flow is fully testable before a
+  // real Razorpay account exists. See blueprint §6, §10 Phase 2. ---
+  RAZORPAY_KEY_ID: z.string().optional(),
+  RAZORPAY_KEY_SECRET: z.string().optional(),
+  RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

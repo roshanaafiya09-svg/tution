@@ -1,28 +1,72 @@
-import { Module } from '@nestjs/common';
+import { Logger, Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { IdentityModule } from '../identity/identity.module';
 import { SchedulingModule } from '../scheduling/scheduling.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { ParentsModule } from '../parents/parents.module';
 import { FeesController } from './fees/fees.controller';
 import { FeesService } from './fees/fees.service';
 import { FeesRepository } from './fees/fees.repository';
 import { RecapController } from './recap/recap.controller';
 import { RecapService } from './recap/recap.service';
+import { PaymentsController } from './payments/payments.controller';
+import { PaymentsService } from './payments/payments.service';
+import { PaymentsRepository } from './payments/payments.repository';
+import { PAYMENTS_PROVIDER } from './payments/payments-provider.interface';
+import { MockPaymentsProvider } from './payments/mock-payments.provider';
+import { RazorpayPaymentsProvider } from './payments/razorpay-payments.provider';
+
+const paymentsLogger = new Logger('BillingModule');
 
 /**
- * Bounded context: fee tracking ledger (Phase 1, manual — no payment
- * processing yet). Phase 2 adds Razorpay payments/payouts here.
+ * Bounded context: fee tracking ledger (Phase 1, manual) and, as of
+ * Phase 2, fee *collection* (payments/) via an env-gated Razorpay
+ * provider — RAZORPAY_KEY_ID/SECRET unset -> MockPaymentsProvider, a
+ * working stand-in (fake order + always-succeeds capture), same shape
+ * as AiModule's ANTHROPIC_API_KEY gate.
  * Trial/subscription state lives in the sibling SubscriptionsModule
  * instead (see subscriptions/subscriptions.module.ts) — this module
  * already imports SchedulingModule, and SchedulingModule needs the
  * subscriptions guard, so nesting it here would cycle. It's safe for
  * *this* module to import SubscriptionsModule (for the recap endpoint,
- * blueprint §5) since Subscriptions imports nothing back — no cycle.
- * Owns tables: fee_ledger.
+ * blueprint §5) and ParentsModule (a paying parent must have an active
+ * consented link — payments/payments.service.ts) since neither imports
+ * anything back to Billing or Scheduling — no cycle.
+ * Owns tables: fee_ledger, payments.
  */
 @Module({
-  imports: [IdentityModule, SchedulingModule, SubscriptionsModule],
-  controllers: [FeesController, RecapController],
-  providers: [FeesService, FeesRepository, RecapService],
+  imports: [IdentityModule, SchedulingModule, SubscriptionsModule, ParentsModule],
+  controllers: [FeesController, RecapController, PaymentsController],
+  providers: [
+    FeesService,
+    FeesRepository,
+    RecapService,
+    PaymentsService,
+    PaymentsRepository,
+    MockPaymentsProvider,
+    RazorpayPaymentsProvider,
+    {
+      provide: PAYMENTS_PROVIDER,
+      inject: [ConfigService, MockPaymentsProvider, RazorpayPaymentsProvider],
+      useFactory: (
+        config: ConfigService,
+        mock: MockPaymentsProvider,
+        razorpay: RazorpayPaymentsProvider,
+      ) => {
+        const configured = Boolean(
+          config.get<string>('razorpay.keyId') && config.get<string>('razorpay.keySecret'),
+        );
+        if (configured) {
+          paymentsLogger.log('Razorpay configured — real fee collection enabled');
+          return razorpay;
+        }
+        paymentsLogger.warn(
+          'RAZORPAY_KEY_ID/SECRET not set — fee collection uses a mock payments provider',
+        );
+        return mock;
+      },
+    },
+  ],
   exports: [FeesRepository],
 })
 export class BillingModule {}

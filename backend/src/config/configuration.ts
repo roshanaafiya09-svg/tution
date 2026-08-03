@@ -59,6 +59,12 @@ export const aiConfig = registerAs('ai', () => ({
   model: process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-5',
 }));
 
+export const razorpayConfig = registerAs('razorpay', () => ({
+  keyId: process.env.RAZORPAY_KEY_ID,
+  keySecret: process.env.RAZORPAY_KEY_SECRET,
+  webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
+}));
+
 export const authConfig = registerAs('auth', () => ({
   jwtAccessSecret: process.env.JWT_ACCESS_SECRET as string,
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET as string,

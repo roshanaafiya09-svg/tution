@@ -2,7 +2,7 @@ import { Logger, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AiService } from './ai.service';
 import { AI_PROVIDER } from './ai-provider.interface';
-import { UnconfiguredAiProvider } from './unconfigured-ai.provider';
+import { MockAiProvider } from './mock-ai.provider';
 import { ClaudeAiProvider } from './claude-ai.provider';
 
 const aiLogger = new Logger('AiModule');
@@ -11,21 +11,22 @@ const aiLogger = new Logger('AiModule');
  * Bounded context: AI-assisted features, all routed through Claude with
  * model IDs/pricing in server config (never hardcoded, never client-side
  * — blueprint §8). Same env-gated provider-selection shape as
- * AnalyticsModule: ANTHROPIC_API_KEY unset -> UnconfiguredAiProvider,
- * which 503s instead of faking output.
+ * AnalyticsModule/IdentityModule's OTP provider: ANTHROPIC_API_KEY unset
+ * -> MockAiProvider, a working templated stand-in (not an error) so
+ * every caller can be built and live-tested pre-commercialization.
  * Phase 2: AI weekly parent digest (digests/ subfolder). Quiz generator
  * still to come. Phase 3 adds the RAG doubt solver (pgvector).
  */
 @Module({
   providers: [
-    UnconfiguredAiProvider,
+    MockAiProvider,
     ClaudeAiProvider,
     {
       provide: AI_PROVIDER,
-      inject: [ConfigService, UnconfiguredAiProvider, ClaudeAiProvider],
+      inject: [ConfigService, MockAiProvider, ClaudeAiProvider],
       useFactory: (
         config: ConfigService,
-        unconfigured: UnconfiguredAiProvider,
+        mock: MockAiProvider,
         claude: ClaudeAiProvider,
       ) => {
         const configured = Boolean(config.get<string>('ai.apiKey'));
@@ -34,9 +35,9 @@ const aiLogger = new Logger('AiModule');
           return claude;
         }
         aiLogger.warn(
-          'ANTHROPIC_API_KEY not set — AI endpoints will return 503',
+          'ANTHROPIC_API_KEY not set — AI endpoints return templated mock output, not real Claude',
         );
-        return unconfigured;
+        return mock;
       },
     },
     AiService,

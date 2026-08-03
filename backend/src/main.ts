@@ -36,9 +36,37 @@ async function bootstrap() {
       (_request, body, done) => done(null, body),
     );
 
+  // Overrides Fastify's built-in JSON parser to also stash the exact raw
+  // bytes on the request — HMAC webhook signature verification (Razorpay)
+  // must run over the untouched body, since JSON.stringify(JSON.parse(x))
+  // is not guaranteed to equal x byte-for-byte. Every other JSON route's
+  // req.body is unaffected; this only adds request.rawBody alongside it.
+  adapter
+    .getInstance()
+    .addContentTypeParser(
+      'application/json',
+      { parseAs: 'string' },
+      (request, rawBody, done) => {
+        const body = String(rawBody);
+        (request as unknown as { rawBody: string }).rawBody = body;
+        try {
+          done(null, body.length ? JSON.parse(body) : {});
+        } catch (err) {
+          done(err as Error, undefined);
+        }
+      },
+    );
+
+  // bodyParser: false — Nest's Fastify adapter otherwise registers its
+  // own default 'application/json' parser during app.init(), which
+  // collides with the raw-body-preserving one registered above
+  // (FastifyError: Content type parser 'application/json' already
+  // present). Every content type this API accepts is now parsed by the
+  // two parsers registered above.
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     adapter,
+    { bodyParser: false },
   );
 
   const config = app.get(ConfigService);

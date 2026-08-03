@@ -12,6 +12,7 @@ import {
   fcmConfig,
   posthogConfig,
   aiConfig,
+  razorpayConfig,
 } from './config/configuration';
 import { validateEnv } from './config/env.validation';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -49,6 +50,7 @@ import { DigestsModule } from './modules/ai/digests/digests.module';
         fcmConfig,
         posthogConfig,
         aiConfig,
+        razorpayConfig,
       ],
     }),
     DatabaseModule,
