@@ -1,4 +1,4 @@
-import { Controller, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Param, Post, Req, UseGuards } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 import { JwtAuthGuard } from '../../identity/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../identity/auth/guards/roles.guard';
@@ -14,17 +14,31 @@ export class PaymentsController {
   @Post('fee/:feeLedgerId/order')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('student', 'parent')
-  createOrder(
+  createFeeOrder(
     @CurrentUser() user: AccessTokenPayload,
     @Param('feeLedgerId') feeLedgerId: string,
   ) {
-    return this.paymentsService.initiateOrder(user, feeLedgerId);
+    return this.paymentsService.initiateFeeOrder(user, feeLedgerId);
   }
 
-  /** Dev/test-only — see PaymentsProvider.simulateCapture. */
+  /** The tutor's own subscription purchase (blueprint §5) — distinct
+   *  from fee collection above. Body: { planId }. */
+  @Post('subscription/order')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('tutor')
+  createSubscriptionOrder(
+    @CurrentUser() user: AccessTokenPayload,
+    @Body('planId') planId: string,
+  ) {
+    return this.paymentsService.initiateSubscriptionOrder(user, planId);
+  }
+
+  /** Dev/test-only — see PaymentsProvider.simulateCapture. Shared by
+   *  both flows above; ownership (payer_id === caller) is enforced in
+   *  the service, not by role. */
   @Post(':paymentId/simulate-capture')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('student', 'parent')
+  @Roles('student', 'parent', 'tutor')
   simulateCapture(
     @CurrentUser() user: AccessTokenPayload,
     @Param('paymentId') paymentId: string,

@@ -21,13 +21,16 @@ export class ActiveSubscriptionGuard implements CanActivate {
     const { user } = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const active = await this.subscriptions.isActive(user.sub);
     if (!active) {
-      throw new HttpException(
-        {
-          error: 'TrialExpired',
-          message: 'Your trial has ended. Subscribe to keep going.',
-        },
-        HttpStatus.PAYMENT_REQUIRED,
-      );
+      // isActive() also lapses a paid subscription once current_period_end
+      // passes (no renewal job exists yet — see subscriptions.service.ts),
+      // so this same guard now covers both "trial ended" and "subscription
+      // period ended" — status tells us which message actually applies.
+      const { status } = await this.subscriptions.getStatus(user.sub);
+      const message =
+        status === 'active'
+          ? 'Your subscription period has ended. Renew to keep going.'
+          : 'Your trial has ended. Subscribe to keep going.';
+      throw new HttpException({ error: 'TrialExpired', message }, HttpStatus.PAYMENT_REQUIRED);
     }
     return true;
   }

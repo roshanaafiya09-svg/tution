@@ -342,9 +342,14 @@ export interface DeviceTokensTable {
 
 // --- Phase 2: billing & parents ---
 
+/** fee_ledger_id XOR subscription_id — see migration 0014. */
 export interface PaymentsTable {
   id: string;
-  fee_ledger_id: string;
+  fee_ledger_id: string | null;
+  subscription_id: string | null;
+  /** Only set for subscription purchases — which SUBSCRIPTION_PLANS
+   *  tier, needed at capture time to compute current_period_end. */
+  plan_id: string | null;
   payer_id: string;
   amount_minor: number;
   currency: Generated<string>;

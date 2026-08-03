@@ -5,6 +5,7 @@ import { Roles } from '../../identity/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../identity/auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
 import { RecapService } from './recap.service';
+import { SUBSCRIPTION_PLANS } from '../subscriptions/plans';
 
 @Controller('subscriptions')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -16,5 +17,12 @@ export class RecapController {
   @Roles('tutor')
   recap(@CurrentUser() user: AccessTokenPayload) {
     return this.recapService.forTutor(user.sub);
+  }
+
+  /** Pricing shown at the paywall — feeds into POST /payments/subscription/order. */
+  @Get('plans')
+  @Roles('tutor')
+  plans() {
+    return SUBSCRIPTION_PLANS;
   }
 }

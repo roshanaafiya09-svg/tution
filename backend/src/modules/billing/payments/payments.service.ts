@@ -8,17 +8,27 @@ import {
 import { PaymentsRepository } from './payments.repository';
 import { FeesRepository } from '../fees/fees.repository';
 import { ParentLinksRepository } from '../../parents/parent-links.repository';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { SUBSCRIPTION_PLANS, isPlanId } from '../subscriptions/plans';
 import { AnalyticsService } from '../../analytics/analytics.service';
 import { PAYMENTS_PROVIDER } from './payments-provider.interface';
 import type { PaymentsProvider } from './payments-provider.interface';
 import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
+import type { Selectable } from 'kysely';
+import type { PaymentsTable } from '../../../database/types';
+
+type PaymentRow = Selectable<PaymentsTable>;
 
 /**
- * Fee *collection* (blueprint §10 Phase 2) — the online-payment
- * counterpart to fee_ledger's Phase 1 manual tracking. A payment
- * settles the outstanding balance on one fee_ledger row; recording the
- * result reuses FeesRepository so online and manually-recorded payments
- * land through the same status/paid_at logic.
+ * Two distinct money-in flows share one payments audit table
+ * (fee_ledger_id XOR subscription_id — migration 0014):
+ *  - Fee *collection*: a parent/student pays the tutor for tuition,
+ *    settling one fee_ledger row (Phase 1's manual-tracking counterpart).
+ *  - Subscription *purchase*: the tutor pays the platform for their own
+ *    ₹499/999 plan (blueprint §5) — the "Razorpay subscriptions" piece
+ *    that actually ends the 90-day trial, distinct from fee collection.
+ * Order creation is flow-specific; capture (simulateCapture or the
+ * webhook) is generic — it settles whichever side the payment is for.
  */
 @Injectable()
 export class PaymentsService {
@@ -26,14 +36,15 @@ export class PaymentsService {
     private readonly repository: PaymentsRepository,
     private readonly feesRepository: FeesRepository,
     private readonly parentLinksRepository: ParentLinksRepository,
+    private readonly subscriptionsService: SubscriptionsService,
     private readonly analytics: AnalyticsService,
     @Inject(PAYMENTS_PROVIDER) private readonly provider: PaymentsProvider,
   ) {}
 
-  async initiateOrder(user: AccessTokenPayload, feeLedgerId: string) {
+  async initiateFeeOrder(user: AccessTokenPayload, feeLedgerId: string) {
     const fee = await this.feesRepository.findById(feeLedgerId);
     if (!fee) throw new NotFoundException('Fee entry not found');
-    await this.assertCanPay(user, fee.student_id);
+    await this.assertCanPayFee(user, fee.student_id);
 
     if (fee.status === 'paid' || fee.status === 'waived') {
       throw new BadRequestException(`This fee is already ${fee.status}`);
@@ -44,26 +55,53 @@ export class PaymentsService {
       throw new BadRequestException('Nothing outstanding on this fee');
     }
 
-    const payment = await this.repository.create(
+    const payment = await this.repository.createForFee(
       fee.id,
       user.sub,
       outstandingMinor,
       fee.currency,
     );
 
-    const { orderId } = await this.provider.createOrder({
-      amountMinor: outstandingMinor,
-      currency: fee.currency,
-      receipt: payment.id,
-    });
-
-    const updated = await this.repository.setOrder(payment.id, orderId, this.provider.name);
+    const order = await this.createOrderFor(payment.id, outstandingMinor, fee.currency);
     this.analytics.capture(user.sub, 'payment_order_created', {
       feeLedgerId,
       amountMinor: outstandingMinor,
       provider: this.provider.name,
     });
-    return updated;
+    return order;
+  }
+
+  /** Tutor-only — the trial-ending subscription purchase (blueprint §5). */
+  async initiateSubscriptionOrder(user: AccessTokenPayload, planId: string) {
+    if (!isPlanId(planId)) throw new BadRequestException('Unknown plan');
+    const plan = SUBSCRIPTION_PLANS[planId];
+
+    const subscription = await this.subscriptionsService.getOwnSubscription(user.sub);
+
+    const payment = await this.repository.createForSubscription(
+      subscription.id,
+      planId,
+      user.sub,
+      plan.priceMinor,
+      'INR',
+    );
+
+    const order = await this.createOrderFor(payment.id, plan.priceMinor, 'INR');
+    this.analytics.capture(user.sub, 'subscription_order_created', {
+      planId,
+      amountMinor: plan.priceMinor,
+      provider: this.provider.name,
+    });
+    return order;
+  }
+
+  private async createOrderFor(paymentId: string, amountMinor: number, currency: string) {
+    const { orderId } = await this.provider.createOrder({
+      amountMinor,
+      currency,
+      receipt: paymentId,
+    });
+    return this.repository.setOrder(paymentId, orderId, this.provider.name);
   }
 
   /** Dev/test path — see PaymentsProvider.simulateCapture. The real
@@ -81,7 +119,7 @@ export class PaymentsService {
     const { paymentId: providerPaymentId } = await this.provider.simulateCapture(
       payment.provider_order_id,
     );
-    return this.capture(payment.id, payment.fee_ledger_id, payment.amount_minor, providerPaymentId);
+    return this.settleCapture(payment, providerPaymentId);
   }
 
   async handleWebhook(rawBody: string, signature: string) {
@@ -94,43 +132,76 @@ export class PaymentsService {
     if (result.status === 'failed') {
       return this.repository.markFailed(payment.id, 'Provider reported payment.failed');
     }
-    return this.capture(
-      payment.id,
-      payment.fee_ledger_id,
-      payment.amount_minor,
-      result.providerPaymentId,
-    );
+    return this.settleCapture(payment, result.providerPaymentId);
   }
 
-  private async capture(
-    paymentId: string,
-    feeLedgerId: string,
-    amountMinor: number,
-    providerPaymentId: string,
-  ) {
-    const captured = await this.repository.markCaptured(paymentId, providerPaymentId);
+  private async settleCapture(payment: PaymentRow, providerPaymentId: string) {
+    const captured = await this.repository.markCaptured(payment.id, providerPaymentId);
 
-    const fee = await this.feesRepository.findById(feeLedgerId);
-    if (fee) {
-      const newRecordedMinor = (fee.recorded_paid_minor ?? 0) + amountMinor;
-      const status = newRecordedMinor >= fee.expected_minor ? 'paid' : 'partial';
-      await this.feesRepository.recordPayment(
-        feeLedgerId,
-        newRecordedMinor,
-        status,
-        `Paid online via ${captured.provider} (payment ${paymentId})`,
+    if (payment.fee_ledger_id) {
+      await this.settleFee(payment.fee_ledger_id, payment.amount_minor, captured.provider, payment.id);
+    } else if (payment.subscription_id && payment.plan_id && isPlanId(payment.plan_id)) {
+      await this.settleSubscription(
+        payment.subscription_id,
+        payment.plan_id,
+        captured.provider,
+        providerPaymentId,
       );
     }
 
     this.analytics.capture(captured.payer_id, 'payment_captured', {
-      feeLedgerId,
-      amountMinor,
+      target: payment.fee_ledger_id ? 'fee' : 'subscription',
+      amountMinor: payment.amount_minor,
       provider: captured.provider,
     });
     return captured;
   }
 
-  private async assertCanPay(user: AccessTokenPayload, studentId: string): Promise<void> {
+  private async settleFee(
+    feeLedgerId: string,
+    amountMinor: number,
+    provider: string,
+    paymentId: string,
+  ) {
+    const fee = await this.feesRepository.findById(feeLedgerId);
+    if (!fee) return;
+
+    const newRecordedMinor = (fee.recorded_paid_minor ?? 0) + amountMinor;
+    const status = newRecordedMinor >= fee.expected_minor ? 'paid' : 'partial';
+    await this.feesRepository.recordPayment(
+      feeLedgerId,
+      newRecordedMinor,
+      status,
+      `Paid online via ${provider} (payment ${paymentId})`,
+    );
+  }
+
+  /** Extends from whichever is later, now or the existing
+   *  current_period_end — an early renewal (before the current period
+   *  actually lapses) must not discard whatever time is left on it. */
+  private async settleSubscription(
+    subscriptionId: string,
+    planId: keyof typeof SUBSCRIPTION_PLANS,
+    provider: string,
+    providerPaymentId: string,
+  ) {
+    const plan = SUBSCRIPTION_PLANS[planId];
+    const existing = await this.subscriptionsService.findSubscriptionById(subscriptionId);
+    const existingEnd = existing?.current_period_end
+      ? new Date(existing.current_period_end)
+      : null;
+    const base = existingEnd && existingEnd > new Date() ? existingEnd : new Date();
+    const currentPeriodEnd = new Date(base.getTime() + plan.periodDays * 24 * 60 * 60 * 1000);
+    return this.subscriptionsService.activatePlan(
+      subscriptionId,
+      planId,
+      currentPeriodEnd,
+      provider,
+      providerPaymentId,
+    );
+  }
+
+  private async assertCanPayFee(user: AccessTokenPayload, studentId: string): Promise<void> {
     if (user.roles.includes('student') && user.sub === studentId) return;
     if (user.roles.includes('parent')) {
       const link = await this.parentLinksRepository.findByParentAndStudent(

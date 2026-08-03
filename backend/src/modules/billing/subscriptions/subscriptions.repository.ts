@@ -27,4 +27,35 @@ export class SubscriptionsRepository {
       .executeTakeFirst();
     return inserted ?? (await this.findByTutorId(tutorId))!;
   }
+
+  findById(id: string) {
+    return this.db
+      .selectFrom('subscriptions')
+      .selectAll()
+      .where('id', '=', id)
+      .executeTakeFirst();
+  }
+
+  /** Called on payment capture — moves a subscription from trialing/
+   *  past_due to active for one more plan period. */
+  activate(
+    id: string,
+    planId: string,
+    currentPeriodEnd: Date,
+    provider: string,
+    providerRef: string,
+  ) {
+    return this.db
+      .updateTable('subscriptions')
+      .set({
+        status: 'active',
+        plan_id: planId,
+        current_period_end: currentPeriodEnd,
+        provider,
+        provider_ref: providerRef,
+      })
+      .where('id', '=', id)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
 }
