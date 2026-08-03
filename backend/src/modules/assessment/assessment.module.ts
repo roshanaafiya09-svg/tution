@@ -37,6 +37,10 @@ import { QuizAttemptsRepository } from './quizzes/attempts/attempts.repository';
     PublishedQuizzesRepository,
     QuizAttemptsRepository,
   ],
-  exports: [AssignmentsRepository, SubmissionsRepository],
+  exports: [
+    AssignmentsRepository,
+    SubmissionsRepository,
+    QuizAttemptsRepository,
+  ],
 })
 export class AssessmentModule {}

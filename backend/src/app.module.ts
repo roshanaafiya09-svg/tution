@@ -36,6 +36,7 @@ import { MessagingModule } from './modules/messaging/messaging.module';
 import { DigestsModule } from './modules/ai/digests/digests.module';
 import { QuizzesModule } from './modules/ai/quizzes/quizzes.module';
 import { DoubtSolverModule } from './modules/ai/doubt-solver/doubt-solver.module';
+import { ProgressModule } from './modules/progress/progress.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { DoubtSolverModule } from './modules/ai/doubt-solver/doubt-solver.module
     DigestsModule,
     QuizzesModule,
     DoubtSolverModule,
+    ProgressModule,
   ],
   providers: [
     {
