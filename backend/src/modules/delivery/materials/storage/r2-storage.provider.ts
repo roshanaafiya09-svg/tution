@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   S3Client,
@@ -66,5 +66,14 @@ export class R2StorageProvider implements StorageProvider {
       new GetObjectCommand({ Bucket: this.bucket, Key: objectKey }),
       { expiresIn: expiresInSeconds },
     );
+  }
+
+  async read(objectKey: string): Promise<Buffer> {
+    const response = await this.client.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: objectKey }),
+    );
+    if (!response.Body) throw new NotFoundException('Object not found');
+    const bytes = await response.Body.transformToByteArray();
+    return Buffer.from(bytes);
   }
 }

@@ -22,4 +22,9 @@ export interface StorageProvider {
     objectKey: string,
     expiresInSeconds?: number,
   ): Promise<string>;
+  /** A deliberate, narrow exception to "media never touches the API" —
+   *  the AI quiz generator (blueprint §8) needs the actual PDF bytes
+   *  server-side to extract text; humans still only ever get a
+   *  presigned URL via createDownloadUrl above. */
+  read(objectKey: string): Promise<Buffer>;
 }

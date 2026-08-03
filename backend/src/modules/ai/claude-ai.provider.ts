@@ -1,9 +1,17 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
-import type { AiProvider, DigestNarrativeInput } from './ai-provider.interface';
+import type {
+  AiProvider,
+  DigestNarrativeInput,
+  QuizQuestionDraft,
+} from './ai-provider.interface';
 
 const MAX_NARRATIVE_TOKENS = 400;
+const MAX_QUIZ_TOKENS = 3000;
+/** Bounds cost/latency on very large PDFs — 10 good MCQs don't need the
+ *  whole chapter, and blueprint §8 hard-caps AI cost per active student. */
+const MAX_MATERIAL_CHARS = 15_000;
 
 /**
  * Always instantiated by Nest even when the factory doesn't select it,
@@ -40,6 +48,97 @@ export class ClaudeAiProvider implements AiProvider {
     }
     return textBlock.text.trim();
   }
+
+  async generateQuizQuestions(
+    materialText: string,
+    count: number,
+  ): Promise<QuizQuestionDraft[]> {
+    const model = this.config.get<string>('ai.model') ?? 'claude-sonnet-5';
+    const response = await this.getClient().messages.create({
+      model,
+      max_tokens: MAX_QUIZ_TOKENS,
+      messages: [
+        { role: 'user', content: buildQuizPrompt(materialText, count) },
+      ],
+    });
+
+    const textBlock = response.content.find((block) => block.type === 'text');
+    if (!textBlock || textBlock.type !== 'text') {
+      throw new InternalServerErrorException(
+        'AI quiz generation returned no text content',
+      );
+    }
+
+    return parseQuizQuestions(textBlock.text);
+  }
+}
+
+/** Never assume it will reach a student unreviewed — the prompt itself
+ *  states the review gate so the model doesn't write as if addressing
+ *  students directly (blueprint §8: "tutor must review and approve"). */
+function buildQuizPrompt(materialText: string, count: number): string {
+  const truncated = materialText.slice(0, MAX_MATERIAL_CHARS);
+  return `You are drafting a multiple-choice quiz for a tutor to review and edit before it is ever shown to any student — nothing you write here reaches a student unreviewed.
+
+Based ONLY on the study material below, write exactly ${count} multiple-choice questions covering distinct concepts from the material. Do not invent facts not present in the material. Each question needs exactly 4 answer choices with exactly one correct answer, and a difficulty rating.
+
+Respond with ONLY a JSON array, no other text, no markdown code fence, matching exactly this shape:
+[{"questionText": string, "choices": [string, string, string, string], "correctChoiceIndex": number (0-3), "difficulty": "easy" | "medium" | "hard"}]
+
+Study material:
+"""
+${truncated}
+"""`;
+}
+
+function parseQuizQuestions(raw: string): QuizQuestionDraft[] {
+  let parsed: unknown;
+  try {
+    // Models occasionally wrap JSON in a code fence despite instructions.
+    const jsonText = raw.trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
+    parsed = JSON.parse(jsonText);
+  } catch {
+    throw new InternalServerErrorException(
+      'AI quiz generation returned malformed JSON',
+    );
+  }
+
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    throw new InternalServerErrorException(
+      'AI quiz generation returned no questions',
+    );
+  }
+
+  return parsed.map((item, index) => {
+    if (
+      typeof item !== 'object' ||
+      item === null ||
+      typeof (item as Record<string, unknown>).questionText !== 'string' ||
+      !Array.isArray((item as Record<string, unknown>).choices) ||
+      (item as { choices: unknown[] }).choices.length !== 4 ||
+      typeof (item as Record<string, unknown>).correctChoiceIndex !==
+        'number' ||
+      !['easy', 'medium', 'hard'].includes(
+        (item as Record<string, unknown>).difficulty as string,
+      )
+    ) {
+      throw new InternalServerErrorException(
+        `AI quiz generation returned a malformed question at index ${index}`,
+      );
+    }
+    const q = item as {
+      questionText: string;
+      choices: string[];
+      correctChoiceIndex: number;
+      difficulty: 'easy' | 'medium' | 'hard';
+    };
+    if (q.correctChoiceIndex < 0 || q.correctChoiceIndex > 3) {
+      throw new InternalServerErrorException(
+        `AI quiz generation returned an out-of-range correctChoiceIndex at index ${index}`,
+      );
+    }
+    return q;
+  });
 }
 
 /**

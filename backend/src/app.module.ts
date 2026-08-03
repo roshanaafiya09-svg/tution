@@ -33,6 +33,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { ParentsModule } from './modules/parents/parents.module';
 import { MessagingModule } from './modules/messaging/messaging.module';
 import { DigestsModule } from './modules/ai/digests/digests.module';
+import { QuizzesModule } from './modules/ai/quizzes/quizzes.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { DigestsModule } from './modules/ai/digests/digests.module';
     ParentsModule,
     MessagingModule,
     DigestsModule,
+    QuizzesModule,
   ],
   providers: [
     {

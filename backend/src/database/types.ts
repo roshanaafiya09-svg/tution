@@ -416,6 +416,30 @@ export interface DigestsTable {
   created_at: GeneratedTimestamp;
 }
 
+/** Phase 2 only — not Phase 3's student-facing quizzes/quiz_attempts.
+ *  See migration 0016. */
+export interface QuizDraftsTable {
+  id: string;
+  tutor_id: string;
+  material_id: string;
+  batch_id: string;
+  status: Generated<'pending_review' | 'approved' | 'rejected'>;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+export interface QuizDraftQuestionsTable {
+  id: string;
+  quiz_draft_id: string;
+  order_index: number;
+  question_text: string;
+  choices: JSONColumnType<string[]>;
+  correct_choice_index: number;
+  difficulty: 'easy' | 'medium' | 'hard';
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
 // OTP challenges and refresh tokens live in Redis, not Postgres — see
 // modules/identity/otp/otp.repository.ts and
 // modules/identity/auth/refresh-token.repository.ts.
@@ -458,4 +482,6 @@ export interface DB {
   tutor_payout_accounts: TutorPayoutAccountsTable;
   parent_child_links: ParentChildLinksTable;
   digests: DigestsTable;
+  quiz_drafts: QuizDraftsTable;
+  quiz_draft_questions: QuizDraftQuestionsTable;
 }
