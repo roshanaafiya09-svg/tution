@@ -1,10 +1,14 @@
 services:
   postgres:
-    # pgvector/pgvector:pg16 = postgres:16 + the pgvector extension
-    # binaries, needed for Phase 3's RAG doubt solver (material_chunks).
-    # Same base image otherwise; the named volume below is untouched by
-    # the image change, so existing data survives the swap.
-    image: pgvector/pgvector:pg16
+    # Custom image (docker/postgres.Dockerfile): postgis/postgis:16-3.4
+    # + the pgvector extension package layered on top, so one container
+    # serves both Phase 3's RAG doubt solver (pgvector, material_chunks)
+    # and Phase 4's marketplace geo search (PostGIS, tutor_locations).
+    # The named volume below is untouched by the image change, so
+    # existing data survives the swap.
+    build:
+      context: .
+      dockerfile: docker/postgres.Dockerfile
     container_name: tuition_postgres
     restart: unless-stopped
     environment:

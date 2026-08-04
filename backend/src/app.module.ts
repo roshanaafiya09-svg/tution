@@ -37,6 +37,7 @@ import { DigestsModule } from './modules/ai/digests/digests.module';
 import { QuizzesModule } from './modules/ai/quizzes/quizzes.module';
 import { DoubtSolverModule } from './modules/ai/doubt-solver/doubt-solver.module';
 import { ProgressModule } from './modules/progress/progress.module';
+import { TutorLocationsModule } from './modules/marketplace/locations/tutor-locations.module';
 
 @Module({
   imports: [
@@ -78,6 +79,7 @@ import { ProgressModule } from './modules/progress/progress.module';
     QuizzesModule,
     DoubtSolverModule,
     ProgressModule,
+    TutorLocationsModule,
   ],
   providers: [
     {

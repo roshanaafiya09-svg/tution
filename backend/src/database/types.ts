@@ -529,6 +529,19 @@ export interface AiInteractionsTable {
 // modules/identity/otp/otp.repository.ts and
 // modules/identity/auth/refresh-token.repository.ts.
 
+// --- marketplace (Phase 4) ---
+
+export interface TutorLocationsTable {
+  tutor_id: string;
+  city: string;
+  area_label: string | null;
+  lat: number;
+  lng: number;
+  geog: ColumnType<string, RawBuilder<unknown>, RawBuilder<unknown>>;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
 export interface DB {
   users: UsersTable;
   user_roles: UserRolesTable;
@@ -575,4 +588,6 @@ export interface DB {
   quiz_attempts: QuizAttemptsTable;
   material_chunks: MaterialChunksTable;
   ai_interactions: AiInteractionsTable;
+
+  tutor_locations: TutorLocationsTable;
 }
