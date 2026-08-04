@@ -545,6 +545,21 @@ export interface TutorLocationsTable {
   updated_at: GeneratedTimestamp;
 }
 
+export interface BookingWaitlistsTable {
+  id: string;
+  tutor_subject_id: string;
+  tutor_id: string;
+  student_id: string;
+  status: Generated<
+    'waiting' | 'notified' | 'converted' | 'expired' | 'cancelled'
+  >;
+  notified_at: Timestamp | null;
+  expires_at: Timestamp | null;
+  converted_booking_id: string | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
 export interface BookingsTable {
   id: string;
   tutor_id: string;
@@ -619,4 +634,5 @@ export interface DB {
 
   tutor_locations: TutorLocationsTable;
   bookings: BookingsTable;
+  booking_waitlists: BookingWaitlistsTable;
 }

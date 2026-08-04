@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { IdentityModule } from '../../identity/identity.module';
 import { CatalogModule } from '../../catalog/catalog.module';
 import { SchedulingModule } from '../../scheduling/scheduling.module';
+import { WaitlistsModule } from '../waitlists/waitlists.module';
 import { BookingsController } from './bookings.controller';
 import { BookingsService } from './bookings.service';
 import { BookingsRepository } from './bookings.repository';
@@ -19,7 +20,7 @@ import { BookingsRepository } from './bookings.repository';
  * Owns table: bookings.
  */
 @Module({
-  imports: [IdentityModule, CatalogModule, SchedulingModule],
+  imports: [IdentityModule, CatalogModule, SchedulingModule, WaitlistsModule],
   controllers: [BookingsController],
   providers: [BookingsService, BookingsRepository],
   exports: [BookingsService],

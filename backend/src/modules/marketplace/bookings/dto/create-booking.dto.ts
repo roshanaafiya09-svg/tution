@@ -38,4 +38,11 @@ export class CreateBookingDto {
     { message: 'meetingUrl must be a full URL' },
   )
   meetingUrl?: string;
+
+  /** Converts this waitlist entry on successful creation — must belong
+   *  to the caller, match tutorSubjectId, and be within its notified
+   *  exclusivity window (blueprint §10 Phase 4). */
+  @IsOptional()
+  @IsUUID()
+  waitlistId?: string;
 }

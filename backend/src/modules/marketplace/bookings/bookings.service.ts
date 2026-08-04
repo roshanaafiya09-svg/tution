@@ -10,6 +10,7 @@ import { BookingsRepository } from './bookings.repository';
 import { TutorSubjectsRepository } from '../../catalog/tutor-subjects/tutor-subjects.repository';
 import { AvailabilityRepository } from '../../catalog/availability/availability.repository';
 import { SessionsRepository } from '../../scheduling/sessions/sessions.repository';
+import { WaitlistsService } from '../waitlists/waitlists.service';
 import type { CreateBookingDto } from './dto/create-booking.dto';
 import type { RescheduleBookingDto } from './dto/reschedule-booking.dto';
 import type { CancelBookingDto } from './dto/cancel-booking.dto';
@@ -47,6 +48,7 @@ export class BookingsService {
     private readonly tutorSubjectsRepository: TutorSubjectsRepository,
     private readonly availabilityRepository: AvailabilityRepository,
     private readonly sessionsRepository: SessionsRepository,
+    private readonly waitlistsService: WaitlistsService,
     private readonly config: ConfigService,
   ) {}
 
@@ -72,7 +74,15 @@ export class BookingsService {
       this.config.get<number>('marketplace.takeRatePercent') ?? 0;
     const platformFeeMinor = Math.round((amountMinor * takeRatePercent) / 100);
 
-    return this.repository.create({
+    if (dto.waitlistId) {
+      await this.waitlistsService.assertConvertible(
+        dto.waitlistId,
+        studentId,
+        dto.tutorSubjectId,
+      );
+    }
+
+    const booking = await this.repository.create({
       tutorId: tutorSubject.tutor_id,
       studentId,
       subjectId: tutorSubject.subject_id,
@@ -85,6 +95,12 @@ export class BookingsService {
       durationMin: dto.durationMin,
       meetingUrl: dto.meetingUrl ?? null,
     });
+
+    if (dto.waitlistId) {
+      await this.waitlistsService.convert(dto.waitlistId, booking.id);
+    }
+
+    return booking;
   }
 
   listForStudent(studentId: string) {
@@ -184,12 +200,27 @@ export class BookingsService {
       }
     }
 
-    return this.repository.markCancelled(
+    const cancelled = await this.repository.markCancelled(
       bookingId,
       cancelledBy,
       dto.reason ?? null,
       refundPercent,
     );
+
+    if (booking.status === 'confirmed') {
+      const tutorSubjects =
+        await this.tutorSubjectsRepository.listForTutorAndSubject(
+          booking.tutor_id,
+          booking.subject_id,
+        );
+      await Promise.all(
+        tutorSubjects.map((ts) =>
+          this.waitlistsService.notifyForTutorSubject(ts.id),
+        ),
+      );
+    }
+
+    return cancelled;
   }
 
   async complete(tutorId: string, bookingId: string) {

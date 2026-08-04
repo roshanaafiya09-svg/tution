@@ -26,6 +26,19 @@ export class TutorSubjectsRepository {
       .executeTakeFirst();
   }
 
+  /** A tutor can have more than one offering for the same subject
+   *  (different curricula/grade bands), so this returns every match —
+   *  used by booking cancellation to notify every matching waitlist,
+   *  not just one (blueprint §10 Phase 4). */
+  listForTutorAndSubject(tutorId: string, subjectId: string) {
+    return this.db
+      .selectFrom('tutor_subjects')
+      .selectAll()
+      .where('tutor_id', '=', tutorId)
+      .where('subject_id', '=', subjectId)
+      .execute();
+  }
+
   create(tutorId: string, dto: CreateTutorSubjectDto) {
     return this.db
       .insertInto('tutor_subjects')
