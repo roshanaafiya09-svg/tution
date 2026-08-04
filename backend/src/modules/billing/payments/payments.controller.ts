@@ -60,6 +60,23 @@ export class PaymentsController {
     return this.paymentsService.initiateBookingOrder(user, bookingId);
   }
 
+  /** Settles the refund a cancelled booking's refund_percent already
+   *  decided (blueprint §10 Phase 4) — call after
+   *  POST /marketplace/bookings/:id/cancel, not instead of it.
+   *  Student-only: the refund credits back to whoever paid. */
+  @Post('booking/:bookingId/refund')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('student')
+  refundBooking(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('bookingId') bookingId: string,
+  ) {
+    return this.paymentsService.processBookingCancellationRefund(
+      user,
+      bookingId,
+    );
+  }
+
   /** Dev/test-only — see PaymentsProvider.simulateCapture. Shared by
    *  every flow above; ownership (payer_id === caller) is enforced in
    *  the service, not by role. */

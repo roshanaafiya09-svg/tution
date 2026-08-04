@@ -176,6 +176,54 @@ export class PaymentsService {
     return order;
   }
 
+  /** Settles the refund a cancelled booking's refund_percent already
+   *  decided (blueprint §10 Phase 4) — a separate step from cancel()
+   *  itself, mirroring the existing order/capture split, since
+   *  BookingsModule can't depend back on PaymentsService (BillingModule
+   *  already imports BookingsModule the other way). */
+  async processBookingCancellationRefund(
+    user: AccessTokenPayload,
+    bookingId: string,
+  ) {
+    const booking = await this.bookingsService.getForRefund(bookingId);
+    if (booking.student_id !== user.sub) {
+      throw new ForbiddenException('Not your booking');
+    }
+    if (booking.status !== 'cancelled' || booking.refund_percent === null) {
+      throw new BadRequestException('This booking has no refund to process');
+    }
+    if (booking.refund_percent === 0) {
+      throw new BadRequestException('No refund is owed for this cancellation');
+    }
+
+    const payment = await this.repository.findByBookingId(bookingId);
+    if (!payment || !payment.provider_payment_id) {
+      throw new NotFoundException('No captured payment found for this booking');
+    }
+    if (payment.status !== 'captured') {
+      throw new BadRequestException(
+        `Payment is ${payment.status}, not captured`,
+      );
+    }
+
+    const refundAmountMinor = Math.round(
+      (payment.amount_minor * booking.refund_percent) / 100,
+    );
+    const { refundId } = await this.provider.simulateRefund(
+      payment.provider_payment_id,
+      refundAmountMinor,
+    );
+    const refunded = await this.repository.markRefunded(payment.id);
+
+    this.analytics.capture(user.sub, 'booking_refund_processed', {
+      bookingId,
+      refundAmountMinor,
+      refundPercent: booking.refund_percent,
+      provider: this.provider.name,
+    });
+    return { ...refunded, refundId, refundAmountMinor };
+  }
+
   private async createOrderFor(
     paymentId: string,
     amountMinor: number,

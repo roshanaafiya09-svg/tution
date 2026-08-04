@@ -31,4 +31,14 @@ export interface PaymentsProvider {
    *  signature — callers must treat that as "reject the request", never
    *  as "no signature configured, allow it through". */
   verifyWebhook(rawBody: string, signature: string): WebhookVerificationResult | null;
+
+  /** Refunds a captured payment (blueprint §10 Phase 4 booking
+   *  cancellations). Unlike simulateCapture, a real Razorpay refund is a
+   *  direct synchronous API call in production too — there's no
+   *  webhook-only path being bypassed here, so both providers implement
+   *  this as a genuine action, not just a dev/test shortcut. */
+  simulateRefund(
+    providerPaymentId: string,
+    amountMinor: number,
+  ): Promise<{ refundId: string }>;
 }

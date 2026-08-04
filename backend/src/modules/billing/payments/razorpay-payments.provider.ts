@@ -54,6 +54,19 @@ export class RazorpayPaymentsProvider implements PaymentsProvider {
     );
   }
 
+  async simulateRefund(
+    providerPaymentId: string,
+    amountMinor: number,
+  ): Promise<{ refundId: string }> {
+    if (!this.client) {
+      throw new InternalServerErrorException('Razorpay client not initialized');
+    }
+    const refund = await this.client.payments.refund(providerPaymentId, {
+      amount: amountMinor,
+    });
+    return { refundId: refund.id };
+  }
+
   verifyWebhook(rawBody: string, signature: string): WebhookVerificationResult | null {
     if (!this.webhookSecret) {
       this.logger.error(

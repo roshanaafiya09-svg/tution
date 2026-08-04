@@ -71,13 +71,16 @@ export class BookingsRepository {
 
   /** Any non-cancelled booking for this tutor overlapping [start, end) —
    *  the double-booking guard alongside SessionsRepository's equivalent
-   *  check against batch class_sessions. */
+   *  check against batch class_sessions. `excludeBookingId` lets a
+   *  reschedule check against every *other* booking without always
+   *  colliding with itself. */
   async hasOverlapForTutor(
     tutorId: string,
     start: Date,
     end: Date,
+    excludeBookingId?: string,
   ): Promise<boolean> {
-    const row = await this.db
+    let query = this.db
       .selectFrom('bookings')
       .select((eb) => eb.fn.countAll().as('count'))
       .where('tutor_id', '=', tutorId)
@@ -85,8 +88,11 @@ export class BookingsRepository {
       .where('scheduled_start_utc', '<', end)
       .where(
         sql<boolean>`scheduled_start_utc + (duration_min * interval '1 minute') > ${start}`,
-      )
-      .executeTakeFirstOrThrow();
+      );
+    if (excludeBookingId) {
+      query = query.where('id', '!=', excludeBookingId);
+    }
+    const row = await query.executeTakeFirstOrThrow();
     return Number(row.count) > 0;
   }
 
@@ -96,6 +102,71 @@ export class BookingsRepository {
       .set({ status: 'confirmed' })
       .where('id', '=', id)
       .where('status', '=', 'pending_payment')
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
+
+  /** original_scheduled_start_utc is set once, on the first reschedule
+   *  only — later reschedules must not overwrite the booking's true
+   *  original time. */
+  rescheduleTo(
+    id: string,
+    scheduledStartUtc: Date,
+    originalScheduledStartUtc: Date,
+  ) {
+    return this.db
+      .updateTable('bookings')
+      .set((eb) => ({
+        scheduled_start_utc: scheduledStartUtc,
+        original_scheduled_start_utc: eb.fn.coalesce(
+          'original_scheduled_start_utc',
+          eb.val(originalScheduledStartUtc),
+        ),
+        reschedule_count: eb('reschedule_count', '+', 1),
+      }))
+      .where('id', '=', id)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
+
+  markCancelled(
+    id: string,
+    cancelledBy: 'student' | 'tutor',
+    reason: string | null,
+    refundPercent: number | null,
+  ) {
+    return this.db
+      .updateTable('bookings')
+      .set({
+        status: 'cancelled',
+        cancelled_by: cancelledBy,
+        cancellation_reason: reason,
+        refund_percent: refundPercent,
+      })
+      .where('id', '=', id)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
+
+  markCompleted(id: string) {
+    return this.db
+      .updateTable('bookings')
+      .set({ status: 'completed' })
+      .where('id', '=', id)
+      .where('status', '=', 'confirmed')
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
+
+  /** Student didn't show — tutor keeps the payment, no refund. A
+   *  tutor no-show instead goes through cancel() (cancelledBy: 'tutor'),
+   *  which is always a full refund. */
+  markNoShow(id: string) {
+    return this.db
+      .updateTable('bookings')
+      .set({ status: 'no_show', refund_percent: 0 })
+      .where('id', '=', id)
+      .where('status', '=', 'confirmed')
       .returningAll()
       .executeTakeFirstOrThrow();
   }

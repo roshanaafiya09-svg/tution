@@ -40,4 +40,15 @@ export class MockPaymentsProvider implements PaymentsProvider {
     );
     return null;
   }
+
+  async simulateRefund(
+    providerPaymentId: string,
+    amountMinor: number,
+  ): Promise<{ refundId: string }> {
+    const refundId = `mock_rfnd_${randomBytes(8).toString('hex')}`;
+    this.logger.warn(
+      `Simulated refund of ${amountMinor} for MOCK payment ${providerPaymentId} as ${refundId}`,
+    );
+    return { refundId };
+  }
 }

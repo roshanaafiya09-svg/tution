@@ -96,6 +96,14 @@ export class PaymentsRepository {
       .executeTakeFirst();
   }
 
+  findByBookingId(bookingId: string) {
+    return this.db
+      .selectFrom('payments')
+      .selectAll()
+      .where('booking_id', '=', bookingId)
+      .executeTakeFirst();
+  }
+
   findByProviderOrderId(providerOrderId: string) {
     return this.db
       .selectFrom('payments')
@@ -127,6 +135,16 @@ export class PaymentsRepository {
       .updateTable('payments')
       .set({ status: 'failed', failure_reason: reason })
       .where('id', '=', id)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
+
+  markRefunded(id: string) {
+    return this.db
+      .updateTable('payments')
+      .set({ status: 'refunded' })
+      .where('id', '=', id)
+      .where('status', '=', 'captured')
       .returningAll()
       .executeTakeFirstOrThrow();
   }
