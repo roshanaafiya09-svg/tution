@@ -61,6 +61,23 @@ export class UsersRepository {
       .then((rows) => rows.map((r) => r.role));
   }
 
+  /** Feeds the Phase 4 density gate (blueprint §10): "≥25 active tutors +
+   *  250 active students". "Active" here means a non-deleted account in
+   *  good standing, same bar as sign-in eligibility — no separate
+   *  recent-activity window exists anywhere else in this codebase to
+   *  reuse. */
+  async countActiveByRole(role: UserRole): Promise<number> {
+    const row = await this.db
+      .selectFrom('user_roles')
+      .innerJoin('users', 'users.id', 'user_roles.user_id')
+      .select((eb) => eb.fn.countAll().as('count'))
+      .where('user_roles.role', '=', role)
+      .where('users.status', '=', 'active')
+      .where('users.deleted_at', 'is', null)
+      .executeTakeFirstOrThrow();
+    return Number(row.count);
+  }
+
   /**
    * DPDP Act 2023 data-principal deletion right (blueprint §4/§9). A hard
    * delete would break referential integrity for historical records this

@@ -41,6 +41,7 @@ import { ProgressModule } from './modules/progress/progress.module';
 import { TutorLocationsModule } from './modules/marketplace/locations/tutor-locations.module';
 import { ProofOfTeachingModule } from './modules/marketplace/proof-of-teaching/proof-of-teaching.module';
 import { ReviewsModule } from './modules/marketplace/reviews/reviews.module';
+import { DiscoveryModule } from './modules/marketplace/discovery/discovery.module';
 
 @Module({
   imports: [
@@ -86,6 +87,7 @@ import { ReviewsModule } from './modules/marketplace/reviews/reviews.module';
     TutorLocationsModule,
     ProofOfTeachingModule,
     ReviewsModule,
+    DiscoveryModule,
   ],
   providers: [
     {
