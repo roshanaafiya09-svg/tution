@@ -47,9 +47,15 @@ Every module's provider-backed integrations (payments, payouts, push, OTP delive
 
 ## Web — Next.js 14 (App Router)
 
-Server components, Tailwind. Routes: public landing (`/`), login (`/login`), invite-join (`/join/[token]`), and the tutor dashboard (`/dashboard/**`) — batches, sessions/attendance, assignments/grading, fees, profile. Full route table in [`api-reference.md`](api-reference.md#web-routes).
+Tailwind, no component library — everything hand-rolled in `web/src/components/ui.tsx`. Client components throughout except `/t/[slug]` (server-rendered, for SEO). 29 routes across three surfaces, all listed in [`api-reference.md`](api-reference.md#web-routes):
 
-**Known gap:** the backend's public discovery/SEO endpoints (`GET /marketplace/discovery/tutors/:slug`, `GET /profiles/tutor/:slug`) have no consuming Next.js page yet — commit `f3acf4b` shipped the API side of "public SEO tutor pages" only. A route like `app/t/[slug]/page.tsx` is unbuilt. Anyone picking up marketplace-facing frontend work should start there.
+- **Public**: landing (`/`), login (`/login`, tutor/student/parent signup), invite-join (`/join/[token]`), tutor discovery (`/discover`, `/t/[slug]`), booking (`/book/[slug]`, `/bookings`)
+- **Tutor dashboard** (`/dashboard/**`, gated by `dashboard-shell.tsx`): batches/sessions/assignments/fees/profile (Phase 1), plus availability/subjects/verification/billing/marketplace/messages/quizzes
+- **Parent portal** (`/parent/**`, gated by `parent-shell.tsx`, new): child linking + DPDP consent, per-child progress/digests/fees, messages, premium checkout
+
+By design, **students have no web routes** — the mobile app is their surface (`login-form.tsx` routes a student signup to `/` on web, `/dashboard` for tutor, `/parent` for parent). Quiz-taking and doubt-solver asking are student actions and so stay mobile-only; the web quiz UI is tutor-authoring only (generate → edit → approve → publish → attempts).
+
+Shared infra worth knowing about: `lib/razorpay.ts` (Checkout.js wrapper; falls back to the dev-only `simulate-capture` endpoint when the backend is running its mock payments provider), `components/message-thread.tsx` and `components/notifications-bell.tsx` (shared between the tutor and parent shells).
 
 ## Mobile — Flutter
 

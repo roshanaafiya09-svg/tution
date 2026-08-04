@@ -121,6 +121,7 @@ For request/response shapes see the DTOs under each module's `dto/` folder — t
 | GET | `/assignments/:id/submissions` | Tutor lists submissions for an assignment |
 | GET | `/assignments/:id/my-submission` | Student views their own submission |
 | POST | `/assignments/submissions/:submissionId/grade` | Tutor grades a submission |
+| GET | `/assignments/submissions/:submissionId/download-urls` | Tutor gets presigned download URLs for every file in a submission |
 | GET | `/assignments/summary/batch/:batchId` | Student's submission summary for a batch |
 
 **quizzes — student-facing** (`/quizzes`)
@@ -142,6 +143,7 @@ For request/response shapes see the DTOs under each module's `dto/` folder — t
 | GET | `/fees/period` | Tutor's monthly "who hasn't paid" view |
 | GET | `/fees/period/totals` | Tutor's period fee totals |
 | GET | `/fees/me` | Student's own fee ledger |
+| GET | `/fees/student/:studentId` | Parent's view of a consented child's fee history (403 without active consent) |
 | POST | `/fees/:id/record-payment` | Tutor records a manual payment |
 | POST | `/fees/:id/waive` | Tutor waives a fee |
 
@@ -312,7 +314,7 @@ For request/response shapes see the DTOs under each module's `dto/` folder — t
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/marketplace/discovery/tutors` | Search/rank verified tutors by Proof-of-Teaching score; curated fallback below the density gate |
-| GET | `/marketplace/discovery/tutors/:slug` | Public SEO tutor page data (profile + offerings + location + PoT score + review aggregate) — **no consuming web page yet, API only** |
+| GET | `/marketplace/discovery/tutors/:slug` | Public SEO tutor page data (profile + offerings + location + PoT score + review aggregate) — consumed by the web app's `/t/[slug]` server-rendered page |
 | GET | `/marketplace/discovery/gate-status` | Whether the ≥25-tutor/≥250-student density gate is open |
 
 ## health
@@ -325,22 +327,50 @@ For request/response shapes see the DTOs under each module's `dto/` folder — t
 
 ## Web routes
 
-Next.js 14 App Router, `web/src/app/`:
+Next.js 14 App Router, `web/src/app/` — 29 routes. Students stay mobile-only by design (no student-facing web routes); everything below is public, tutor, or parent.
 
+**Public**
 | Route | Renders |
 |---|---|
-| `/` | Public marketing landing page — hero, trial-recap preview, feature modules, trust strip, pricing teaser |
-| `/login` | Phone/OTP + Google sign-in form |
+| `/` | Public marketing landing page — hero, trial-recap preview, feature modules, trust strip, pricing teaser, "Find a tutor" link |
+| `/login` | Phone/OTP + Google sign-in form; signup role picker offers tutor/student/parent |
 | `/join/[token]` | Public invite preview + join-batch flow (redirects to `/login?next=...` if unauthenticated) |
-| `/dashboard` | Tutor's "Today" home — today's sessions + active batches, mark-complete action |
+| `/discover` | Public tutor search — subject/curriculum/grade filters, density-gate curated fallback |
+| `/t/[slug]` | Public SEO tutor profile page (server-rendered, `generateMetadata` for SEO) — profile, location, Proof-of-Teaching score, offerings, reviews, "Book a session" CTA |
+| `/book/[slug]` | Booking + checkout flow — redirects to `/login?next=...` if unauthenticated; picks an offering/time/duration, creates the booking, runs Razorpay checkout, offers a waitlist join if the slot doesn't work |
+| `/bookings` | "My bookings" — reschedule, cancel, leave a review once completed (redirects to login if unauthenticated) |
+
+**Tutor dashboard** (`/dashboard/**`, auth-gated via `dashboard-shell.tsx`)
+| Route | Renders |
+|---|---|
+| `/dashboard` | "Today" home — today's sessions + active batches, mark-complete action |
 | `/dashboard/batches` | List batches + create-batch form |
-| `/dashboard/batches/[id]` | Batch detail — students / sessions / materials / homework / announcements tabs |
+| `/dashboard/batches/[id]` | Batch detail — students (+ "Message" link per student) / sessions / materials (+ "Generate quiz" and "Index for AI" on PDFs) / homework / announcements tabs |
 | `/dashboard/sessions/[id]` | Per-session attendance marking |
-| `/dashboard/assignments/[id]` | Submissions list + grading form |
+| `/dashboard/assignments/[id]` | Submissions list + grading form + file viewer |
 | `/dashboard/fees` | Fee ledger by period, record-payment form, totals |
+| `/dashboard/availability` | Weekly availability rules + exceptions |
+| `/dashboard/subjects` | Subjects/curricula/grade-range/rate offerings, waitlist notify |
+| `/dashboard/verification` | ID + qualification document upload, status |
+| `/dashboard/billing` | Trial recap, subscription plan checkout, payouts list |
+| `/dashboard/marketplace` | Location, Proof-of-Teaching score, 1:1 bookings management (complete/no-show) |
+| `/dashboard/messages` | Thread list |
+| `/dashboard/messages/[batchId]/[studentId]` | Message thread |
+| `/dashboard/quizzes` | AI quiz draft list |
+| `/dashboard/quizzes/[id]` | Question editing, approve/reject, publish, attempts view |
 | `/dashboard/profile` | Tutor profile edit + data export / account deletion |
 
-No route exists yet for the public SEO tutor pages the backend's `discovery` module serves — see [`architecture.md`](architecture.md#web--nextjs-14-app-router).
+**Parent portal** (`/parent/**`, auth-gated via `parent-shell.tsx`)
+| Route | Renders |
+|---|---|
+| `/parent` | Linked children list + latest digest summary per child |
+| `/parent/link` | Redeem a child's invite token, DPDP consent step |
+| `/parent/child/[studentId]` | Progress trend, weekly digests, fee history |
+| `/parent/messages` | Thread list |
+| `/parent/messages/[batchId]/[studentId]` | Message thread |
+| `/parent/premium` | Plan picker + Razorpay checkout, status view |
+
+Both authenticated shells also render a shared `NotificationsBell` (header dropdown, unread badge) — not a route, a component (`web/src/components/notifications-bell.tsx`).
 
 ## Mobile features
 
