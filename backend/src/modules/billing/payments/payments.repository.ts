@@ -8,7 +8,12 @@ import { newId } from '../../../database/id';
 export class PaymentsRepository {
   constructor(@Inject(KYSELY_CONNECTION) private readonly db: Kysely<DB>) {}
 
-  createForFee(feeLedgerId: string, payerId: string, amountMinor: number, currency: string) {
+  createForFee(
+    feeLedgerId: string,
+    payerId: string,
+    amountMinor: number,
+    currency: string,
+  ) {
     return this.db
       .insertInto('payments')
       .values({
@@ -34,6 +39,27 @@ export class PaymentsRepository {
       .values({
         id: newId(),
         subscription_id: subscriptionId,
+        plan_id: planId,
+        payer_id: payerId,
+        amount_minor: amountMinor,
+        currency,
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
+
+  createForParentPremium(
+    parentSubscriptionId: string,
+    planId: string,
+    payerId: string,
+    amountMinor: number,
+    currency: string,
+  ) {
+    return this.db
+      .insertInto('payments')
+      .values({
+        id: newId(),
+        parent_subscription_id: parentSubscriptionId,
         plan_id: planId,
         payer_id: payerId,
         amount_minor: amountMinor,

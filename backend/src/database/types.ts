@@ -342,12 +342,14 @@ export interface DeviceTokensTable {
 
 // --- Phase 2: billing & parents ---
 
-/** fee_ledger_id XOR subscription_id — see migration 0014. */
+/** Exactly one of fee_ledger_id / subscription_id / parent_subscription_id
+ *  is set — see migration 0014 (two-way) and 0019 (three-way). */
 export interface PaymentsTable {
   id: string;
   fee_ledger_id: string | null;
   subscription_id: string | null;
-  /** Only set for subscription purchases — which SUBSCRIPTION_PLANS
+  parent_subscription_id: string | null;
+  /** Only set for subscription/parent-premium purchases — which plan
    *  tier, needed at capture time to compute current_period_end. */
   plan_id: string | null;
   payer_id: string;
@@ -389,6 +391,21 @@ export interface TutorPayoutAccountsTable {
   provider: Generated<string>;
   provider_account_id: string | null;
   status: Generated<'pending' | 'active' | 'rejected'>;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+/** Parent premium tier (blueprint §5/§10 Phase 3) — no trial, opt-in
+ *  paid only, so status starts 'inactive' rather than 'trialing'. See
+ *  migration 0019. */
+export interface ParentPremiumSubscriptionsTable {
+  id: string;
+  parent_id: string;
+  plan_id: string | null;
+  status: Generated<'inactive' | 'active' | 'past_due' | 'cancelled'>;
+  current_period_end: Timestamp | null;
+  provider: string | null;
+  provider_ref: string | null;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
 }
@@ -548,6 +565,7 @@ export interface DB {
   payments: PaymentsTable;
   payouts: PayoutsTable;
   tutor_payout_accounts: TutorPayoutAccountsTable;
+  parent_premium_subscriptions: ParentPremiumSubscriptionsTable;
   parent_child_links: ParentChildLinksTable;
   digests: DigestsTable;
   quiz_drafts: QuizDraftsTable;

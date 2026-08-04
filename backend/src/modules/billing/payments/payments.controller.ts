@@ -33,6 +33,19 @@ export class PaymentsController {
     return this.paymentsService.initiateSubscriptionOrder(user, planId);
   }
 
+  /** A parent's own AI premium purchase (blueprint §5/§10 Phase 3) —
+   *  distinct from fee collection and the tutor subscription above.
+   *  Body: { planId }. */
+  @Post('parent-premium/order')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('parent')
+  createParentPremiumOrder(
+    @CurrentUser() user: AccessTokenPayload,
+    @Body('planId') planId: string,
+  ) {
+    return this.paymentsService.initiateParentPremiumOrder(user, planId);
+  }
+
   /** Dev/test-only — see PaymentsProvider.simulateCapture. Shared by
    *  both flows above; ownership (payer_id === caller) is enforced in
    *  the service, not by role. */

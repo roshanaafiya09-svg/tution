@@ -10,6 +10,11 @@ import { FeesRepository } from '../fees/fees.repository';
 import { ParentLinksRepository } from '../../parents/parent-links.repository';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { SUBSCRIPTION_PLANS, isPlanId } from '../subscriptions/plans';
+import { ParentPremiumService } from '../parent-premium/parent-premium.service';
+import {
+  PARENT_PREMIUM_PLANS,
+  isParentPremiumPlanId,
+} from '../parent-premium/plans';
 import { AnalyticsService } from '../../analytics/analytics.service';
 import { PAYMENTS_PROVIDER } from './payments-provider.interface';
 import type { PaymentsProvider } from './payments-provider.interface';
@@ -20,13 +25,17 @@ import type { PaymentsTable } from '../../../database/types';
 type PaymentRow = Selectable<PaymentsTable>;
 
 /**
- * Two distinct money-in flows share one payments audit table
- * (fee_ledger_id XOR subscription_id — migration 0014):
+ * Three distinct money-in flows share one payments audit table
+ * (exactly one of fee_ledger_id / subscription_id / parent_subscription_id
+ * set — migration 0014, extended to three-way by 0019):
  *  - Fee *collection*: a parent/student pays the tutor for tuition,
  *    settling one fee_ledger row (Phase 1's manual-tracking counterpart).
  *  - Subscription *purchase*: the tutor pays the platform for their own
  *    ₹499/999 plan (blueprint §5) — the "Razorpay subscriptions" piece
  *    that actually ends the 90-day trial, distinct from fee collection.
+ *  - Parent premium *purchase*: a parent pays the platform for the
+ *    ₹99–149/mo AI tier (blueprint §5/§10 Phase 3) — same shape as the
+ *    tutor subscription purchase, different plan catalog and target.
  * Order creation is flow-specific; capture (simulateCapture or the
  * webhook) is generic — it settles whichever side the payment is for.
  */
@@ -37,6 +46,7 @@ export class PaymentsService {
     private readonly feesRepository: FeesRepository,
     private readonly parentLinksRepository: ParentLinksRepository,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly parentPremiumService: ParentPremiumService,
     private readonly analytics: AnalyticsService,
     @Inject(PAYMENTS_PROVIDER) private readonly provider: PaymentsProvider,
   ) {}
@@ -50,7 +60,8 @@ export class PaymentsService {
       throw new BadRequestException(`This fee is already ${fee.status}`);
     }
 
-    const outstandingMinor = fee.expected_minor - (fee.recorded_paid_minor ?? 0);
+    const outstandingMinor =
+      fee.expected_minor - (fee.recorded_paid_minor ?? 0);
     if (outstandingMinor <= 0) {
       throw new BadRequestException('Nothing outstanding on this fee');
     }
@@ -62,7 +73,11 @@ export class PaymentsService {
       fee.currency,
     );
 
-    const order = await this.createOrderFor(payment.id, outstandingMinor, fee.currency);
+    const order = await this.createOrderFor(
+      payment.id,
+      outstandingMinor,
+      fee.currency,
+    );
     this.analytics.capture(user.sub, 'payment_order_created', {
       feeLedgerId,
       amountMinor: outstandingMinor,
@@ -76,7 +91,9 @@ export class PaymentsService {
     if (!isPlanId(planId)) throw new BadRequestException('Unknown plan');
     const plan = SUBSCRIPTION_PLANS[planId];
 
-    const subscription = await this.subscriptionsService.getOwnSubscription(user.sub);
+    const subscription = await this.subscriptionsService.getOwnSubscription(
+      user.sub,
+    );
 
     const payment = await this.repository.createForSubscription(
       subscription.id,
@@ -95,7 +112,40 @@ export class PaymentsService {
     return order;
   }
 
-  private async createOrderFor(paymentId: string, amountMinor: number, currency: string) {
+  /** Parent-only — the ₹99–149/mo AI premium purchase (blueprint §5/§10
+   *  Phase 3), distinct from fee collection and the tutor's own
+   *  subscription above. */
+  async initiateParentPremiumOrder(user: AccessTokenPayload, planId: string) {
+    if (!isParentPremiumPlanId(planId))
+      throw new BadRequestException('Unknown plan');
+    const plan = PARENT_PREMIUM_PLANS[planId];
+
+    const subscription = await this.parentPremiumService.getOwnSubscription(
+      user.sub,
+    );
+
+    const payment = await this.repository.createForParentPremium(
+      subscription.id,
+      planId,
+      user.sub,
+      plan.priceMinor,
+      'INR',
+    );
+
+    const order = await this.createOrderFor(payment.id, plan.priceMinor, 'INR');
+    this.analytics.capture(user.sub, 'parent_premium_order_created', {
+      planId,
+      amountMinor: plan.priceMinor,
+      provider: this.provider.name,
+    });
+    return order;
+  }
+
+  private async createOrderFor(
+    paymentId: string,
+    amountMinor: number,
+    currency: string,
+  ) {
     const { orderId } = await this.provider.createOrder({
       amountMinor,
       currency,
@@ -116,9 +166,8 @@ export class PaymentsService {
       throw new BadRequestException(`Payment is already ${payment.status}`);
     }
 
-    const { paymentId: providerPaymentId } = await this.provider.simulateCapture(
-      payment.provider_order_id,
-    );
+    const { paymentId: providerPaymentId } =
+      await this.provider.simulateCapture(payment.provider_order_id);
     return this.settleCapture(payment, providerPaymentId);
   }
 
@@ -126,23 +175,51 @@ export class PaymentsService {
     const result = this.provider.verifyWebhook(rawBody, signature);
     if (!result) throw new ForbiddenException('Invalid webhook signature');
 
-    const payment = await this.repository.findByProviderOrderId(result.providerOrderId);
+    const payment = await this.repository.findByProviderOrderId(
+      result.providerOrderId,
+    );
     if (!payment) throw new NotFoundException('No payment for this order');
 
     if (result.status === 'failed') {
-      return this.repository.markFailed(payment.id, 'Provider reported payment.failed');
+      return this.repository.markFailed(
+        payment.id,
+        'Provider reported payment.failed',
+      );
     }
     return this.settleCapture(payment, result.providerPaymentId);
   }
 
   private async settleCapture(payment: PaymentRow, providerPaymentId: string) {
-    const captured = await this.repository.markCaptured(payment.id, providerPaymentId);
+    const captured = await this.repository.markCaptured(
+      payment.id,
+      providerPaymentId,
+    );
 
     if (payment.fee_ledger_id) {
-      await this.settleFee(payment.fee_ledger_id, payment.amount_minor, captured.provider, payment.id);
-    } else if (payment.subscription_id && payment.plan_id && isPlanId(payment.plan_id)) {
+      await this.settleFee(
+        payment.fee_ledger_id,
+        payment.amount_minor,
+        captured.provider,
+        payment.id,
+      );
+    } else if (
+      payment.subscription_id &&
+      payment.plan_id &&
+      isPlanId(payment.plan_id)
+    ) {
       await this.settleSubscription(
         payment.subscription_id,
+        payment.plan_id,
+        captured.provider,
+        providerPaymentId,
+      );
+    } else if (
+      payment.parent_subscription_id &&
+      payment.plan_id &&
+      isParentPremiumPlanId(payment.plan_id)
+    ) {
+      await this.settleParentPremium(
+        payment.parent_subscription_id,
         payment.plan_id,
         captured.provider,
         providerPaymentId,
@@ -150,7 +227,11 @@ export class PaymentsService {
     }
 
     this.analytics.capture(captured.payer_id, 'payment_captured', {
-      target: payment.fee_ledger_id ? 'fee' : 'subscription',
+      target: payment.fee_ledger_id
+        ? 'fee'
+        : payment.subscription_id
+          ? 'subscription'
+          : 'parent_premium',
       amountMinor: payment.amount_minor,
       provider: captured.provider,
     });
@@ -186,12 +267,16 @@ export class PaymentsService {
     providerPaymentId: string,
   ) {
     const plan = SUBSCRIPTION_PLANS[planId];
-    const existing = await this.subscriptionsService.findSubscriptionById(subscriptionId);
+    const existing =
+      await this.subscriptionsService.findSubscriptionById(subscriptionId);
     const existingEnd = existing?.current_period_end
       ? new Date(existing.current_period_end)
       : null;
-    const base = existingEnd && existingEnd > new Date() ? existingEnd : new Date();
-    const currentPeriodEnd = new Date(base.getTime() + plan.periodDays * 24 * 60 * 60 * 1000);
+    const base =
+      existingEnd && existingEnd > new Date() ? existingEnd : new Date();
+    const currentPeriodEnd = new Date(
+      base.getTime() + plan.periodDays * 24 * 60 * 60 * 1000,
+    );
     return this.subscriptionsService.activatePlan(
       subscriptionId,
       planId,
@@ -201,7 +286,40 @@ export class PaymentsService {
     );
   }
 
-  private async assertCanPayFee(user: AccessTokenPayload, studentId: string): Promise<void> {
+  /** Same "extend from whichever is later" logic as settleSubscription —
+   *  an early renewal must not discard time left on the current period. */
+  private async settleParentPremium(
+    parentSubscriptionId: string,
+    planId: keyof typeof PARENT_PREMIUM_PLANS,
+    provider: string,
+    providerPaymentId: string,
+  ) {
+    const plan = PARENT_PREMIUM_PLANS[planId];
+    const existing =
+      await this.parentPremiumService.findSubscriptionById(
+        parentSubscriptionId,
+      );
+    const existingEnd = existing?.current_period_end
+      ? new Date(existing.current_period_end)
+      : null;
+    const base =
+      existingEnd && existingEnd > new Date() ? existingEnd : new Date();
+    const currentPeriodEnd = new Date(
+      base.getTime() + plan.periodDays * 24 * 60 * 60 * 1000,
+    );
+    return this.parentPremiumService.activatePlan(
+      parentSubscriptionId,
+      planId,
+      currentPeriodEnd,
+      provider,
+      providerPaymentId,
+    );
+  }
+
+  private async assertCanPayFee(
+    user: AccessTokenPayload,
+    studentId: string,
+  ): Promise<void> {
     if (user.roles.includes('student') && user.sub === studentId) return;
     if (user.roles.includes('parent')) {
       const link = await this.parentLinksRepository.findByParentAndStudent(

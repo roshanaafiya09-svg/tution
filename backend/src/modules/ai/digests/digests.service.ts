@@ -1,4 +1,8 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { DigestsRepository } from './digests.repository';
 import { AttendanceRepository } from '../../scheduling/attendance/attendance.repository';
 import { SubmissionsRepository } from '../../assessment/submissions/submissions.repository';
@@ -6,6 +10,7 @@ import { ParentLinksRepository } from '../../parents/parent-links.repository';
 import { ProfilesService } from '../../identity/profiles/profiles.service';
 import { AiService } from '../ai.service';
 import { AnalyticsService } from '../../analytics/analytics.service';
+import { ParentPremiumService } from '../../billing/parent-premium/parent-premium.service';
 import type { GenerateDigestDto } from './dto/generate-digest.dto';
 
 /**
@@ -20,6 +25,12 @@ import type { GenerateDigestDto } from './dto/generate-digest.dto';
  * for the same underlying capability, not a redesign. Idempotent per
  * (parent, student, periodStart), so re-triggering never double-spends
  * an AI call.
+ *
+ * Every parent gets a digest — this stays the free retention loop
+ * (blueprint's "AI parent weekly digest... unchanged from v1"). Parent
+ * Premium (blueprint §5/§10 Phase 3) only makes it *richer*: an extra
+ * AI-written focus-area paragraph, recorded as stats.tier so which kind
+ * a given digest was is visible after the fact.
  */
 @Injectable()
 export class DigestsService {
@@ -31,6 +42,7 @@ export class DigestsService {
     private readonly profilesService: ProfilesService,
     private readonly aiService: AiService,
     private readonly analytics: AnalyticsService,
+    private readonly parentPremiumService: ParentPremiumService,
   ) {}
 
   async generate(parentId: string, studentId: string, dto: GenerateDigestDto) {
@@ -53,17 +65,22 @@ export class DigestsService {
     const to = new Date(`${dto.periodEnd}T00:00:00.000Z`);
     to.setUTCDate(to.getUTCDate() + 1); // periodEnd is inclusive
     if (to <= from) {
-      throw new BadRequestException('periodEnd must be on or after periodStart');
+      throw new BadRequestException(
+        'periodEnd must be on or after periodStart',
+      );
     }
 
-    const [attendance, submissionRows, profile] = await Promise.all([
-      this.attendanceRepository.summaryForStudentBetween(studentId, from, to),
-      this.submissionsRepository.listForStudentBetween(studentId, from, to),
-      this.profilesService.getStudentProfile(studentId),
-    ]);
+    const [attendance, submissionRows, profile, premiumActive] =
+      await Promise.all([
+        this.attendanceRepository.summaryForStudentBetween(studentId, from, to),
+        this.submissionsRepository.listForStudentBetween(studentId, from, to),
+        this.profilesService.getStudentProfile(studentId),
+        this.parentPremiumService.isActive(parentId),
+      ]);
 
     const gradedRows = submissionRows.filter((row) => row.grade !== null);
     const locale = dto.locale ?? 'en';
+    const tier = premiumActive ? 'premium' : 'basic';
 
     const narrative = await this.aiService.generateDigestNarrative({
       studentDisplayName: profile?.display_name ?? 'your child',
@@ -80,6 +97,7 @@ export class DigestsService {
         grade: row.grade as string,
       })),
       locale,
+      tier,
     });
 
     const digest = await this.repository.create({
@@ -91,13 +109,18 @@ export class DigestsService {
       narrative,
       stats: {
         attendance,
-        submissions: { submitted: submissionRows.length, graded: gradedRows.length },
+        submissions: {
+          submitted: submissionRows.length,
+          graded: gradedRows.length,
+        },
+        tier,
       },
     });
 
     this.analytics.capture(parentId, 'digest_generated', {
       studentId,
       periodStart: dto.periodStart,
+      tier,
     });
 
     return digest;

@@ -27,6 +27,12 @@ export interface DigestNarrativeInput {
   submissions: DigestSubmissionStats;
   grades: DigestGradeEntry[];
   locale: 'en' | 'ta';
+  /** 'premium' parents (blueprint §5/§10 Phase 3: "rich digests") get an
+   *  extra focus-areas/recommendation paragraph grounded in the same
+   *  stats above — no new data sources, just a deeper read of what's
+   *  already computed. 'basic' stays the original one-paragraph digest,
+   *  unchanged, so the free retention loop keeps working as-is. */
+  tier: 'basic' | 'premium';
 }
 
 export interface QuizQuestionDraft {

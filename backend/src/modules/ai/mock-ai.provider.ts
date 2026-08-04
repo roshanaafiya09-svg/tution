@@ -72,7 +72,32 @@ export class MockAiProvider implements AiProvider {
         ? ` Recent grades: ${grades.map((g) => `${g.assignmentTitle} (${g.batchTitle}): ${g.grade}`).join(', ')}.`
         : '';
 
-    return `This week (${periodStart} to ${periodEnd}), ${studentDisplayName} ${attendanceLine} and ${submissionLine}.${gradesLine}`;
+    const base = `This week (${periodStart} to ${periodEnd}), ${studentDisplayName} ${attendanceLine} and ${submissionLine}.${gradesLine}`;
+    return input.tier === 'premium'
+      ? `${base} ${this.focusParagraphEn(input)}`
+      : base;
+  }
+
+  /** The "rich" half of a premium digest — one extra paragraph reading
+   *  the same attendance/grade numbers for a concrete focus area, so a
+   *  premium parent gets more than a longer sentence: an actual
+   *  recommendation, not just restated stats. */
+  private focusParagraphEn(input: DigestNarrativeInput): string {
+    const { attendance, grades } = input;
+    if (grades.length > 0) {
+      const lowest = grades.reduce((worst, g) =>
+        g.grade < worst.grade ? g : worst,
+      );
+      return `Focus area: ${lowest.assignmentTitle} (${lowest.batchTitle}) was the weaker grade this period — worth a short revision session before the next class.`;
+    }
+    if (
+      attendance.total > 0 &&
+      attendance.rate !== null &&
+      attendance.rate < 90
+    ) {
+      return `Focus area: attendance dipped to ${attendance.rate}% this period — worth checking in on what's getting in the way of class time.`;
+    }
+    return 'Focus area: nothing concerning this period — keep the current routine going.';
   }
 
   /** Rough placeholder phrasing for testing only — not reviewed by a
@@ -92,7 +117,14 @@ export class MockAiProvider implements AiProvider {
         ? `${attendance.total} வகுப்புகளில் ${attendedCount} கலந்துகொண்டார் (${attendance.rate}%)`
         : 'இந்த வாரம் வகுப்புகள் எதுவும் இல்லை';
 
-    return `இந்த வாரம் (${periodStart} முதல் ${periodEnd} வரை), ${studentDisplayName} ${attendanceLine}, மேலும் ${submissions.submitted} பணிகளை சமர்ப்பித்தார் (${submissions.graded} மதிப்பீடு செய்யப்பட்டது).`;
+    const base = `இந்த வாரம் (${periodStart} முதல் ${periodEnd} வரை), ${studentDisplayName} ${attendanceLine}, மேலும் ${submissions.submitted} பணிகளை சமர்ப்பித்தார் (${submissions.graded} மதிப்பீடு செய்யப்பட்டது).`;
+    if (input.tier !== 'premium') return base;
+
+    const focusTa =
+      attendance.total > 0 && attendance.rate !== null && attendance.rate < 90
+        ? `கவனிக்க வேண்டியது: வருகை ${attendance.rate}% ஆக குறைந்துள்ளது.`
+        : 'கவனிக்க வேண்டியது: இந்த காலகட்டத்தில் கவலைக்குரியது எதுவும் இல்லை.';
+    return `${base} ${focusTa}`;
   }
 
   /** No real comprehension of the material — this is a fill-in-the-

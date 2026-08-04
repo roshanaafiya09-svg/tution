@@ -266,9 +266,18 @@ function buildDigestPrompt(input: DigestNarrativeInput): string {
           .map((g) => `${g.assignmentTitle} (${g.batchTitle}): ${g.grade}`)
           .join('; ');
 
-  return `You are writing a short weekly progress update for a parent about their child's tuition classes, for a tutoring app used in Chennai, India.
+  // Parent Premium (blueprint §5/§10 Phase 3: "rich digests") adds one
+  // extra paragraph of focus areas/recommendations grounded in the same
+  // numbers below — never new data, just a deeper read of it. Basic
+  // stays the original single paragraph so the free digest is unchanged.
+  const lengthInstruction =
+    input.tier === 'premium'
+      ? `Write TWO short paragraphs in ${languageName}. First, the same warm factual summary as always (3-4 sentences). Second, a "Focus area" paragraph (1-2 sentences) recommending one concrete thing to work on, grounded only in the numbers below — e.g. the weakest recent grade, or an attendance dip.`
+      : `Write ONE short paragraph (3-4 sentences) in ${languageName}.`;
 
-Write ONE short paragraph (3-4 sentences) in ${languageName}. Be warm, specific, and factual — reference the actual numbers below. Do not invent any detail not given here. Do not add a greeting or sign-off, just the paragraph itself.
+  return `You are writing a weekly progress update for a parent about their child's tuition classes, for a tutoring app used in Chennai, India.
+
+${lengthInstruction} Be warm, specific, and factual — reference the actual numbers below. Do not invent any detail not given here. Do not add a greeting or sign-off, just the paragraph(s) themselves.
 
 Child: ${input.studentDisplayName}
 Period: ${input.periodStart} to ${input.periodEnd}
