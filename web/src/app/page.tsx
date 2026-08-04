@@ -266,7 +266,7 @@ export default function Home() {
             price whether you teach one batch or five.
           </p>
           <a
-            href="#"
+            href="/login"
             className="mt-8 inline-block rounded-md bg-accent-500 px-7 py-3 text-sm font-semibold text-brand-950 shadow-md transition-colors hover:bg-accent-400"
           >
             Start your free trial
