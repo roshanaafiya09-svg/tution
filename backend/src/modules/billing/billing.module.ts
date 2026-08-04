@@ -4,6 +4,7 @@ import { IdentityModule } from '../identity/identity.module';
 import { SchedulingModule } from '../scheduling/scheduling.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { ParentPremiumModule } from './parent-premium/parent-premium.module';
+import { BookingsModule } from '../marketplace/bookings/bookings.module';
 import { ParentsModule } from '../parents/parents.module';
 import { FeesController } from './fees/fees.controller';
 import { FeesService } from './fees/fees.service';
@@ -38,9 +39,11 @@ const paymentsLogger = new Logger('BillingModule');
  * subscriptions guard, so nesting it here would cycle. It's safe for
  * *this* module to import SubscriptionsModule (for the recap endpoint,
  * blueprint §5), ParentPremiumModule (the parent premium purchase flow,
- * blueprint §5/§10 Phase 3), and ParentsModule (a paying parent must
- * have an active consented link — payments/payments.service.ts) since
- * none of them import anything back to Billing or Scheduling — no cycle.
+ * blueprint §5/§10 Phase 3), BookingsModule (the 1:1 booking purchase
+ * flow, blueprint §5/§10 Phase 4), and ParentsModule (a paying parent
+ * must have an active consented link — payments/payments.service.ts)
+ * since none of them import anything back to Billing or Scheduling —
+ * no cycle.
  * Owns tables: fee_ledger, payments.
  */
 @Module({
@@ -49,6 +52,7 @@ const paymentsLogger = new Logger('BillingModule');
     SchedulingModule,
     SubscriptionsModule,
     ParentPremiumModule,
+    BookingsModule,
     ParentsModule,
   ],
   controllers: [

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import { KYSELY_CONNECTION } from '../../../database/database.module';
 import type { DB } from '../../../database/types';
 import { newId } from '../../../database/id';
@@ -140,6 +140,27 @@ export class SessionsRepository {
       .where('status', '=', 'completed')
       .executeTakeFirstOrThrow();
     return Number(row.total ?? 0);
+  }
+
+  /** Any scheduled batch class for this tutor overlapping [start, end) —
+   *  lets 1:1 booking creation (blueprint §10 Phase 4) avoid
+   *  double-booking a tutor across the two scheduling systems. */
+  async hasScheduledOverlapForTutor(
+    tutorId: string,
+    start: Date,
+    end: Date,
+  ): Promise<boolean> {
+    const row = await this.db
+      .selectFrom('class_sessions')
+      .select((eb) => eb.fn.countAll().as('count'))
+      .where('tutor_id', '=', tutorId)
+      .where('status', '=', 'scheduled')
+      .where('scheduled_start_utc', '<', end)
+      .where(
+        sql<boolean>`scheduled_start_utc + (duration_min * interval '1 minute') > ${start}`,
+      )
+      .executeTakeFirstOrThrow();
+    return Number(row.count) > 0;
   }
 
   updateStatus(id: string, status: 'scheduled' | 'completed' | 'cancelled') {

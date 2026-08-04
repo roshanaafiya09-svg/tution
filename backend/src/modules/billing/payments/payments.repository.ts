@@ -69,6 +69,25 @@ export class PaymentsRepository {
       .executeTakeFirstOrThrow();
   }
 
+  createForBooking(
+    bookingId: string,
+    payerId: string,
+    amountMinor: number,
+    currency: string,
+  ) {
+    return this.db
+      .insertInto('payments')
+      .values({
+        id: newId(),
+        booking_id: bookingId,
+        payer_id: payerId,
+        amount_minor: amountMinor,
+        currency,
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
+
   findById(id: string) {
     return this.db
       .selectFrom('payments')

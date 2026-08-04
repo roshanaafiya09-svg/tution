@@ -366,6 +366,9 @@ export interface PaymentsTable {
    *  aggregated into — see migration 0015. Null for subscription
    *  payments and for fee payments not yet paid out. */
   payout_id: string | null;
+  /** Fourth settleable target (blueprint §10 Phase 4) — a 1:1 marketplace
+   *  booking payment. See migration 0021. */
+  booking_id: string | null;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
 }
@@ -542,6 +545,31 @@ export interface TutorLocationsTable {
   updated_at: GeneratedTimestamp;
 }
 
+export interface BookingsTable {
+  id: string;
+  tutor_id: string;
+  student_id: string;
+  subject_id: string;
+  hourly_rate_minor: number;
+  amount_minor: number;
+  platform_fee_minor: Generated<number>;
+  currency: Generated<string>;
+  scheduled_start_utc: Timestamp;
+  timezone: Generated<string>;
+  duration_min: number;
+  meeting_url: string | null;
+  status: Generated<
+    'pending_payment' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
+  >;
+  cancelled_by: 'student' | 'tutor' | null;
+  cancellation_reason: string | null;
+  refund_percent: number | null;
+  original_scheduled_start_utc: Timestamp | null;
+  reschedule_count: Generated<number>;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
 export interface DB {
   users: UsersTable;
   user_roles: UserRolesTable;
@@ -590,4 +618,5 @@ export interface DB {
   ai_interactions: AiInteractionsTable;
 
   tutor_locations: TutorLocationsTable;
+  bookings: BookingsTable;
 }

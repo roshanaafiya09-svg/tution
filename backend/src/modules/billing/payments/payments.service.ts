@@ -15,6 +15,7 @@ import {
   PARENT_PREMIUM_PLANS,
   isParentPremiumPlanId,
 } from '../parent-premium/plans';
+import { BookingsService } from '../../marketplace/bookings/bookings.service';
 import { AnalyticsService } from '../../analytics/analytics.service';
 import { PAYMENTS_PROVIDER } from './payments-provider.interface';
 import type { PaymentsProvider } from './payments-provider.interface';
@@ -25,9 +26,10 @@ import type { PaymentsTable } from '../../../database/types';
 type PaymentRow = Selectable<PaymentsTable>;
 
 /**
- * Three distinct money-in flows share one payments audit table
- * (exactly one of fee_ledger_id / subscription_id / parent_subscription_id
- * set — migration 0014, extended to three-way by 0019):
+ * Four distinct money-in flows share one payments audit table (exactly
+ * one of fee_ledger_id / subscription_id / parent_subscription_id /
+ * booking_id set — migration 0014, extended to three-way by 0019, then
+ * four-way by 0021):
  *  - Fee *collection*: a parent/student pays the tutor for tuition,
  *    settling one fee_ledger row (Phase 1's manual-tracking counterpart).
  *  - Subscription *purchase*: the tutor pays the platform for their own
@@ -36,6 +38,9 @@ type PaymentRow = Selectable<PaymentsTable>;
  *  - Parent premium *purchase*: a parent pays the platform for the
  *    ₹99–149/mo AI tier (blueprint §5/§10 Phase 3) — same shape as the
  *    tutor subscription purchase, different plan catalog and target.
+ *  - Booking *purchase*: a student pays for a 1:1 marketplace booking
+ *    (blueprint §5/§10 Phase 4) — the platform's take rate is already
+ *    snapshotted on the booking row at creation time, not deducted here.
  * Order creation is flow-specific; capture (simulateCapture or the
  * webhook) is generic — it settles whichever side the payment is for.
  */
@@ -47,6 +52,7 @@ export class PaymentsService {
     private readonly parentLinksRepository: ParentLinksRepository,
     private readonly subscriptionsService: SubscriptionsService,
     private readonly parentPremiumService: ParentPremiumService,
+    private readonly bookingsService: BookingsService,
     private readonly analytics: AnalyticsService,
     @Inject(PAYMENTS_PROVIDER) private readonly provider: PaymentsProvider,
   ) {}
@@ -141,6 +147,35 @@ export class PaymentsService {
     return order;
   }
 
+  /** Student-only — a 1:1 marketplace booking purchase (blueprint
+   *  §5/§10 Phase 4). amount_minor was already snapshotted (rate ×
+   *  duration, take rate included) when the booking was created. */
+  async initiateBookingOrder(user: AccessTokenPayload, bookingId: string) {
+    const booking = await this.bookingsService.assertPayableByStudent(
+      bookingId,
+      user.sub,
+    );
+
+    const payment = await this.repository.createForBooking(
+      booking.id,
+      user.sub,
+      booking.amount_minor,
+      booking.currency,
+    );
+
+    const order = await this.createOrderFor(
+      payment.id,
+      booking.amount_minor,
+      booking.currency,
+    );
+    this.analytics.capture(user.sub, 'booking_order_created', {
+      bookingId,
+      amountMinor: booking.amount_minor,
+      provider: this.provider.name,
+    });
+    return order;
+  }
+
   private async createOrderFor(
     paymentId: string,
     amountMinor: number,
@@ -224,6 +259,8 @@ export class PaymentsService {
         captured.provider,
         providerPaymentId,
       );
+    } else if (payment.booking_id) {
+      await this.bookingsService.markConfirmed(payment.booking_id);
     }
 
     this.analytics.capture(captured.payer_id, 'payment_captured', {
@@ -231,7 +268,9 @@ export class PaymentsService {
         ? 'fee'
         : payment.subscription_id
           ? 'subscription'
-          : 'parent_premium',
+          : payment.parent_subscription_id
+            ? 'parent_premium'
+            : 'booking',
       amountMinor: payment.amount_minor,
       provider: captured.provider,
     });

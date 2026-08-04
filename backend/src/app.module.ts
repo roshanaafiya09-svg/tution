@@ -14,6 +14,7 @@ import {
   aiConfig,
   embeddingsConfig,
   razorpayConfig,
+  marketplaceConfig,
 } from './config/configuration';
 import { validateEnv } from './config/env.validation';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -58,6 +59,7 @@ import { ProofOfTeachingModule } from './modules/marketplace/proof-of-teaching/p
         aiConfig,
         embeddingsConfig,
         razorpayConfig,
+        marketplaceConfig,
       ],
     }),
     DatabaseModule,

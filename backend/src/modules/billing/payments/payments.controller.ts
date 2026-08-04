@@ -46,8 +46,22 @@ export class PaymentsController {
     return this.paymentsService.initiateParentPremiumOrder(user, planId);
   }
 
+  /** A student's 1:1 marketplace booking purchase (blueprint §5/§10
+   *  Phase 4) — distinct from fee collection and both subscription
+   *  purchases above. Body: none, the amount was snapshotted on the
+   *  booking at creation time. */
+  @Post('booking/:bookingId/order')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('student')
+  createBookingOrder(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('bookingId') bookingId: string,
+  ) {
+    return this.paymentsService.initiateBookingOrder(user, bookingId);
+  }
+
   /** Dev/test-only — see PaymentsProvider.simulateCapture. Shared by
-   *  both flows above; ownership (payer_id === caller) is enforced in
+   *  every flow above; ownership (payer_id === caller) is enforced in
    *  the service, not by role. */
   @Post(':paymentId/simulate-capture')
   @UseGuards(JwtAuthGuard, RolesGuard)

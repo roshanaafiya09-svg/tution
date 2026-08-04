@@ -98,6 +98,20 @@ export const envSchema = z.object({
   // commits to anywhere; the tutor subscription is the actual revenue
   // model. See razorpayConfig's comment in configuration.ts. ---
   PLATFORM_FEE_PERCENT: z.coerce.number().min(0).max(100).default(0),
+
+  // --- Marketplace (blueprint §5/§10 Phase 4): the 1:1 booking take
+  // rate (blueprint gives 15-20%, unset — defaults to the upper bound,
+  // same resolution as parent premium's ₹149 pricing) and the density
+  // gate that switches Discover between a curated/waitlist view and
+  // open ranked search. ---
+  MARKETPLACE_TAKE_RATE_PERCENT: z.coerce.number().min(0).max(100).default(20),
+  MARKETPLACE_DENSITY_GATE_TUTORS: z.coerce.number().int().min(0).default(25),
+  MARKETPLACE_DENSITY_GATE_STUDENTS: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .default(250),
+  MARKETPLACE_WAITLIST_WINDOW_HOURS: z.coerce.number().int().min(1).default(24),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

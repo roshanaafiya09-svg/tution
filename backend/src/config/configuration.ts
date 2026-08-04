@@ -91,6 +91,26 @@ export const razorpayConfig = registerAs('razorpay', () => ({
   platformFeePercent: Number(process.env.PLATFORM_FEE_PERCENT ?? '0'),
 }));
 
+export const marketplaceConfig = registerAs('marketplace', () => ({
+  // Blueprint §5/§10 Phase 4: 1:1 booking take rate, 15-20% range left
+  // unset — shipped at the upper bound, same resolution as parent
+  // premium's ₹149 pricing (blueprint gave a ₹99-149 range).
+  takeRatePercent: Number(process.env.MARKETPLACE_TAKE_RATE_PERCENT ?? '20'),
+  // Blueprint §10: "≥25 active tutors + 250 active students in the
+  // metro" gates open ranked Discover search vs. a curated/waitlist view.
+  densityGateTutors: Number(
+    process.env.MARKETPLACE_DENSITY_GATE_TUTORS ?? '25',
+  ),
+  densityGateStudents: Number(
+    process.env.MARKETPLACE_DENSITY_GATE_STUDENTS ?? '250',
+  ),
+  // How long a waitlist notification holds a slot exclusively before it
+  // lapses back to the general waitlist — invented, no blueprint anchor.
+  waitlistWindowHours: Number(
+    process.env.MARKETPLACE_WAITLIST_WINDOW_HOURS ?? '24',
+  ),
+}));
+
 export const authConfig = registerAs('auth', () => ({
   jwtAccessSecret: process.env.JWT_ACCESS_SECRET as string,
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET as string,
