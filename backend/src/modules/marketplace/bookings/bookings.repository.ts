@@ -96,6 +96,23 @@ export class BookingsRepository {
     return Number(row.count) > 0;
   }
 
+  /** The 1:1-booking half of the "verified session" gate for reviews
+   *  (blueprint §10 Phase 4) — the batch-class half is
+   *  AttendanceRepository.hasVerifiedAttendanceWithTutor(). */
+  async hasCompletedBetween(
+    tutorId: string,
+    studentId: string,
+  ): Promise<boolean> {
+    const row = await this.db
+      .selectFrom('bookings')
+      .select((eb) => eb.fn.countAll().as('count'))
+      .where('tutor_id', '=', tutorId)
+      .where('student_id', '=', studentId)
+      .where('status', '=', 'completed')
+      .executeTakeFirstOrThrow();
+    return Number(row.count) > 0;
+  }
+
   markConfirmed(id: string) {
     return this.db
       .updateTable('bookings')

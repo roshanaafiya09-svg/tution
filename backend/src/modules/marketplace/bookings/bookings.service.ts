@@ -111,6 +111,12 @@ export class BookingsService {
     return this.repository.listForTutor(tutorId);
   }
 
+  /** Read-only accessor for ReviewsModule's verified-session gate —
+   *  avoids exposing the repository itself outside this module. */
+  hasCompletedBookingWith(studentId: string, tutorId: string) {
+    return this.repository.hasCompletedBetween(tutorId, studentId);
+  }
+
   /** Loaded and validated by PaymentsService before creating an order —
    *  mirrors the ownership + status checks initiateFeeOrder does inline. */
   async assertPayableByStudent(bookingId: string, studentId: string) {

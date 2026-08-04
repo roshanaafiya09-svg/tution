@@ -40,6 +40,7 @@ import { DoubtSolverModule } from './modules/ai/doubt-solver/doubt-solver.module
 import { ProgressModule } from './modules/progress/progress.module';
 import { TutorLocationsModule } from './modules/marketplace/locations/tutor-locations.module';
 import { ProofOfTeachingModule } from './modules/marketplace/proof-of-teaching/proof-of-teaching.module';
+import { ReviewsModule } from './modules/marketplace/reviews/reviews.module';
 
 @Module({
   imports: [
@@ -84,6 +85,7 @@ import { ProofOfTeachingModule } from './modules/marketplace/proof-of-teaching/p
     ProgressModule,
     TutorLocationsModule,
     ProofOfTeachingModule,
+    ReviewsModule,
   ],
   providers: [
     {

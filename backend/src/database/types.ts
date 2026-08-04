@@ -585,6 +585,16 @@ export interface BookingsTable {
   updated_at: GeneratedTimestamp;
 }
 
+export interface ReviewsTable {
+  id: string;
+  tutor_id: string;
+  student_id: string;
+  rating: number;
+  comment: string | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
 export interface DB {
   users: UsersTable;
   user_roles: UserRolesTable;
@@ -635,4 +645,5 @@ export interface DB {
   tutor_locations: TutorLocationsTable;
   bookings: BookingsTable;
   booking_waitlists: BookingWaitlistsTable;
+  reviews: ReviewsTable;
 }

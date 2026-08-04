@@ -138,6 +138,27 @@ export class AttendanceRepository {
     };
   }
 
+  /** Whether this student was ever actually present (or late) in one of
+   *  this tutor's classes — the "verified session" gate for reviews
+   *  (blueprint §10 Phase 4). Doesn't filter by class_sessions.status:
+   *  an attendance row marked present is itself the evidence the class
+   *  happened, regardless of whether anyone later flipped the session's
+   *  status field. */
+  async hasVerifiedAttendanceWithTutor(
+    studentId: string,
+    tutorId: string,
+  ): Promise<boolean> {
+    const row = await this.db
+      .selectFrom('attendance')
+      .innerJoin('class_sessions', 'class_sessions.id', 'attendance.session_id')
+      .select((eb) => eb.fn.countAll().as('count'))
+      .where('attendance.student_id', '=', studentId)
+      .where('class_sessions.tutor_id', '=', tutorId)
+      .where('attendance.status', 'in', ['present', 'late'])
+      .executeTakeFirstOrThrow();
+    return Number(row.count) > 0;
+  }
+
   /** Attendance % across every batch a tutor teaches — the "attendance
    *  retention" input to the Proof-of-Teaching score (blueprint §10
    *  Phase 4). Structural copy of summaryForStudent, grouped by tutor
