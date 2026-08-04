@@ -139,6 +139,25 @@ export class AssessmentService {
     return this.submissions.findForStudent(assignmentId, studentId);
   }
 
+  /** Presigned download URLs for every file in a submission — mirrors
+   *  MaterialsService.getDownloadUrl's contract, but a submission can
+   *  hold multiple object_keys (one per uploaded page/photo). */
+  async getSubmissionDownloadUrls(tutorId: string, submissionId: string) {
+    const submission = await this.submissions.findById(submissionId);
+    if (!submission) throw new NotFoundException('Submission not found');
+
+    const assignment = await this.getAssignmentOrThrow(
+      submission.assignment_id,
+    );
+    await this.batchesService.getOwnedBatch(tutorId, assignment.batch_id);
+
+    const objectKeys = submission.object_keys as unknown as string[];
+    const urls = await Promise.all(
+      objectKeys.map((key) => this.storage.createDownloadUrl(key)),
+    );
+    return { urls };
+  }
+
   async grade(
     tutorId: string,
     submissionId: string,

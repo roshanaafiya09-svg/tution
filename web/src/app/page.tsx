@@ -47,6 +47,9 @@ export default function Home() {
             <a href="#pricing" className="transition-colors hover:text-neutral-50">
               Pricing
             </a>
+            <a href="/discover" className="transition-colors hover:text-neutral-50">
+              Find a tutor
+            </a>
           </div>
           <a
             href="#pricing"

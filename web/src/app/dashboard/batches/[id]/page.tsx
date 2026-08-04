@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, formatMinor } from '@/lib/api';
 import type {
@@ -152,7 +152,15 @@ function StudentsTab({ batchId }: { batchId: string }) {
                 </p>
                 <p className="text-xs text-neutral-500">{student.phone_e164}</p>
               </div>
-              <StatusBadge status={student.status} />
+              <div className="flex items-center gap-3">
+                <Link
+                  href={`/dashboard/messages/${batchId}/${student.student_id}`}
+                  className="text-sm font-medium text-brand-700 hover:underline"
+                >
+                  Message
+                </Link>
+                <StatusBadge status={student.status} />
+              </div>
             </div>
           ))}
         </Card>
@@ -315,9 +323,13 @@ function SessionsTab({ batchId }: { batchId: string }) {
 }
 
 function MaterialsTab({ batchId }: { batchId: string }) {
+  const router = useRouter();
   const [materials, setMaterials] = useState<Material[] | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [indexingId, setIndexingId] = useState<string | null>(null);
+  const [indexedId, setIndexedId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setMaterials(await api.get<Material[]>(`/materials/batch/${batchId}`));
@@ -356,6 +368,33 @@ function MaterialsTab({ batchId }: { batchId: string }) {
     window.open(url, '_blank');
   }
 
+  async function generateQuiz(materialId: string) {
+    setError(null);
+    setGeneratingId(materialId);
+    try {
+      const draft = await api.post<{ id: string }>(`/quizzes/material/${materialId}/generate`);
+      router.push(`/dashboard/quizzes/${draft.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not generate a quiz from this material.');
+    } finally {
+      setGeneratingId(null);
+    }
+  }
+
+  async function indexForAi(materialId: string) {
+    setError(null);
+    setIndexingId(materialId);
+    try {
+      await api.post(`/doubt-solver/materials/${materialId}/index`);
+      setIndexedId(materialId);
+      setTimeout(() => setIndexedId(null), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not index this material.');
+    } finally {
+      setIndexingId(null);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <Card>
@@ -389,9 +428,33 @@ function MaterialsTab({ batchId }: { batchId: string }) {
                   {(material.size_bytes / 1024).toFixed(0)} KB
                 </p>
               </div>
-              <Button variant="secondary" onClick={() => void download(material.id)}>
-                Open
-              </Button>
+              <div className="flex items-center gap-2">
+                {material.mime === 'application/pdf' && (
+                  <>
+                    <Button
+                      variant="secondary"
+                      onClick={() => void generateQuiz(material.id)}
+                      disabled={generatingId === material.id}
+                    >
+                      {generatingId === material.id ? 'Generating…' : 'Generate quiz'}
+                    </Button>
+                    {indexedId === material.id ? (
+                      <span className="text-sm text-success">Indexed</span>
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        onClick={() => void indexForAi(material.id)}
+                        disabled={indexingId === material.id}
+                      >
+                        {indexingId === material.id ? 'Indexing…' : 'Index for AI'}
+                      </Button>
+                    )}
+                  </>
+                )}
+                <Button variant="secondary" onClick={() => void download(material.id)}>
+                  Open
+                </Button>
+              </div>
             </div>
           ))}
         </Card>

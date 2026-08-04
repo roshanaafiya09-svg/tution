@@ -67,6 +67,16 @@ export class FeesController {
     return this.feesService.listForStudent(user.sub);
   }
 
+  /** Parent's view of a consented child's fee history (blueprint §3). */
+  @Get('student/:studentId')
+  @Roles('parent')
+  listForStudent(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('studentId') studentId: string,
+  ) {
+    return this.feesService.listForParent(user.sub, studentId);
+  }
+
   @Post(':id/record-payment')
   @Roles('tutor')
   recordPayment(

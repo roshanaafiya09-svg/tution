@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Script from 'next/script';
 import posthog from 'posthog-js';
-import { apiPost, tokenStore, ApiError } from '@/lib/api';
+import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
 import { Button, Field, inputClass } from '@/components/ui';
+import type { Me } from '@/lib/types';
 
 interface AuthTokens {
   accessToken: string;
@@ -36,12 +37,12 @@ export function LoginForm() {
   const [phase, setPhase] = useState<Phase>('phone');
   const [phone, setPhone] = useState('+91');
   const [code, setCode] = useState('');
-  const [signupRole, setSignupRole] = useState<'tutor' | 'student'>('tutor');
+  const [signupRole, setSignupRole] = useState<'tutor' | 'student' | 'parent'>('tutor');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const googleButtonRef = useRef<HTMLDivElement>(null);
 
-  function onAuthenticated(tokens: AuthTokens, roles?: string[]) {
+  async function onAuthenticated(tokens: AuthTokens) {
     tokenStore.set(tokens.accessToken, tokens.refreshToken);
     if (posthog.__loaded) {
       const userId = decodeJwtSubject(tokens.accessToken);
@@ -51,9 +52,19 @@ export function LoginForm() {
       router.replace(next);
       return;
     }
-    // Students have no web dashboard in Phase 1 — the mobile app is
-    // their surface, so send them somewhere that makes sense on web.
-    router.replace(roles?.includes('tutor') === false ? '/' : '/dashboard');
+    // Fetch the authoritative role set rather than trust the signup-only
+    // `signupRole` choice — a returning user never passes that through.
+    // Students have no web dashboard — the mobile app is their surface,
+    // so send them somewhere that makes sense on web. Tutors and parents
+    // each get their own portal.
+    const me = await api.get<Me>('/auth/me').catch(() => null);
+    if (me?.roles.includes('parent')) {
+      router.replace('/parent');
+    } else if (me?.roles.includes('tutor')) {
+      router.replace('/dashboard');
+    } else {
+      router.replace('/');
+    }
   }
 
   async function handleSendOtp() {
@@ -69,7 +80,7 @@ export function LoginForm() {
     }
   }
 
-  async function handleVerify(withRole?: 'tutor' | 'student') {
+  async function handleVerify(withRole?: 'tutor' | 'student' | 'parent') {
     setError(null);
     setLoading(true);
     try {
@@ -78,7 +89,7 @@ export function LoginForm() {
         code,
         signupRole: withRole,
       });
-      onAuthenticated(tokens, withRole ? [withRole] : undefined);
+      await onAuthenticated(tokens);
     } catch (err) {
       if (err instanceof ApiError && err.status === 400 && !withRole) {
         setPhase('choose-role');
@@ -95,7 +106,7 @@ export function LoginForm() {
     setLoading(true);
     try {
       const tokens = await apiPost<AuthTokens>('/auth/google', { idToken });
-      onAuthenticated(tokens);
+      await onAuthenticated(tokens);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Google sign-in failed.');
     } finally {
@@ -175,10 +186,10 @@ export function LoginForm() {
           {phase === 'choose-role' && (
             <div>
               <p className="mb-2 text-sm text-neutral-500">
-                New here — are you signing up as a tutor or a student?
+                New here — are you a tutor, a student, or a parent?
               </p>
               <div className="flex gap-2">
-                {(['tutor', 'student'] as const).map((role) => (
+                {(['tutor', 'student', 'parent'] as const).map((role) => (
                   <button
                     key={role}
                     onClick={() => setSignupRole(role)}

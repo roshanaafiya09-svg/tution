@@ -20,6 +20,7 @@ export default function AssignmentSubmissionsPage() {
   const { id } = useParams<{ id: string }>();
   const [submissions, setSubmissions] = useState<Submission[] | null>(null);
   const [grading, setGrading] = useState<Record<string, { grade: string; feedback: string }>>({});
+  const [viewingId, setViewingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setSubmissions(await api.get<Submission[]>(`/assignments/${id}/submissions`));
@@ -38,6 +39,18 @@ export default function AssignmentSubmissionsPage() {
       feedback: entry.feedback || undefined,
     });
     await load();
+  }
+
+  async function viewFiles(submissionId: string) {
+    setViewingId(submissionId);
+    try {
+      const { urls } = await api.get<{ urls: string[] }>(
+        `/assignments/submissions/${submissionId}/download-urls`,
+      );
+      urls.forEach((url) => window.open(url, '_blank'));
+    } finally {
+      setViewingId(null);
+    }
   }
 
   return (
@@ -64,6 +77,14 @@ export default function AssignmentSubmissionsPage() {
                     Submitted {new Date(submission.submitted_at).toLocaleString('en-IN')} ·{' '}
                     {submission.object_keys.length} file
                     {submission.object_keys.length === 1 ? '' : 's'}
+                    {' · '}
+                    <button
+                      onClick={() => void viewFiles(submission.id)}
+                      disabled={viewingId === submission.id}
+                      className="font-medium text-brand-700 hover:underline disabled:opacity-50"
+                    >
+                      {viewingId === submission.id ? 'Opening…' : 'View'}
+                    </button>
                   </p>
                 </div>
                 {submission.grade ? (

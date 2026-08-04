@@ -99,6 +99,18 @@ export class AssessmentController {
     return this.assessmentService.getOwnSubmission(user.sub, assignmentId);
   }
 
+  @Get('submissions/:submissionId/download-urls')
+  @Roles('tutor')
+  getSubmissionDownloadUrls(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('submissionId') submissionId: string,
+  ) {
+    return this.assessmentService.getSubmissionDownloadUrls(
+      user.sub,
+      submissionId,
+    );
+  }
+
   @Post('submissions/:submissionId/grade')
   @Roles('tutor')
   grade(

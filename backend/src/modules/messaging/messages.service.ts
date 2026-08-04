@@ -70,9 +70,14 @@ export class MessagesService {
       .map((link) => link.student_id);
 
     const perChild = await Promise.all(
-      activeChildIds.map((studentId) =>
-        this.repository.listThreadsForStudent(studentId),
-      ),
+      activeChildIds.map(async (studentId) => {
+        const threads = await this.repository.listThreadsForStudent(studentId);
+        // listThreadsForStudent's query doesn't select student_id (it's an
+        // implicit filter, not a column) — annotate it back on here so a
+        // parent's flattened multi-child list can still tell threads apart
+        // and the frontend has a studentId to link into each thread with.
+        return threads.map((thread) => ({ ...thread, student_id: studentId }));
+      }),
     );
 
     return perChild

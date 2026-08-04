@@ -104,13 +104,19 @@ async function request<T>(
   if (!res.ok) return parseError(res);
   if (res.status === 204) return undefined as T;
 
-  return (await res.json()) as T;
+  // A Nest handler returning `undefined` (e.g. a "may not exist yet" GET
+  // like a not-yet-created profile/location) sends an empty 200 body, not
+  // JSON `null` — res.json() throws on that, so parse manually and treat
+  // an empty body as null instead.
+  const text = await res.text();
+  return (text === '' ? null : JSON.parse(text)) as T;
 }
 
 export const api = {
   get: <T>(path: string) => request<T>('GET', path),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
+  patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   delete: <T>(path: string) => request<T>('DELETE', path),
 };
 

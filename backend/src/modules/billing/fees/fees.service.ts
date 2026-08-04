@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { FeesRepository } from './fees.repository';
 import { BatchesService } from '../../scheduling/batches/batches.service';
+import { ParentLinksRepository } from '../../parents/parent-links.repository';
 import type { GeneratePeriodDto } from './dto/generate-period.dto';
 import { AnalyticsService } from '../../analytics/analytics.service';
 
@@ -18,6 +19,7 @@ export class FeesService {
   constructor(
     private readonly repository: FeesRepository,
     private readonly batchesService: BatchesService,
+    private readonly parentLinksRepository: ParentLinksRepository,
     private readonly analytics: AnalyticsService,
   ) {}
 
@@ -62,6 +64,20 @@ export class FeesService {
   }
 
   listForStudent(studentId: string) {
+    return this.repository.listForStudent(studentId);
+  }
+
+  /** Parent's view of a consented child's fee history (blueprint §3:
+   *  "fee history") — mirrors ProgressService.forParent's exact
+   *  consent-check pattern. 403s unless there's an active consent link. */
+  async listForParent(parentId: string, studentId: string) {
+    const link = await this.parentLinksRepository.findByParentAndStudent(
+      parentId,
+      studentId,
+    );
+    if (!link || link.status !== 'active') {
+      throw new ForbiddenException('No active consented link to this student');
+    }
     return this.repository.listForStudent(studentId);
   }
 
