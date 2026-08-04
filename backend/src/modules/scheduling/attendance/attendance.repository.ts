@@ -138,6 +138,53 @@ export class AttendanceRepository {
     };
   }
 
+  /** Attendance % across every batch a tutor teaches — the "attendance
+   *  retention" input to the Proof-of-Teaching score (blueprint §10
+   *  Phase 4). Structural copy of summaryForStudent, grouped by tutor
+   *  instead of student+batch. */
+  async summaryForTutor(tutorId: string) {
+    const row = await this.db
+      .selectFrom('attendance')
+      .innerJoin('class_sessions', 'class_sessions.id', 'attendance.session_id')
+      .select((eb) => [
+        eb.fn.countAll().as('total'),
+        eb.fn
+          .sum(
+            eb
+              .case()
+              .when('attendance.status', '=', 'present')
+              .then(1)
+              .else(0)
+              .end(),
+          )
+          .as('present'),
+        eb.fn
+          .sum(
+            eb
+              .case()
+              .when('attendance.status', '=', 'late')
+              .then(1)
+              .else(0)
+              .end(),
+          )
+          .as('late'),
+      ])
+      .where('class_sessions.tutor_id', '=', tutorId)
+      .executeTakeFirstOrThrow();
+
+    const total = Number(row.total);
+    const present = Number(row.present ?? 0);
+    const late = Number(row.late ?? 0);
+
+    return {
+      total,
+      present,
+      late,
+      absent: total - present - late,
+      rate: total === 0 ? null : Math.round(((present + late) / total) * 100),
+    };
+  }
+
   /** Attendance % and counts for a student in one batch — feeds the student progress view. */
   async summaryForStudent(studentId: string, batchId: string) {
     const row = await this.db

@@ -130,6 +130,18 @@ export class SessionsRepository {
     return Number(row.count);
   }
 
+  /** Total minutes of completed class time — the "verified hours" input
+   *  to the Proof-of-Teaching score (blueprint §10 Phase 4). */
+  async sumCompletedMinutesForTutor(tutorId: string): Promise<number> {
+    const row = await this.db
+      .selectFrom('class_sessions')
+      .select((eb) => eb.fn.sum('duration_min').as('total'))
+      .where('tutor_id', '=', tutorId)
+      .where('status', '=', 'completed')
+      .executeTakeFirstOrThrow();
+    return Number(row.total ?? 0);
+  }
+
   updateStatus(id: string, status: 'scheduled' | 'completed' | 'cancelled') {
     return this.db
       .updateTable('class_sessions')

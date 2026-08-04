@@ -38,6 +38,7 @@ import { QuizzesModule } from './modules/ai/quizzes/quizzes.module';
 import { DoubtSolverModule } from './modules/ai/doubt-solver/doubt-solver.module';
 import { ProgressModule } from './modules/progress/progress.module';
 import { TutorLocationsModule } from './modules/marketplace/locations/tutor-locations.module';
+import { ProofOfTeachingModule } from './modules/marketplace/proof-of-teaching/proof-of-teaching.module';
 
 @Module({
   imports: [
@@ -80,6 +81,7 @@ import { TutorLocationsModule } from './modules/marketplace/locations/tutor-loca
     DoubtSolverModule,
     ProgressModule,
     TutorLocationsModule,
+    ProofOfTeachingModule,
   ],
   providers: [
     {

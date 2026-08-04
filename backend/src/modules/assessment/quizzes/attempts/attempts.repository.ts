@@ -60,6 +60,26 @@ export class QuizAttemptsRepository {
       .execute();
   }
 
+  /** Every attempt across every batch a tutor teaches — the "measured
+   *  improvement" input to the Proof-of-Teaching score (blueprint §10
+   *  Phase 4), fed through the same week-bucketed trend helper the
+   *  student progress view uses. */
+  listForTutor(tutorId: string) {
+    return this.db
+      .selectFrom('quiz_attempts')
+      .innerJoin('quizzes', 'quizzes.id', 'quiz_attempts.quiz_id')
+      .innerJoin('batches', 'batches.id', 'quizzes.batch_id')
+      .select([
+        'quiz_attempts.id',
+        'quiz_attempts.score',
+        'quiz_attempts.total',
+        'quiz_attempts.submitted_at',
+      ])
+      .where('batches.tutor_id', '=', tutorId)
+      .orderBy('quiz_attempts.submitted_at', 'desc')
+      .execute();
+  }
+
   /** A student's full attempt history across every batch — feeds the
    *  Phase 3 attempt-history view (blueprint §7). */
   listForStudent(studentId: string) {
