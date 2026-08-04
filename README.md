@@ -2,7 +2,7 @@
 
 A tutor-first teaching business OS for the Chennai / Tamil Nadu tuition market — batches, scheduling, attendance, materials, homework, and fee tracking, with students/parents on a companion mobile app. See [`BLUEPRINT 2.md`](BLUEPRINT%202.md) for the full product spec (source of truth for scope).
 
-**Status:** Phase 1 (Tutor OS core) — in active build.
+**Status:** Phases 1–4 (Tutor OS, closed network, student/parent depth, marketplace) implemented — see [`handover.md`](handover.md) for what's shipped vs. what still needs manual setup/deploy steps.
 
 ## Monorepo structure
 
@@ -50,8 +50,12 @@ flutter run
 
 ## Scope discipline
 
-This repo builds **Phase 1 only** (Tutor OS core — see blueprint §4). Payments processing, subscriptions/trial enforcement, parent accounts, AI features, and the marketplace are explicitly deferred (blueprint §4 "OUT", §10 roadmap). Anything moved from OUT to IN needs an explicit decision — this file and the blueprint are the contract.
+Anything moved between the blueprint's IN/OUT lists needs an explicit decision — the blueprint is the contract, not this file.
 
-## Design system
+## Documentation
 
-See [`docs/design-system.md`](docs/design-system.md). Tokens live in [`shared/design-tokens/tokens.json`](shared/design-tokens/tokens.json) and are mirrored into Tailwind (web) and Flutter `ThemeData` (mobile).
+- [`handover.md`](handover.md) — full-blueprint status, manual setup steps, known gaps
+- [`docs/architecture.md`](docs/architecture.md) — module map, tech stack, deployment
+- [`docs/api-reference.md`](docs/api-reference.md) — every REST endpoint + web route + mobile screen
+- [`docs/database-schema.md`](docs/database-schema.md) — every migration, Phase 1–4
+- [`docs/design-system.md`](docs/design-system.md) — design tokens (`shared/design-tokens/tokens.json`), mirrored into Tailwind (web) and Flutter `ThemeData` (mobile)
