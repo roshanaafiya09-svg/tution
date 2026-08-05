@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { CheckCircle2, ShieldCheck } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import type { ParentLink } from '@/lib/types';
-import { Card, PageHeader, Button, Field, inputClass } from '@/components/ui';
+import { Card, PageHeader, Button, Field, Input, InlineError } from '@/components/ui';
 
 const POLICY_VERSION = '1.0';
 
@@ -57,8 +58,13 @@ export default function LinkChildPage() {
       <Card>
         {done ? (
           <div className="text-center">
-            <p className="font-display text-xl font-semibold text-neutral-900">Linked</p>
-            <p className="mt-2 text-sm text-neutral-500">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-success-bg dark:bg-success/15">
+              <CheckCircle2 className="h-6 w-6 text-success dark:text-success-dark" aria-hidden />
+            </div>
+            <p className="font-display text-xl font-semibold text-neutral-900 dark:text-neutral-50">
+              Linked
+            </p>
+            <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
               You&apos;ll now see this child&apos;s attendance, progress, and weekly digest.
             </p>
             <Button className="mt-6 w-full" onClick={() => router.push('/parent')}>
@@ -67,27 +73,33 @@ export default function LinkChildPage() {
           </div>
         ) : link ? (
           <div>
-            <p className="text-sm text-neutral-700">
-              Under India&apos;s DPDP Act, we need your explicit consent before showing you this
-              child&apos;s attendance, materials, and progress data.
-            </p>
-            {error && <p className="mt-3 text-sm text-error">{error}</p>}
-            <Button className="mt-4 w-full" onClick={() => void consent()} disabled={consenting}>
+            <div className="mb-3 flex items-start gap-2">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand-500 dark:text-brand-300" aria-hidden />
+              <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                Under India&apos;s DPDP Act, we need your explicit consent before showing you this
+                child&apos;s attendance, materials, and progress data.
+              </p>
+            </div>
+            {error && (
+              <div className="mt-3">
+                <InlineError>{error}</InlineError>
+              </div>
+            )}
+            <Button className="mt-4 w-full" onClick={() => void consent()} disabled={consenting} loading={consenting}>
               {consenting ? 'Saving…' : 'I consent — link my child'}
             </Button>
           </div>
         ) : (
           <div className="flex flex-col gap-4">
             <Field label="Invite token" hint="Ask your child to share it from their app's settings.">
-              <input
-                className={inputClass}
+              <Input
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
                 placeholder="Paste the token here"
               />
             </Field>
-            {error && <p className="text-sm text-error">{error}</p>}
-            <Button onClick={() => void redeem()} disabled={redeeming || !token}>
+            {error && <InlineError>{error}</InlineError>}
+            <Button onClick={() => void redeem()} disabled={redeeming || !token} loading={redeeming}>
               {redeeming ? 'Checking…' : 'Continue'}
             </Button>
           </div>

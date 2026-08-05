@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Users } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { Digest, ParentLink } from '@/lib/types';
-import { Card, PageHeader, EmptyState, StatusBadge, Button } from '@/components/ui';
+import { Card, PageHeader, EmptyState, StatusBadge, Button, PageLoading } from '@/components/ui';
 
 export default function ParentHomePage() {
   const [links, setLinks] = useState<ParentLink[] | null>(null);
@@ -48,9 +49,10 @@ export default function ParentHomePage() {
       />
 
       {links === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <PageLoading />
       ) : active.length === 0 ? (
         <EmptyState
+          icon={Users}
           title="No children linked yet"
           description="Ask your child to share their invite token from the mobile app, then link them here."
         />
@@ -60,14 +62,18 @@ export default function ParentHomePage() {
             const digest = latestDigestFor(link.student_id);
             return (
               <Link key={link.id} href={`/parent/child/${link.student_id}`}>
-                <Card className="h-full transition-shadow hover:shadow-md">
-                  <p className="font-medium text-neutral-900">
+                <Card interactive className="h-full">
+                  <p className="font-medium text-neutral-900 dark:text-neutral-50">
                     Student {link.student_id.slice(0, 8)}
                   </p>
                   {digest ? (
-                    <p className="mt-2 text-sm text-neutral-600">{digest.narrative}</p>
+                    <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+                      {digest.narrative}
+                    </p>
                   ) : (
-                    <p className="mt-2 text-sm text-neutral-500">No digest yet.</p>
+                    <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
+                      No digest yet.
+                    </p>
                   )}
                 </Card>
               </Link>
@@ -78,17 +84,23 @@ export default function ParentHomePage() {
 
       {pending.length > 0 && (
         <>
-          <h2 className="mb-3 mt-8 text-lg font-semibold text-neutral-900">Awaiting consent</h2>
-          <Card className="divide-y divide-neutral-100 p-0">
+          <h2 className="mb-3 mt-8 text-lg font-semibold text-neutral-900 dark:text-neutral-50">
+            Awaiting consent
+          </h2>
+          <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
             {pending.map((link) => (
               <div key={link.id} className="flex items-center justify-between px-6 py-3">
-                <p className="text-sm text-neutral-700">Student {link.student_id.slice(0, 8)}</p>
+                <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                  Student {link.student_id.slice(0, 8)}
+                </p>
                 <div className="flex items-center gap-3">
                   <StatusBadge status="pending" />
                   <Button
                     variant="secondary"
+                    size="sm"
                     onClick={() => void grantConsent(link.id)}
                     disabled={consentingId === link.id}
+                    loading={consentingId === link.id}
                   >
                     {consentingId === link.id ? 'Saving…' : 'Grant consent'}
                   </Button>
