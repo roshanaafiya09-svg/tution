@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { GraduationCap, ClipboardCheck, Wallet, Landmark } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
 import { payForOrder } from '@/lib/razorpay';
 import type { PaymentOrder, Payout, SubscriptionPlan, SubscriptionRecap } from '@/lib/types';
-import { Card, PageHeader, EmptyState, StatusBadge, Button } from '@/components/ui';
+import { Card, PageHeader, EmptyState, StatusBadge, Button, InlineError, PageLoading } from '@/components/ui';
 
 export default function BillingPage() {
   const [recap, setRecap] = useState<SubscriptionRecap | null>(null);
@@ -55,56 +56,79 @@ export default function BillingPage() {
     <div>
       <PageHeader title="Billing & payouts" description="Your subscription, trial status, and money you've earned." />
 
-      {error && <p className="mb-4 text-sm text-error">{error}</p>}
+      {error && (
+        <div className="mb-4">
+          <InlineError>{error}</InlineError>
+        </div>
+      )}
 
       {recap === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <PageLoading />
       ) : (
         <>
           <Card className="mb-8">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-neutral-500">Subscription status</p>
-                <p className="mt-1 font-display text-2xl font-semibold text-neutral-900 capitalize">
+                <p className="text-sm text-neutral-500 dark:text-neutral-400">Subscription status</p>
+                <p className="mt-1 font-display text-2xl font-semibold capitalize text-neutral-900 dark:text-neutral-50">
                   {recap.subscriptionStatus.replace('_', ' ')}
                 </p>
               </div>
               {!isPaid && trialDaysLeft !== null && (
-                <p className="text-sm text-neutral-500">{trialDaysLeft} days left in trial</p>
+                <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                  {trialDaysLeft} days left in trial
+                </p>
               )}
             </div>
 
             <div className="mt-6 grid gap-4 sm:grid-cols-3">
-              <div>
-                <p className="text-sm text-neutral-500">Classes run</p>
-                <p className="mt-1 text-2xl font-semibold text-neutral-900">{recap.classesRun}</p>
+              <div className="flex items-start gap-2">
+                <GraduationCap className="mt-0.5 h-4 w-4 text-brand-500 dark:text-brand-300" aria-hidden />
+                <div>
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400">Classes run</p>
+                  <p className="mt-1 text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
+                    {recap.classesRun}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm text-neutral-500">Attendances marked</p>
-                <p className="mt-1 text-2xl font-semibold text-neutral-900">{recap.attendancesMarked}</p>
+              <div className="flex items-start gap-2">
+                <ClipboardCheck className="mt-0.5 h-4 w-4 text-brand-500 dark:text-brand-300" aria-hidden />
+                <div>
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400">Attendances marked</p>
+                  <p className="mt-1 text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
+                    {recap.attendancesMarked}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm text-neutral-500">Fees tracked</p>
-                <p className="mt-1 text-2xl font-semibold text-neutral-900">
-                  {formatMinor(recap.feesTrackedMinor, recap.currency)}
-                </p>
+              <div className="flex items-start gap-2">
+                <Wallet className="mt-0.5 h-4 w-4 text-brand-500 dark:text-brand-300" aria-hidden />
+                <div>
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400">Fees tracked</p>
+                  <p className="mt-1 text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
+                    {formatMinor(recap.feesTrackedMinor, recap.currency)}
+                  </p>
+                </div>
               </div>
             </div>
           </Card>
 
           {!isPaid && plans && (
             <>
-              <h2 className="mb-3 text-lg font-semibold text-neutral-900">Plans</h2>
+              <h2 className="mb-3 text-lg font-semibold text-neutral-900 dark:text-neutral-50">Plans</h2>
               <div className="mb-8 grid gap-4 sm:grid-cols-2">
                 {Object.entries(plans).map(([planId, plan]) => (
                   <Card key={planId} className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium text-neutral-900">{plan.label}</p>
-                      <p className="text-sm text-neutral-500">
+                      <p className="font-medium text-neutral-900 dark:text-neutral-50">{plan.label}</p>
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400">
                         {formatMinor(plan.priceMinor, 'INR')} / {plan.periodDays} days
                       </p>
                     </div>
-                    <Button onClick={() => void purchase(planId)} disabled={purchasing === planId}>
+                    <Button
+                      onClick={() => void purchase(planId)}
+                      disabled={purchasing === planId}
+                      loading={purchasing === planId}
+                    >
                       {purchasing === planId ? 'Processing…' : 'Subscribe'}
                     </Button>
                   </Card>
@@ -115,24 +139,27 @@ export default function BillingPage() {
         </>
       )}
 
-      <h2 className="mb-3 text-lg font-semibold text-neutral-900">Payouts</h2>
+      <h2 className="mb-3 text-lg font-semibold text-neutral-900 dark:text-neutral-50">Payouts</h2>
       {payouts === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <PageLoading />
       ) : payouts.length === 0 ? (
         <EmptyState
+          icon={Landmark}
           title="No payouts yet"
           description="Payouts appear here once students pay fees online and a payout run settles them to you."
         />
       ) : (
-        <Card className="divide-y divide-neutral-100 p-0">
+        <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
           {payouts.map((payout) => (
             <div key={payout.id} className="flex items-center justify-between px-6 py-3">
               <div>
-                <p className="text-sm font-medium text-neutral-900">
+                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                   {new Date(payout.period_start).toLocaleDateString('en-IN')} –{' '}
                   {new Date(payout.period_end).toLocaleDateString('en-IN')}
                 </p>
-                <p className="text-sm text-neutral-500">{formatMinor(payout.amount_minor, payout.currency)}</p>
+                <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                  {formatMinor(payout.amount_minor, payout.currency)}
+                </p>
               </div>
               <StatusBadge status={payout.status} />
             </div>

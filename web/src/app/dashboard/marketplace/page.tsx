@@ -1,9 +1,20 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { MapPin, Award, CalendarClock } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
 import type { Booking, ProofOfTeaching, Subject, TutorLocation } from '@/lib/types';
-import { Card, PageHeader, EmptyState, StatusBadge, Button, Field, inputClass } from '@/components/ui';
+import {
+  Card,
+  PageHeader,
+  EmptyState,
+  StatusBadge,
+  Button,
+  Field,
+  Input,
+  InlineError,
+  PageLoading,
+} from '@/components/ui';
 
 export default function MarketplacePage() {
   const [location, setLocation] = useState<TutorLocation | null | undefined>(undefined);
@@ -93,26 +104,31 @@ export default function MarketplacePage() {
         description="Your public discovery listing, Proof-of-Teaching score, and 1:1 bookings."
       />
 
-      {error && <p className="mb-4 text-sm text-error">{error}</p>}
+      {error && (
+        <div className="mb-4">
+          <InlineError>{error}</InlineError>
+        </div>
+      )}
 
       <div className="mb-8 grid gap-4 sm:grid-cols-2">
         <Card>
-          <p className="mb-3 font-medium text-neutral-900">Location</p>
+          <div className="mb-3 flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-brand-500 dark:text-brand-300" aria-hidden />
+            <p className="font-medium text-neutral-900 dark:text-neutral-50">Location</p>
+          </div>
           {location === undefined ? (
-            <p className="text-sm text-neutral-400">Loading…</p>
+            <PageLoading label="Loading…" />
           ) : (
             <div className="grid gap-3">
               <Field label="City">
-                <input
-                  className={inputClass}
+                <Input
                   value={locForm.city}
                   onChange={(e) => setLocForm({ ...locForm, city: e.target.value })}
                   placeholder="Chennai"
                 />
               </Field>
               <Field label="Area (optional)">
-                <input
-                  className={inputClass}
+                <Input
                   value={locForm.areaLabel}
                   onChange={(e) => setLocForm({ ...locForm, areaLabel: e.target.value })}
                   placeholder="Anna Nagar"
@@ -120,16 +136,14 @@ export default function MarketplacePage() {
               </Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Latitude">
-                  <input
-                    className={inputClass}
+                  <Input
                     value={locForm.lat}
                     onChange={(e) => setLocForm({ ...locForm, lat: e.target.value })}
                     placeholder="13.0827"
                   />
                 </Field>
                 <Field label="Longitude">
-                  <input
-                    className={inputClass}
+                  <Input
                     value={locForm.lng}
                     onChange={(e) => setLocForm({ ...locForm, lng: e.target.value })}
                     placeholder="80.2707"
@@ -139,6 +153,7 @@ export default function MarketplacePage() {
               <Button
                 onClick={() => void saveLocation()}
                 disabled={savingLocation || !locForm.city || !locForm.lat || !locForm.lng}
+                loading={savingLocation}
               >
                 {savingLocation ? 'Saving…' : 'Save location'}
               </Button>
@@ -147,28 +162,33 @@ export default function MarketplacePage() {
         </Card>
 
         <Card>
-          <p className="mb-3 font-medium text-neutral-900">Proof-of-Teaching score</p>
+          <div className="mb-3 flex items-center gap-2">
+            <Award className="h-4 w-4 text-brand-500 dark:text-brand-300" aria-hidden />
+            <p className="font-medium text-neutral-900 dark:text-neutral-50">Proof-of-Teaching score</p>
+          </div>
           {proofOfTeaching === null ? (
-            <p className="text-sm text-neutral-400">Loading…</p>
+            <PageLoading label="Loading…" />
           ) : (
             <>
-              <p className="font-display text-3xl font-semibold text-neutral-900">
+              <p className="font-display text-3xl font-semibold text-neutral-900 dark:text-neutral-50">
                 {proofOfTeaching.score}
               </p>
               <dl className="mt-4 space-y-1 text-sm">
                 <div className="flex justify-between">
-                  <dt className="text-neutral-500">Verified hours</dt>
-                  <dd className="text-neutral-900">{proofOfTeaching.inputs.verifiedHours}</dd>
+                  <dt className="text-neutral-500 dark:text-neutral-400">Verified hours</dt>
+                  <dd className="text-neutral-900 dark:text-neutral-100">
+                    {proofOfTeaching.inputs.verifiedHours}
+                  </dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-neutral-500">Attendance retention</dt>
-                  <dd className="text-neutral-900">
+                  <dt className="text-neutral-500 dark:text-neutral-400">Attendance retention</dt>
+                  <dd className="text-neutral-900 dark:text-neutral-100">
                     {proofOfTeaching.inputs.attendanceRetentionRate ?? '—'}%
                   </dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-neutral-500">Quiz score trend</dt>
-                  <dd className="capitalize text-neutral-900">
+                  <dt className="text-neutral-500 dark:text-neutral-400">Quiz score trend</dt>
+                  <dd className="capitalize text-neutral-900 dark:text-neutral-100">
                     {proofOfTeaching.inputs.quizImprovementTrend}
                   </dd>
                 </div>
@@ -178,20 +198,26 @@ export default function MarketplacePage() {
         </Card>
       </div>
 
-      <h2 className="mb-3 text-lg font-semibold text-neutral-900">Upcoming bookings</h2>
+      <h2 className="mb-3 text-lg font-semibold text-neutral-900 dark:text-neutral-50">Upcoming bookings</h2>
       {bookings === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <PageLoading />
       ) : upcoming.length === 0 ? (
         <div className="mb-8">
-          <EmptyState title="No upcoming bookings" description="1:1 sessions students book with you appear here." />
+          <EmptyState
+            icon={CalendarClock}
+            title="No upcoming bookings"
+            description="1:1 sessions students book with you appear here."
+          />
         </div>
       ) : (
         <div className="mb-8 space-y-3">
           {upcoming.map((booking) => (
-            <Card key={booking.id} className="flex items-center justify-between">
+            <Card key={booking.id} className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="font-medium text-neutral-900">{subjectName(booking.subject_id)}</p>
-                <p className="text-sm text-neutral-500">
+                <p className="font-medium text-neutral-900 dark:text-neutral-50">
+                  {subjectName(booking.subject_id)}
+                </p>
+                <p className="text-sm text-neutral-500 dark:text-neutral-400">
                   {new Date(booking.scheduled_start_utc).toLocaleString('en-IN', {
                     timeZone: booking.timezone,
                     weekday: 'short',
@@ -206,6 +232,7 @@ export default function MarketplacePage() {
               <div className="flex gap-2">
                 <Button
                   variant="secondary"
+                  size="sm"
                   onClick={() => void complete(booking.id)}
                   disabled={busyId === booking.id}
                 >
@@ -213,6 +240,7 @@ export default function MarketplacePage() {
                 </Button>
                 <Button
                   variant="danger"
+                  size="sm"
                   onClick={() => void noShow(booking.id)}
                   disabled={busyId === booking.id}
                 >
@@ -226,13 +254,17 @@ export default function MarketplacePage() {
 
       {other.length > 0 && (
         <>
-          <h2 className="mb-3 text-lg font-semibold text-neutral-900">Past & other bookings</h2>
-          <Card className="divide-y divide-neutral-100 p-0">
+          <h2 className="mb-3 text-lg font-semibold text-neutral-900 dark:text-neutral-50">
+            Past & other bookings
+          </h2>
+          <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
             {other.map((booking) => (
               <div key={booking.id} className="flex items-center justify-between px-6 py-3">
                 <div>
-                  <p className="text-sm font-medium text-neutral-900">{subjectName(booking.subject_id)}</p>
-                  <p className="text-sm text-neutral-500">
+                  <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                    {subjectName(booking.subject_id)}
+                  </p>
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400">
                     {new Date(booking.scheduled_start_utc).toLocaleDateString('en-IN')}
                   </p>
                 </div>
