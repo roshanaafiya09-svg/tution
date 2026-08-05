@@ -2,7 +2,8 @@
 // '@/components/ui' (not the sibling files directly) so this file is the
 // single public surface; keep exported names stable across redesigns.
 
-export { Button, buttonVariants, type ButtonProps } from './button';
+export { Button, type ButtonProps } from './button';
+export { buttonVariants, type ButtonVariantProps } from './button-variants';
 export { Card, CardHeader, CardTitle, CardDescription, CardFooter, type CardProps } from './card';
 export { PageHeader } from './page-header';
 export { Field, inputClass, Input, Textarea, Select } from './input';
