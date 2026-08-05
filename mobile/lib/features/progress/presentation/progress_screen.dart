@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/design_tokens.dart';
 import '../../../l10n/gen/app_localizations.dart';
+import '../../../widgets/widgets.dart';
 import '../application/progress_controller.dart';
 import '../data/batch_progress.dart';
 
@@ -20,22 +22,13 @@ class ProgressScreen extends ConsumerWidget {
         child: RefreshIndicator(
           onRefresh: () => ref.refresh(progressControllerProvider.future),
           child: progressAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (_, _) => ListView(
-              padding: const EdgeInsets.all(DesignTokens.pageGutter),
-              children: [
-                const SizedBox(height: 64),
-                Center(child: Text(l10n.progressLoadError)),
-              ],
-            ),
+            loading: () => const LoadingView(),
+            error: (_, _) => ErrorView(message: l10n.progressLoadError),
             data: (rows) {
               if (rows.isEmpty) {
-                return ListView(
-                  padding: const EdgeInsets.all(DesignTokens.pageGutter),
-                  children: [
-                    const SizedBox(height: 64),
-                    Center(child: Text(l10n.noEnrolledBatches)),
-                  ],
+                return EmptyStateView(
+                  title: l10n.noEnrolledBatches,
+                  icon: CupertinoIcons.chart_bar,
                 );
               }
               return ListView(
@@ -59,10 +52,9 @@ class _BatchProgressCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context)!;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(DesignTokens.cardPadding),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: AppCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -116,6 +108,7 @@ class _RateGauge extends StatelessWidget {
               child: CircularProgressIndicator(
                 value: rate == null ? 0 : rate! / 100,
                 strokeWidth: 6,
+                strokeCap: StrokeCap.round,
                 backgroundColor: color.withValues(alpha: 0.12),
                 valueColor: AlwaysStoppedAnimation(color),
               ),
