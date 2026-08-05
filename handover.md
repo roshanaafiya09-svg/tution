@@ -1,6 +1,6 @@
 # Handover — full-blueprint status
 
-This is the top-level status/handover doc for whoever picks up this repo next. It covers what's shipped against [`BLUEPRINT 2.md`](BLUEPRINT%202.md), what's verified, what still needs a human with account access, and known gaps. Technical reference (module map, every API endpoint, every DB migration) lives in [`docs/architecture.md`](docs/architecture.md), [`docs/api-reference.md`](docs/api-reference.md), and [`docs/database-schema.md`](docs/database-schema.md) — those are now stale on the web-routes side after the frontend build in §2 below and need a refresh; this file is current.
+This is the top-level status/handover doc for whoever picks up this repo next. It covers what's shipped against [`BLUEPRINT 2.md`](BLUEPRINT%202.md), what's verified, what still needs a human with account access, and known gaps. Technical reference (module map, every API endpoint, every DB migration) lives in [`docs/architecture.md`](docs/architecture.md), [`docs/api-reference.md`](docs/api-reference.md), and [`docs/database-schema.md`](docs/database-schema.md) — those are stale on the web-routes side (still describe the pre-marketplace-build web app) and need a refresh; this file is current. They're unaffected by the visual redesign in §3 below, since that pass touched no endpoints or schema.
 
 ## 1. What's shipped — backend
 
@@ -13,7 +13,7 @@ All four blueprint phases (§10 roadmap) are implemented in code:
 | **3 — Student depth** | AI doubt solver (RAG + Socratic gate), student quiz-taking, progress/trends dashboards, parent premium tier | Shipped |
 | **4 — Marketplace** | PostGIS tutor locations, Proof-of-Teaching score, 1:1 bookings + take rate, reschedule/cancellation policy, waitlist→booking conversion, verified-session-only reviews, discovery search/ranking + density gate | Shipped |
 
-Full-stack observability (Sentry + PostHog) and a Retool admin read path are also code-complete (Milestone 18) — the account-side setup in §4 below has not been done.
+Full-stack observability (Sentry + PostHog) and a Retool admin read path are also code-complete (Milestone 18) — the account-side setup in §6 below has not been done.
 
 ## 2. What's shipped — web frontend
 
@@ -38,26 +38,53 @@ The web app originally only had UI for a slice of Phase 1 (Today/Batches/Fees/Pr
 
 **Two small, explicitly-flagged backend additions** (not silently smuggled in): `GET /fees/student/:studentId` (blueprint §3 requires parent-visible fee history; no endpoint existed) and `GET /assignments/submissions/:id/download-urls` (tutors had no way to view a student's submitted files at all).
 
-## 3. What's verified
+Every route listed above has since been through a full visual redesign — see §3.
+
+## 3. Design system redesign — web + mobile ("Scholar v2")
+
+A follow-up pass took every screen on both platforms through a full visual/UX redesign, screen by screen, one commit per screen — see `git log` from `be36d55` through `2f50086`. **Zero business logic, API calls, or routes changed** — this was presentation-only, on top of the features shipped in §1/§2.
+
+**What changed:**
+- Brand kept, execution rebuilt. The existing "Scholar" identity (deep indigo + marigold amber, Fraunces/Inter, warm neutrals — documented in [`docs/design-system.md`](docs/design-system.md)) was judged sound and kept; what didn't exist was a complete *component system* on top of it.
+- New component libraries on both platforms (neither existed before):
+  - Web — `web/src/components/ui/`: Button, Card family, Field/Input/Textarea/Select, StatusBadge/Badge, EmptyState, Skeleton/Spinner/PageLoading, ErrorState/InlineError, Table primitives, and Radix-backed Dialog/Toast/Tooltip/DropdownMenu/Popover for real accessibility (focus trap, `aria-live`, keyboard nav). New deps: `lucide-react`, `class-variance-authority` + `clsx` + `tailwind-merge`, `@radix-ui/react-{dialog,dropdown-menu,toast,tooltip,popover}`, `tailwindcss-animate`.
+  - Mobile — `mobile/lib/widgets/`: `AppCard`, `SectionLabel`, `LoadingView`/`ErrorView`/`EmptyStateView`, `StatusChip`, `AppSnackbar`, `FormErrorBanner` — replacing widgets that were previously hand-duplicated privately in every screen. No new mobile dependencies (stays inside the blueprint's <40MB app-size budget).
+- Full dark-mode coverage added on web (the app had `darkMode` configured but almost no `dark:` classes anywhere before this). Mobile already had light/dark `ThemeData`; `design_tokens.dart` gained the full typography scale, shadow tokens, and spacing scale it was missing relative to the web token set, plus accessible dark-mode text tints.
+- `shared/design-tokens/tokens.json` gained a `.dark` key per semantic color (success/warning/error/info) for accessible contrast on dark surfaces — additive only, consumed by both platforms.
+- Destructive confirmations (account deletion) moved from inline expanding panels to real modals — a `Dialog` on web, a native `AlertDialog` on mobile — on the reasoning that an irreversible action shouldn't be dismissible by scrolling past it.
+
+**Real bugs found and fixed during this pass:**
+- A Next.js Server/Client component boundary bug: `buttonVariants` (a plain CVA function) lived inside a `'use client'` file and was called directly from a Server Component (the landing page). Next.js wraps every export of a client module as an opaque reference when a Server Component imports it, so calling it threw `"buttonVariants is not a function"` at runtime — invisible to `tsc --noEmit`, only caught by actually loading the page. Fixed by moving the `cva()` call into a new non-client `button-variants.ts`.
+- `/bookings` showed an error message *and* a perpetual loading spinner at the same time on a failed fetch (the `catch` handler never resolved `bookings` out of its `null` state). Fixed.
+- The redesigned dashboard/parent-shell mobile nav row initially dropped the "Business" submenu links entirely below the `md` breakpoint — caught and fixed in the same pass, before it shipped.
+
+**Verification:**
+- Web: every one of the 29 routes passed `tsc --noEmit` and a full production `next build` (checked clean after every single commit), plus live browser testing against the real local API — a full new-tutor and new-parent signup flow end to end, batch tab navigation, a real quiz draft review/publish, the account-deletion confirmation dialog (opened and cancelled, confirmed not deleted), and an actual message send/receive round-trip.
+- Mobile: `flutter analyze` is clean across the whole app after every commit (checked after each of the 7 screens). **Visual rendering was not confirmed.** Flutter's web build renders through a closed-shadow-DOM CanvasKit surface with no accessible text or canvas content from outside, and screenshot compositing was unavailable in the environment this pass was done in — neither of the two methods that worked for verifying the web app applied to Flutter. `flutter build apk`/`flutter build web` were also not run in this pass (only `analyze`). **A manual pass on a real device/emulator is strongly recommended before shipping the mobile redesign to users.**
+
+**Recurring environment note (not a code bug):** the Next.js dev server repeatedly hit a `.next` webpack-cache corruption issue while this pass was in progress — symptoms were things like `Cannot find module './85.js'`, `.../vendor-chunks/@opentelemetry.js`, or core chunks (`main-app.js`, `app-pages-internals.js`) 404ing after a hot-reload. Unrelated to the redesign's own code; most likely a Sentry/OpenTelemetry-instrumentation-plus-Windows-dev-server interaction. Always resolved by stopping the server, `rm -rf .next`, and restarting — never seen in a production `next build`. If a future session hits the same symptom, that's the fix.
+
+## 4. What's verified
 
 - Backend: `nest build` clean, `npm test` — 7/7 passing.
-- Web: full production `next build` clean across all 29 routes.
-- Every new frontend phase was browser-tested end-to-end against the real local API (not just "it renders") — including a genuine 3-way messaging conversation, a real AI-generated quiz taken by a real student account with the tutor's attempts view showing the actual score, and a full Razorpay checkout round-trip (mock-provider path) for each of the three purchase flows (tutor subscription, parent premium, marketplace booking).
-- Known pre-existing lint debt (not introduced by this pass) remains in payments/payouts/messaging/notifications/parents modules — left alone, out of scope.
+- Web: full production `next build` clean across all 29 routes (re-confirmed after the §3 redesign).
+- Every frontend phase from §2 was browser-tested end-to-end against the real local API when it was first built — including a genuine 3-way messaging conversation, a real AI-generated quiz taken by a real student account with the tutor's attempts view showing the actual score, and a full Razorpay checkout round-trip (mock-provider path) for each of the three purchase flows (tutor subscription, parent premium, marketplace booking). See §3 for the redesign pass's own (separate) verification.
+- Known pre-existing lint debt (not introduced by either pass) remains in payments/payouts/messaging/notifications/parents modules — left alone, out of scope.
 
-Not verified: mobile build (Flutter), or the Razorpay/WhatsApp/Sentry/PostHog integrations against real credentials (all are env-gated and mock-backed in dev).
+Not verified: mobile visual rendering after the §3 redesign (see §3 for why), or the Razorpay/WhatsApp/Sentry/PostHog integrations against real credentials (all are env-gated and mock-backed in dev).
 
-## 4. Known gaps
+## 5. Known gaps
 
-- **Backend isn't deployed anywhere.** No Fly.io (or equivalent) app exists, no Dockerfile/`fly.toml` in the repo. This was explicitly stopped mid-setup in an earlier pass — see §5.6 below for what's still needed.
+- **Backend isn't deployed anywhere.** No Fly.io (or equivalent) app exists, no Dockerfile/`fly.toml` in the repo. This was explicitly stopped mid-setup in an earlier pass — see §6.6 below for what's still needed. **This is why login/dashboard/booking flows don't work on the live Vercel site** — confirmed directly: the live site's requests to `NEXT_PUBLIC_API_URL` fall back to `http://localhost:3001` (the visitor's own machine) because there's no real backend URL to point at, producing `net::ERR_CONNECTION_REFUSED` on every API call.
+- **Mobile redesign (§3) hasn't been visually confirmed on a device/emulator.** `flutter analyze` is clean, but that's not the same as seeing it render — see §3 for the tooling limitation that caused this.
 - **`mobile/login_screen.png` is a committed screenshot** (tracked in git, not gitignored) — a debug artifact, not an asset the app loads. Harmless but still there; a cleanup task was flagged for this but hasn't landed.
 - **No shared job-queue module.** Redis is provisioned (OTP/refresh-token storage), but scheduled/async work (digest generation, reminder cadences) lives inline in each module's service rather than a BullMQ-backed queue, despite blueprint §6 calling for BullMQ. Fine at current scale.
-- **`docs/architecture.md` and `docs/api-reference.md` are stale on the web side** — they still describe the old 10-route web app. Needs a refresh to reflect the 29 routes in §2 above; the backend/schema portions of those docs are still accurate.
-- **Real payment/messaging/OTP providers are still unconfigured** — Razorpay, WhatsApp Cloud API, Sentry, PostHog all have real-provider code but no live credentials; everything currently runs on mock/console providers. See §5.
+- **`docs/architecture.md` and `docs/api-reference.md` are stale on the web side** — they still describe the old 10-route web app. Needs a refresh to reflect the 29 routes in §2 above; the backend/schema portions of those docs are still accurate. Unaffected by §3 (no routes changed).
+- **Real payment/messaging/OTP providers are still unconfigured** — Razorpay, WhatsApp Cloud API, Sentry, PostHog all have real-provider code but no live credentials; everything currently runs on mock/console providers. See §6.
 
-## 5. Manual setup steps (need a human with account access)
+## 6. Manual setup steps (need a human with account access)
 
-### 5.1 Android release signing — done, but the keystore needs backing up
+### 6.1 Android release signing — done, but the keystore needs backing up
 
 A release keystore was generated on the dev machine at `E:\tuition-app-secrets\upload-keystore.jks` (credentials alongside it in `keystore-credentials.txt`) and wired into `mobile/android` via a gitignored `key.properties` — never committed, by design. A release-signed AAB and APK were built and verified (checked with `apksigner`, confirmed the release cert, not the debug one).
 
@@ -66,7 +93,7 @@ A release keystore was generated on the dev machine at `E:\tuition-app-secrets\u
 2. Share it with the rest of the team through a secure channel if more than one person will cut releases.
 3. **Never regenerate a new keystore** to "fix" a missing one — a fresh keystore is a different signing identity and can't update an app already published under the old one.
 
-### 5.2 Sentry (error tracking)
+### 6.2 Sentry (error tracking)
 
 You need **three** DSNs — one per platform, so errors triage by surface instead of landing in one undifferentiated stream.
 
@@ -78,7 +105,7 @@ You need **three** DSNs — one per platform, so errors triage by surface instea
 3. Each project's **Settings → Client Keys (DSN)** page has the DSN string (`https://<key>@<org>.ingest.sentry.io/<project>`).
 4. Set them:
    - Backend: `SENTRY_DSN` in `backend/.env` (see `backend/.env.example`)
-   - Web: `NEXT_PUBLIC_SENTRY_DSN` — set in **Vercel**, not `.env` (see §5.4 below)
+   - Web: `NEXT_PUBLIC_SENTRY_DSN` — set in **Vercel**, not `.env` (see §6.4 below)
    - Mobile: passed at build time, not stored in a file:
      ```bash
      flutter build apk --dart-define=SENTRY_DSN=https://...
@@ -87,7 +114,7 @@ You need **three** DSNs — one per platform, so errors triage by surface instea
 5. For web, source-map upload also needs an **auth token** (Sentry → Settings → Auth Tokens → new token with `project:releases` scope) — this is `SENTRY_AUTH_TOKEN` in Vercel, alongside `SENTRY_ORG` (your org slug) and `SENTRY_PROJECT` (`tuition-web`). Without it, Next.js still reports errors fine — you just get minified stack traces instead of readable ones.
 6. Everything is env-gated: unset DSN = Sentry silently disabled, no crashes, no build failures. You can ship this DSN-less and add it later without touching code.
 
-### 5.3 PostHog (product analytics + feature flags)
+### 6.3 PostHog (product analytics + feature flags)
 
 One project, three write locations.
 
@@ -95,34 +122,34 @@ One project, three write locations.
 2. **Settings → Project API Key** gives you the key. Host is `https://us.i.posthog.com` (or `https://eu.i.posthog.com`).
 3. Set:
    - Backend (server-side capture): `POSTHOG_API_KEY` + `POSTHOG_HOST` in `backend/.env`
-   - Web (client-side): `NEXT_PUBLIC_POSTHOG_KEY` + `NEXT_PUBLIC_POSTHOG_HOST` — in Vercel (see §5.4)
+   - Web (client-side): `NEXT_PUBLIC_POSTHOG_KEY` + `NEXT_PUBLIC_POSTHOG_HOST` — in Vercel (see §6.4)
    - Mobile: build-time dart-define, same pattern as Sentry:
      ```bash
      flutter build apk --dart-define=POSTHOG_API_KEY=phc_...
      ```
 4. Same as Sentry — unset key means events are dropped with a one-line warning, nothing breaks.
 
-### 5.4 Vercel env vars (web deployment) — deployment is live, env vars still need checking
+### 6.4 Vercel env vars (web deployment) — deployment is live, backend URL still unset
 
-The web app deploys via Vercel directly from git (no CI pipeline in this repo) and **is live** at `tution-xi-eosin.vercel.app`, confirmed serving the landing page correctly. (One gotcha hit and fixed during setup: the Vercel project's **Root Directory** field had `WEB` in uppercase instead of lowercase `web` — Vercel's Linux build servers are case-sensitive even though Windows isn't, so it silently failed to find the app despite the build showing "Ready". If you ever recreate this project, set Root Directory to exactly `web`, lowercase.)
+The web app deploys via Vercel directly from git (no CI pipeline in this repo) and **is live** at `tution-xi-eosin.vercel.app`, confirmed serving the landing page (and now the full §3 redesign) correctly. (One gotcha hit and fixed during initial setup: the Vercel project's **Root Directory** field had `WEB` in uppercase instead of lowercase `web` — Vercel's Linux build servers are case-sensitive even though Windows isn't, so it silently failed to find the app despite the build showing "Ready". If you ever recreate this project, set Root Directory to exactly `web`, lowercase.)
 
-`NEXT_PUBLIC_API_URL` still needs to point at a real deployed backend once one exists (§4 — backend isn't deployed anywhere yet) — until then, login/dashboard/booking flows on the live site won't work, only the static marketing pages will. In the Vercel project dashboard → **Settings → Environment Variables**, set:
+`NEXT_PUBLIC_API_URL` still needs to point at a real deployed backend once one exists (§5 — backend isn't deployed anywhere yet) — until then, login/dashboard/booking flows on the live site won't work (confirmed live — see §5), only the static marketing pages will. In the Vercel project dashboard → **Settings → Environment Variables**, set:
 
 | Variable | Value | Notes |
 |---|---|---|
-| `NEXT_PUBLIC_API_URL` | your deployed backend URL | e.g. Fly.io app URL — not set yet, see §4 |
+| `NEXT_PUBLIC_API_URL` | your deployed backend URL | e.g. Fly.io app URL — not set yet, see §5 |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | same as backend's `GOOGLE_CLIENT_ID` | must match exactly — frontend requests the ID token the backend verifies |
-| `NEXT_PUBLIC_SENTRY_DSN` | from §5.2 step 3 | omit to disable |
-| `NEXT_PUBLIC_POSTHOG_KEY` | from §5.3 step 3 | omit to disable |
-| `NEXT_PUBLIC_POSTHOG_HOST` | from §5.3 step 2 | omit to disable |
+| `NEXT_PUBLIC_SENTRY_DSN` | from §6.2 step 3 | omit to disable |
+| `NEXT_PUBLIC_POSTHOG_KEY` | from §6.3 step 3 | omit to disable |
+| `NEXT_PUBLIC_POSTHOG_HOST` | from §6.3 step 2 | omit to disable |
 | `NEXT_PUBLIC_RAZORPAY_KEY_ID` | your Razorpay public key | omit to keep using the mock-provider checkout path |
-| `SENTRY_AUTH_TOKEN` | from §5.2 step 5 | build-time only, source-map upload |
+| `SENTRY_AUTH_TOKEN` | from §6.2 step 5 | build-time only, source-map upload |
 | `SENTRY_ORG` | your Sentry org slug | build-time only |
 | `SENTRY_PROJECT` | `tuition-web` | build-time only |
 
 Set each for whichever Vercel environments you use (Production / Preview / Development) — at minimum Production.
 
-### 5.5 Retool admin workspace + the `ALTER ROLE` password step
+### 6.5 Retool admin workspace + the `ALTER ROLE` password step
 
 Migration `0011_retool_readonly_role.ts` (already applied, both locally and wherever `npm run migrate:up` has run in each environment) creates a Postgres role, `retool_readonly`, with `SELECT`-only access to every table — deliberately no write access, so admin actions still have to go through the authenticated REST API and land in the append-only `audit_logs` table. It does **not** set a password (migrations never commit secrets), so:
 
@@ -140,9 +167,9 @@ Migration `0011_retool_readonly_role.ts` (already applied, both locally and wher
 4. Build admin views/queries against that resource. **Never** wire a Retool button to a raw SQL `UPDATE`/`INSERT`/`DELETE` against this connection — it has no write grants and would just fail, but more importantly, *any* admin write needs to go through the REST API so it's audit-logged. If a workflow needs a write, it needs a backend endpoint, not a Retool mutation query.
 5. Recommended: put Retool itself behind SSO + MFA (blueprint §2) — this doc doesn't cover Retool's own workspace security settings, only the DB connection.
 
-### 5.6 Backend deployment target — still not started
+### 6.6 Backend deployment target — still not started
 
-Blueprint §6 targets Fly.io + managed Postgres (Neon at MVP). No deploy pipeline is wired up in this repo — provisioning a Fly.io app (or equivalent), setting `backend/.env.example`'s variables as secrets there, and pointing `DATABASE_URL`/`REDIS_URL` at managed instances (with PostGIS + pgvector enabled — see [`docs/database-schema.md`](docs/database-schema.md#extensions-in-use)) is still a from-scratch setup step. This is the single biggest remaining gap — until it's done, the live Vercel deployment can't actually do anything beyond serve static pages.
+Blueprint §6 targets Fly.io + managed Postgres (Neon at MVP). No deploy pipeline is wired up in this repo — provisioning a Fly.io app (or equivalent), setting `backend/.env.example`'s variables as secrets there, and pointing `DATABASE_URL`/`REDIS_URL` at managed instances (with PostGIS + pgvector enabled — see [`docs/database-schema.md`](docs/database-schema.md#extensions-in-use)) is still a from-scratch setup step. This is the single biggest remaining gap — until it's done, the live Vercel deployment can't actually do anything beyond serve static pages (confirmed live — see §5). A prior session started down this path and was explicitly told to stop before any account/provider was chosen — nothing has been provisioned.
 
 ## Known environment note (not a setup step, just FYI)
 
