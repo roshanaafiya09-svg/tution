@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/design_tokens.dart';
 import '../../../l10n/gen/app_localizations.dart';
+import '../../../widgets/widgets.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../auth/application/auth_state.dart';
 import '../application/invites_provider.dart';
@@ -64,92 +66,126 @@ class _JoinScreenState extends ConsumerState<JoinScreen> {
             padding: const EdgeInsets.all(DesignTokens.pageGutter),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(DesignTokens.cardPadding),
-                  child: previewAsync.when(
-                    loading: () => const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 32),
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
-                    error: (_, _) => Text(
-                      l10n.invalidInviteLink,
-                      textAlign: TextAlign.center,
-                    ),
-                    data: (preview) {
-                      if (_joined) {
-                        return Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              l10n.youreIn,
-                              style: theme.textTheme.headlineMedium,
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              l10n.joinedBatchMessage(preview.batchTitle),
-                              textAlign: TextAlign.center,
-                              style: theme.textTheme.bodyMedium,
-                            ),
-                            const SizedBox(height: 16),
-                            ElevatedButton(
-                              onPressed: () => context.go('/today'),
-                              child: Text(l10n.goToToday),
-                            ),
-                          ],
-                        );
-                      }
-
+              child: AppCard(
+                elevated: true,
+                child: previewAsync.when(
+                  loading: () => const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 32),
+                    child: LoadingView(),
+                  ),
+                  error: (_, _) => Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        CupertinoIcons.exclamationmark_triangle,
+                        size: 32,
+                        color: theme.colorScheme.error,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        l10n.invalidInviteLink,
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ],
+                  ),
+                  data: (preview) {
+                    if (_joined) {
                       return Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: DesignTokens.successBg,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              CupertinoIcons.checkmark_alt,
+                              color: DesignTokens.success,
+                              size: 24,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
                           Text(
-                            l10n.invitedToJoin,
+                            l10n.youreIn,
+                            style: theme.textTheme.headlineMedium,
                             textAlign: TextAlign.center,
-                            style: theme.textTheme.bodyMedium,
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            preview.batchTitle,
+                            l10n.joinedBatchMessage(preview.batchTitle),
                             textAlign: TextAlign.center,
-                            style: theme.textTheme.headlineMedium,
+                            style: theme.textTheme.bodyMedium,
                           ),
-                          if (!preview.isActive) ...[
-                            const SizedBox(height: 16),
-                            Text(
-                              l10n.inviteInactive,
-                              textAlign: TextAlign.center,
-                              style: theme.textTheme.bodyMedium?.copyWith(
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: () => context.go('/today'),
+                              child: Text(l10n.goToToday),
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          l10n.invitedToJoin,
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          preview.batchTitle,
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.headlineMedium,
+                        ),
+                        if (!preview.isActive) ...[
+                          const SizedBox(height: 16),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                CupertinoIcons.exclamationmark_triangle,
+                                size: 16,
                                 color: DesignTokens.warning,
                               ),
-                            ),
-                          ] else ...[
-                            if (_error != null) ...[
-                              const SizedBox(height: 16),
-                              Text(
-                                _error!,
-                                textAlign: TextAlign.center,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: DesignTokens.error,
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  l10n.inviteInactive,
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: DesignTokens.warning,
+                                  ),
                                 ),
                               ),
                             ],
-                            const SizedBox(height: 24),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: _joining ? null : _join,
-                                child: Text(
-                                  _joining ? l10n.joining : l10n.joinThisBatch,
-                                ),
+                          ),
+                        ] else ...[
+                          if (_error != null) ...[
+                            const SizedBox(height: 16),
+                            FormErrorBanner(message: _error!),
+                          ],
+                          const SizedBox(height: 24),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: _joining ? null : _join,
+                              child: Text(
+                                _joining ? l10n.joining : l10n.joinThisBatch,
                               ),
                             ),
-                          ],
+                          ),
                         ],
-                      );
-                    },
-                  ),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),
