@@ -117,7 +117,17 @@ export const envSchema = z.object({
 export type EnvConfig = z.infer<typeof envSchema>;
 
 export function validateEnv(config: Record<string, unknown>): EnvConfig {
-  const parsed = envSchema.safeParse(config);
+  // A stray leading/trailing space or newline from a dashboard copy-paste
+  // (Render, Vercel, etc.) turns a valid URL into a same-message "Invalid
+  // URL" zod error indistinguishable from an actually-missing value —
+  // trim every string value up front so that class of mistake can't happen.
+  const trimmed = Object.fromEntries(
+    Object.entries(config).map(([key, value]) => [
+      key,
+      typeof value === 'string' ? value.trim() : value,
+    ]),
+  );
+  const parsed = envSchema.safeParse(trimmed);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`)
