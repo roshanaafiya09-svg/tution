@@ -2,9 +2,23 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Download, Trash2, Check, AlertTriangle } from 'lucide-react';
 import { api, tokenStore } from '@/lib/api';
 import type { TutorProfile } from '@/lib/types';
-import { Card, PageHeader, Button, Field, inputClass, StatusBadge } from '@/components/ui';
+import {
+  Card,
+  PageHeader,
+  Button,
+  Field,
+  Input,
+  Textarea,
+  StatusBadge,
+  InlineError,
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogFooter,
+} from '@/components/ui';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -16,7 +30,7 @@ export default function ProfilePage() {
 
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -93,9 +107,9 @@ export default function ProfilePage() {
 
       <Card className="max-w-2xl">
         {profile && (
-          <div className="mb-6 flex items-center gap-3 border-b border-neutral-100 pb-4">
+          <div className="mb-6 flex items-center gap-3 border-b border-neutral-100 pb-4 dark:border-neutral-800">
             <StatusBadge status={profile.verification_status} />
-            <p className="text-sm text-neutral-500">
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">
               {profile.verification_status === 'verified'
                 ? 'Your profile is verified.'
                 : 'Verification is reviewed within 24 hours.'}
@@ -105,87 +119,111 @@ export default function ProfilePage() {
 
         <div className="grid gap-4">
           <Field label="Display name">
-            <input
-              className={inputClass}
+            <Input
               value={form.displayName}
               onChange={(e) => setForm({ ...form, displayName: e.target.value })}
               placeholder="Priya Sharma"
             />
           </Field>
           <Field label="Headline">
-            <input
-              className={inputClass}
+            <Input
               value={form.headline}
               onChange={(e) => setForm({ ...form, headline: e.target.value })}
               placeholder="Physics & Maths, Grades 9–12"
             />
           </Field>
           <Field label="About you">
-            <textarea
-              className={inputClass}
+            <Textarea
               rows={4}
               value={form.bio}
               onChange={(e) => setForm({ ...form, bio: e.target.value })}
             />
           </Field>
           <Field label="Years of experience">
-            <input
+            <Input
               type="number"
-              className={inputClass}
               value={form.yearsExperience}
               onChange={(e) => setForm({ ...form, yearsExperience: e.target.value })}
             />
           </Field>
         </div>
 
-        {error && <p className="mt-3 text-sm text-error">{error}</p>}
+        {error && (
+          <div className="mt-3">
+            <InlineError>{error}</InlineError>
+          </div>
+        )}
 
         <div className="mt-6 flex items-center gap-3">
-          <Button onClick={() => void save()} disabled={!form.displayName || saving}>
+          <Button onClick={() => void save()} disabled={!form.displayName || saving} loading={saving}>
             {saving ? 'Saving…' : 'Save profile'}
           </Button>
-          {saved && <span className="text-sm text-success">Saved</span>}
+          {saved && (
+            <span className="flex items-center gap-1 text-sm text-success dark:text-success-dark">
+              <Check className="h-3.5 w-3.5" aria-hidden />
+              Saved
+            </span>
+          )}
         </div>
       </Card>
 
-      <Card className="mt-6 max-w-2xl border-error/20">
-        <h2 className="font-display text-lg font-semibold text-neutral-900">Your data</h2>
-        <p className="mt-1 text-sm text-neutral-500">
+      <Card className="mt-6 max-w-2xl border-error/20 dark:border-error/25">
+        <h2 className="font-display text-lg font-semibold text-neutral-900 dark:text-neutral-50">
+          Your data
+        </h2>
+        <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
           Export everything the app has on you, or permanently delete your account.
         </p>
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Button variant="secondary" onClick={() => void exportData()} disabled={exporting}>
+          <Button variant="secondary" onClick={() => void exportData()} disabled={exporting} loading={exporting}>
+            <Download className="h-4 w-4" aria-hidden />
             {exporting ? 'Preparing export…' : 'Export my data'}
           </Button>
-          {!confirmingDelete && (
-            <Button variant="danger" onClick={() => setConfirmingDelete(true)}>
-              Delete my account
-            </Button>
-          )}
-        </div>
-        {exportError && <p className="mt-3 text-sm text-error">{exportError}</p>}
 
-        {confirmingDelete && (
-          <div className="mt-4 rounded-md border border-error/30 bg-error/5 p-4">
-            <p className="text-sm font-medium text-neutral-900">
-              This permanently deletes your account and signs you out everywhere. Your batches,
-              attendance and fee records are kept for other people they belong to, but your
-              contact details are removed and you can never sign back in with this number.
-            </p>
-            <div className="mt-3 flex items-center gap-3">
-              <Button variant="danger" onClick={() => void deleteAccount()} disabled={deleting}>
-                {deleting ? 'Deleting…' : 'Yes, permanently delete my account'}
+          <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+            <DialogTrigger asChild>
+              <Button variant="danger">
+                <Trash2 className="h-4 w-4" aria-hidden />
+                Delete my account
               </Button>
-              <Button
-                variant="secondary"
-                onClick={() => setConfirmingDelete(false)}
-                disabled={deleting}
-              >
-                Cancel
-              </Button>
-            </div>
-            {deleteError && <p className="mt-3 text-sm text-error">{deleteError}</p>}
+            </DialogTrigger>
+            <DialogContent>
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-error-bg dark:bg-error/15">
+                  <AlertTriangle className="h-5 w-5 text-error dark:text-error-dark" aria-hidden />
+                </div>
+                <div>
+                  <h3 className="font-display text-lg font-semibold text-neutral-900 dark:text-neutral-50">
+                    Delete your account?
+                  </h3>
+                  <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+                    This permanently deletes your account and signs you out everywhere. Your
+                    batches, attendance and fee records are kept for other people they belong to,
+                    but your contact details are removed and you can never sign back in with this
+                    number.
+                  </p>
+                </div>
+              </div>
+              {deleteError && (
+                <div className="mt-3">
+                  <InlineError>{deleteError}</InlineError>
+                </div>
+              )}
+              <DialogFooter className="mt-5">
+                <Button variant="secondary" onClick={() => setConfirmOpen(false)} disabled={deleting}>
+                  Cancel
+                </Button>
+                <Button variant="danger" onClick={() => void deleteAccount()} disabled={deleting} loading={deleting}>
+                  {deleting ? 'Deleting…' : 'Yes, permanently delete my account'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+        {exportError && (
+          <div className="mt-3">
+            <InlineError>{exportError}</InlineError>
           </div>
         )}
       </Card>
