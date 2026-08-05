@@ -1,11 +1,13 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/design_tokens.dart';
 import '../../../l10n/gen/app_localizations.dart';
+import '../../../widgets/widgets.dart';
 import '../application/assignments_controller.dart';
 import '../data/assignment.dart';
 
@@ -26,26 +28,15 @@ class AssignmentsScreen extends ConsumerWidget {
         child: RefreshIndicator(
           onRefresh: () => ref.read(assignmentsControllerProvider.notifier).refresh(),
           child: assignmentsAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => ListView(
-              padding: const EdgeInsets.all(DesignTokens.pageGutter),
-              children: [
-                const SizedBox(height: 64),
-                Center(
-                  child: Text(
-                    error is ApiException ? error.message : l10n.homeworkLoadError,
-                  ),
-                ),
-              ],
+            loading: () => const LoadingView(),
+            error: (error, _) => ErrorView(
+              message: error is ApiException ? error.message : l10n.homeworkLoadError,
             ),
             data: (assignments) {
               if (assignments.isEmpty) {
-                return ListView(
-                  padding: const EdgeInsets.all(DesignTokens.pageGutter),
-                  children: [
-                    const SizedBox(height: 64),
-                    Center(child: Text(l10n.noHomeworkYet)),
-                  ],
+                return EmptyStateView(
+                  title: l10n.noHomeworkYet,
+                  icon: CupertinoIcons.doc_text,
                 );
               }
               return ListView(
@@ -78,10 +69,23 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
     final l10n = AppLocalizations.of(context)!;
     final choice = await showModalBottomSheet<String>(
       context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(DesignTokens.radiusLg)),
+      ),
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.outline,
+                borderRadius: BorderRadius.circular(DesignTokens.radiusFull),
+              ),
+            ),
+            const SizedBox(height: 8),
             ListTile(
               leading: const Icon(Icons.camera_alt_outlined),
               title: Text(l10n.takePhoto),
@@ -135,12 +139,9 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
             bytes: bytes,
             mime: mime,
           );
+      if (mounted) AppSnackbar.success(context, l10n.submitHomework);
     } on ApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
-      }
+      if (mounted) AppSnackbar.error(context, e.message);
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -152,10 +153,9 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
     final l10n = AppLocalizations.of(context)!;
     final a = widget.assignment;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(DesignTokens.cardPadding),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: AppCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -164,7 +164,7 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
                 Expanded(
                   child: Text(a.title, style: theme.textTheme.titleMedium),
                 ),
-                _StatusChip(status: a.status),
+                StatusChip(a.status.name),
               ],
             ),
             const SizedBox(height: 4),
@@ -205,35 +205,6 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
             ],
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.status});
-
-  final AssignmentStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
-    final (label, color) = switch (status) {
-      AssignmentStatus.pending => (l10n.statusPending, DesignTokens.warning),
-      AssignmentStatus.submitted => (l10n.statusSubmitted, DesignTokens.info),
-      AssignmentStatus.graded => (l10n.statusGraded, DesignTokens.success),
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(DesignTokens.radiusSm),
-      ),
-      child: Text(
-        label,
-        style: Theme.of(
-          context,
-        ).textTheme.labelSmall?.copyWith(color: color, fontWeight: FontWeight.w600),
       ),
     );
   }

@@ -39,7 +39,7 @@ final Map<String, _StatusStyle> _styles = {
       DesignTokens.errorBg,
       DesignTokens.error.withValues(alpha: 0.16),
     ),
-  for (final key in ['scheduled', 'created', 'trialing', 'notified', 'processing'])
+  for (final key in ['scheduled', 'created', 'trialing', 'notified', 'processing', 'submitted'])
     key: _StatusStyle(
       DesignTokens.info,
       DesignTokens.infoDark,
