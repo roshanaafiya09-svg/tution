@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { CheckCircle2, Clock3 } from 'lucide-react';
 import { api, formatMinor, tokenStore, ApiError } from '@/lib/api';
 import { payForOrder } from '@/lib/razorpay';
 import type { Booking, PaymentOrder, PublicTutorPage } from '@/lib/types';
-import { Card, Button, Field, inputClass } from '@/components/ui';
+import { Card, Button, Field, Input, Select, InlineError, PageLoading } from '@/components/ui';
 
 function defaultStart(): string {
   const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -85,17 +86,25 @@ export default function BookSessionPage() {
   }
 
   return (
-    <main className="min-h-screen bg-neutral-50 px-6 py-8">
+    <main className="min-h-screen bg-background px-6 py-8">
       <div className="mx-auto max-w-md">
-        <Link href="/" className="mb-6 block text-center font-display text-2xl font-semibold italic text-brand-800">
+        <Link
+          href="/"
+          className="mb-6 block text-center font-display text-2xl font-semibold italic text-brand-800 dark:text-brand-200"
+        >
           Scholar
         </Link>
 
         <Card>
           {confirmed ? (
             <div className="text-center">
-              <p className="font-display text-2xl font-semibold text-neutral-900">Booked</p>
-              <p className="mt-2 text-sm text-neutral-500">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-success-bg dark:bg-success/15">
+                <CheckCircle2 className="h-6 w-6 text-success dark:text-success-dark" aria-hidden />
+              </div>
+              <p className="font-display text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
+                Booked
+              </p>
+              <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
                 Your session with {tutorPage?.profile.displayName ?? 'your tutor'} is confirmed.
               </p>
               <Link href="/bookings">
@@ -103,23 +112,26 @@ export default function BookSessionPage() {
               </Link>
             </div>
           ) : tutorPage === null ? (
-            <p className="text-center text-sm text-neutral-400">{error ?? 'Loading…'}</p>
+            error ? (
+              <InlineError>{error}</InlineError>
+            ) : (
+              <PageLoading label="Loading…" />
+            )
           ) : tutorPage.offerings.length === 0 ? (
-            <p className="text-center text-sm text-neutral-500">
+            <p className="text-center text-sm text-neutral-500 dark:text-neutral-400">
               This tutor has no bookable subjects right now.
             </p>
           ) : (
             <div className="flex flex-col gap-4">
               <div className="text-center">
-                <p className="text-sm text-neutral-500">Book a session with</p>
-                <p className="font-display text-xl font-semibold text-neutral-900">
+                <p className="text-sm text-neutral-500 dark:text-neutral-400">Book a session with</p>
+                <p className="font-display text-xl font-semibold text-neutral-900 dark:text-neutral-50">
                   {tutorPage.profile.displayName}
                 </p>
               </div>
 
               <Field label="Subject">
-                <select
-                  className={inputClass}
+                <Select
                   value={tutorSubjectId}
                   onChange={(e) => setTutorSubjectId(e.target.value)}
                 >
@@ -128,21 +140,19 @@ export default function BookSessionPage() {
                       {o.subjectName.en} · {formatMinor(o.hourlyRateMinor, 'INR')}/hr
                     </option>
                   ))}
-                </select>
+                </Select>
               </Field>
 
               <Field label="Start time">
-                <input
+                <Input
                   type="datetime-local"
-                  className={inputClass}
                   value={startLocal}
                   onChange={(e) => setStartLocal(e.target.value)}
                 />
               </Field>
 
               <Field label="Duration (minutes)">
-                <select
-                  className={inputClass}
+                <Select
                   value={durationMin}
                   onChange={(e) => setDurationMin(e.target.value)}
                 >
@@ -151,22 +161,24 @@ export default function BookSessionPage() {
                       {m} min
                     </option>
                   ))}
-                </select>
+                </Select>
               </Field>
 
-              {error && <p className="text-sm text-error">{error}</p>}
+              {error && <InlineError>{error}</InlineError>}
 
-              <Button onClick={() => void book()} disabled={submitting}>
+              <Button onClick={() => void book()} disabled={submitting} loading={submitting}>
                 {submitting ? 'Booking…' : 'Book & pay'}
               </Button>
 
               {error && !joinedWaitlist && (
                 <Button variant="secondary" onClick={() => void joinWaitlist()}>
+                  <Clock3 className="h-4 w-4" aria-hidden />
                   That time doesn&apos;t work — join waitlist instead
                 </Button>
               )}
               {joinedWaitlist && (
-                <p className="text-center text-sm text-success">
+                <p className="flex items-center justify-center gap-1.5 text-center text-sm text-success dark:text-success-dark">
+                  <CheckCircle2 className="h-4 w-4" aria-hidden />
                   You&apos;re on the waitlist — we&apos;ll notify you when a slot opens.
                 </p>
               )}

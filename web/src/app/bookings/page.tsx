@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { CalendarClock, Star } from 'lucide-react';
 import { api, formatMinor, tokenStore, ApiError } from '@/lib/api';
 import type { Booking, Subject } from '@/lib/types';
-import { Card, EmptyState, StatusBadge, Button, Field, inputClass } from '@/components/ui';
+import { Card, EmptyState, StatusBadge, Button, Field, Input, Select, InlineError, PageLoading } from '@/components/ui';
 
 export default function MyBookingsPage() {
   const router = useRouter();
@@ -86,35 +87,53 @@ export default function MyBookingsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-neutral-50">
-      <header className="border-b border-neutral-200 bg-white">
+    <main className="min-h-screen bg-background">
+      <header className="sticky top-0 z-20 border-b border-neutral-200 bg-white/85 backdrop-blur supports-[backdrop-filter]:bg-white/70 dark:border-neutral-800 dark:bg-neutral-950/80">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-3">
-          <Link href="/" className="font-display text-xl font-semibold italic text-brand-800">
+          <Link
+            href="/"
+            className="font-display text-xl font-semibold italic text-brand-800 dark:text-brand-200"
+          >
             Scholar
           </Link>
-          <Link href="/discover" className="text-sm font-medium text-neutral-600 hover:text-neutral-900">
+          <Link
+            href="/discover"
+            className="text-sm font-medium text-neutral-600 transition-colors hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+          >
             Find a tutor
           </Link>
         </div>
       </header>
 
       <div className="mx-auto max-w-3xl px-6 py-8">
-        <h1 className="mb-6 font-display text-3xl font-semibold text-neutral-900">My bookings</h1>
+        <h1 className="mb-6 font-display text-3xl font-semibold text-neutral-900 dark:text-neutral-50">
+          My bookings
+        </h1>
 
-        {error && <p className="mb-4 text-sm text-error">{error}</p>}
+        {error && (
+          <div className="mb-4">
+            <InlineError>{error}</InlineError>
+          </div>
+        )}
 
         {bookings === null ? (
-          <p className="text-sm text-neutral-400">Loading…</p>
+          error ? null : <PageLoading />
         ) : bookings.length === 0 ? (
-          <EmptyState title="No bookings yet" description="Sessions you book with tutors will show up here." />
+          <EmptyState
+            icon={CalendarClock}
+            title="No bookings yet"
+            description="Sessions you book with tutors will show up here."
+          />
         ) : (
           <div className="space-y-4">
             {bookings.map((booking) => (
               <Card key={booking.id}>
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-medium text-neutral-900">{subjectName(booking.subject_id)}</p>
-                    <p className="text-sm text-neutral-500">
+                    <p className="font-medium text-neutral-900 dark:text-neutral-50">
+                      {subjectName(booking.subject_id)}
+                    </p>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
                       {new Date(booking.scheduled_start_utc).toLocaleString('en-IN', {
                         timeZone: booking.timezone,
                         weekday: 'short',
@@ -133,6 +152,7 @@ export default function MyBookingsPage() {
                   <div className="mt-4 flex flex-wrap gap-2">
                     <Button
                       variant="secondary"
+                      size="sm"
                       onClick={() => {
                         setReschedulingId(reschedulingId === booking.id ? null : booking.id);
                         setNewStart('');
@@ -142,8 +162,10 @@ export default function MyBookingsPage() {
                     </Button>
                     <Button
                       variant="danger"
+                      size="sm"
                       onClick={() => void cancel(booking.id)}
                       disabled={busyId === booking.id}
+                      loading={busyId === booking.id}
                     >
                       Cancel
                     </Button>
@@ -154,6 +176,7 @@ export default function MyBookingsPage() {
                   <div className="mt-4">
                     <Button
                       variant="secondary"
+                      size="sm"
                       onClick={() => setReviewingId(reviewingId === booking.id ? null : booking.id)}
                     >
                       Leave a review
@@ -164,14 +187,17 @@ export default function MyBookingsPage() {
                 {reschedulingId === booking.id && (
                   <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
                     <Field label="New start time">
-                      <input
+                      <Input
                         type="datetime-local"
-                        className={inputClass}
                         value={newStart}
                         onChange={(e) => setNewStart(e.target.value)}
                       />
                     </Field>
-                    <Button onClick={() => void reschedule(booking.id)} disabled={!newStart || busyId === booking.id}>
+                    <Button
+                      onClick={() => void reschedule(booking.id)}
+                      disabled={!newStart || busyId === booking.id}
+                      loading={busyId === booking.id}
+                    >
                       Confirm
                     </Button>
                   </div>
@@ -180,8 +206,7 @@ export default function MyBookingsPage() {
                 {reviewingId === booking.id && (
                   <div className="mt-4 grid gap-3 sm:grid-cols-[120px_1fr_auto] sm:items-end">
                     <Field label="Rating">
-                      <select
-                        className={inputClass}
+                      <Select
                         value={reviewForm.rating}
                         onChange={(e) => setReviewForm({ ...reviewForm, rating: e.target.value })}
                       >
@@ -190,16 +215,16 @@ export default function MyBookingsPage() {
                             {r} ★
                           </option>
                         ))}
-                      </select>
+                      </Select>
                     </Field>
                     <Field label="Comment (optional)">
-                      <input
-                        className={inputClass}
+                      <Input
                         value={reviewForm.comment}
                         onChange={(e) => setReviewForm({ ...reviewForm, comment: e.target.value })}
                       />
                     </Field>
-                    <Button onClick={() => void submitReview(booking)} disabled={busyId === booking.id}>
+                    <Button onClick={() => void submitReview(booking)} disabled={busyId === booking.id} loading={busyId === booking.id}>
+                      <Star className="h-3.5 w-3.5" aria-hidden />
                       Submit
                     </Button>
                   </div>
