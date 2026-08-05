@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/design_tokens.dart';
 import '../../../l10n/gen/app_localizations.dart';
+import '../../../widgets/widgets.dart';
 import '../../batches/application/batches_provider.dart';
 import '../application/materials_controller.dart';
 import '../data/material_item.dart';
@@ -26,16 +28,19 @@ class MaterialsScreen extends ConsumerWidget {
         child: RefreshIndicator(
           onRefresh: () => ref.read(materialsControllerProvider.notifier).refresh(),
           child: batchesAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (_, _) => _CenteredMessage(l10n.batchesLoadError),
+            loading: () => const LoadingView(),
+            error: (_, _) => ErrorView(message: l10n.batchesLoadError),
             data: (batches) {
               if (batches.isEmpty) {
-                return _CenteredMessage(l10n.noEnrolledBatches);
+                return EmptyStateView(
+                  title: l10n.noEnrolledBatches,
+                  icon: CupertinoIcons.square_stack_3d_up,
+                );
               }
               return materialsAsync.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, _) => _CenteredMessage(
-                  error is ApiException ? error.message : l10n.materialsLoadError,
+                loading: () => const LoadingView(),
+                error: (error, _) => ErrorView(
+                  message: error is ApiException ? error.message : l10n.materialsLoadError,
                 ),
                 data: (byBatch) {
                   final bookmarked = byBatch.values
@@ -47,7 +52,7 @@ class MaterialsScreen extends ConsumerWidget {
                     padding: const EdgeInsets.all(DesignTokens.pageGutter),
                     children: [
                       if (bookmarked.isNotEmpty) ...[
-                        _SectionLabel(l10n.bookmarkedSection),
+                        SectionLabel(l10n.bookmarkedSection),
                         ...bookmarked.map(
                           (m) => _MaterialTile(
                             material: m,
@@ -57,7 +62,7 @@ class MaterialsScreen extends ConsumerWidget {
                         const SizedBox(height: 16),
                       ],
                       for (final batch in batches) ...[
-                        _SectionLabel(batch.title),
+                        SectionLabel(batch.title),
                         if ((byBatch[batch.id] ?? []).isEmpty)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 16),
@@ -87,42 +92,6 @@ class MaterialsScreen extends ConsumerWidget {
   }
 }
 
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.label);
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8, top: 8),
-      child: Text(
-        label,
-        style: Theme.of(
-          context,
-        ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-      ),
-    );
-  }
-}
-
-class _CenteredMessage extends StatelessWidget {
-  const _CenteredMessage(this.message);
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(DesignTokens.pageGutter),
-      children: [
-        const SizedBox(height: 64),
-        Center(child: Text(message, textAlign: TextAlign.center)),
-      ],
-    );
-  }
-}
-
 class _MaterialTile extends ConsumerStatefulWidget {
   const _MaterialTile({required this.material, required this.isBookmarked});
 
@@ -143,11 +112,7 @@ class _MaterialTileState extends ConsumerState<_MaterialTile> {
           .read(materialsControllerProvider.notifier)
           .openMaterial(widget.material);
     } on ApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
-      }
+      if (mounted) AppSnackbar.error(context, e.message);
     } finally {
       if (mounted) setState(() => _opening = false);
     }
@@ -160,37 +125,65 @@ class _MaterialTileState extends ConsumerState<_MaterialTile> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context)!;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Icon(_icon, color: Theme.of(context).colorScheme.primary),
-        title: Text(widget.material.title),
-        subtitle: Text(_formatSize(widget.material.sizeBytes)),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: Icon(
-                widget.isBookmarked ? Icons.star : Icons.star_border,
-                color: widget.isBookmarked ? DesignTokens.accent500 : null,
-              ),
-              tooltip: widget.isBookmarked ? l10n.removeBookmark : l10n.addBookmark,
-              onPressed: () => ref
-                  .read(materialsControllerProvider.notifier)
-                  .toggleBookmark(widget.material),
-            ),
-            if (_opening)
-              const SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            else
-              const Icon(Icons.download_outlined),
-          ],
-        ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: AppCard(
+        padding: EdgeInsets.zero,
         onTap: _opening ? null : _open,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: DesignTokens.spacing4,
+            vertical: DesignTokens.spacing3,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
+                ),
+                child: Icon(_icon, color: theme.colorScheme.primary, size: 20),
+              ),
+              const SizedBox(width: DesignTokens.spacing3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.material.title,
+                      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(_formatSize(widget.material.sizeBytes), style: theme.textTheme.bodySmall),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: Icon(
+                  widget.isBookmarked ? Icons.star : Icons.star_border,
+                  color: widget.isBookmarked ? DesignTokens.accent500 : null,
+                ),
+                tooltip: widget.isBookmarked ? l10n.removeBookmark : l10n.addBookmark,
+                onPressed: () => ref
+                    .read(materialsControllerProvider.notifier)
+                    .toggleBookmark(widget.material),
+              ),
+              if (_opening)
+                const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                Icon(Icons.download_outlined, color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
+            ],
+          ),
+        ),
       ),
     );
   }
