@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { Sparkles } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
 import { payForOrder } from '@/lib/razorpay';
 import type { ParentPremiumStatus, PaymentOrder, SubscriptionPlan } from '@/lib/types';
-import { Card, PageHeader, StatusBadge, Button } from '@/components/ui';
+import { Card, PageHeader, StatusBadge, Button, InlineError, PageLoading } from '@/components/ui';
 
 export default function ParentPremiumPage() {
   const [status, setStatus] = useState<ParentPremiumStatus | null>(null);
@@ -52,23 +53,30 @@ export default function ParentPremiumPage() {
         description="AI doubt solver for your child, plus richer weekly digests."
       />
 
-      {error && <p className="mb-4 text-sm text-error">{error}</p>}
+      {error && (
+        <div className="mb-4">
+          <InlineError>{error}</InlineError>
+        </div>
+      )}
 
       {status === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <PageLoading />
       ) : (
         <>
           <Card className="mb-8 flex items-center justify-between">
-            <div>
-              <p className="text-sm text-neutral-500">Status</p>
-              <p className="mt-1 font-display text-2xl font-semibold capitalize text-neutral-900">
-                {status.status}
-              </p>
-              {status.currentPeriodEnd && (
-                <p className="mt-1 text-sm text-neutral-500">
-                  Renews {new Date(status.currentPeriodEnd).toLocaleDateString('en-IN')}
+            <div className="flex items-start gap-3">
+              <Sparkles className="mt-0.5 h-5 w-5 text-accent-500" aria-hidden />
+              <div>
+                <p className="text-sm text-neutral-500 dark:text-neutral-400">Status</p>
+                <p className="mt-1 font-display text-2xl font-semibold capitalize text-neutral-900 dark:text-neutral-50">
+                  {status.status}
                 </p>
-              )}
+                {status.currentPeriodEnd && (
+                  <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+                    Renews {new Date(status.currentPeriodEnd).toLocaleDateString('en-IN')}
+                  </p>
+                )}
+              </div>
             </div>
             <StatusBadge status={status.status} />
           </Card>
@@ -78,12 +86,16 @@ export default function ParentPremiumPage() {
               {Object.entries(plans).map(([planId, plan]) => (
                 <Card key={planId} className="flex items-center justify-between">
                   <div>
-                    <p className="font-medium text-neutral-900">{plan.label}</p>
-                    <p className="text-sm text-neutral-500">
+                    <p className="font-medium text-neutral-900 dark:text-neutral-50">{plan.label}</p>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
                       {formatMinor(plan.priceMinor, 'INR')} / {plan.periodDays} days
                     </p>
                   </div>
-                  <Button onClick={() => void purchase(planId)} disabled={purchasing === planId}>
+                  <Button
+                    onClick={() => void purchase(planId)}
+                    disabled={purchasing === planId}
+                    loading={purchasing === planId}
+                  >
                     {purchasing === planId ? 'Processing…' : 'Subscribe'}
                   </Button>
                 </Card>
