@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { PartyPopper, AlertTriangle } from 'lucide-react';
 import { api, tokenStore, ApiError } from '@/lib/api';
-import { Card, Button } from '@/components/ui';
+import { Card, Button, InlineError, PageLoading } from '@/components/ui';
 
 interface InvitePreview {
   batchTitle: string;
@@ -50,43 +51,58 @@ export default function JoinPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-neutral-50 px-6">
+    <main className="flex min-h-screen items-center justify-center bg-background px-6">
       <div className="w-full max-w-md">
         <div className="mb-6 text-center">
-          <Link href="/" className="font-display text-2xl font-semibold italic text-brand-800">
+          <Link
+            href="/"
+            className="font-display text-2xl font-semibold italic text-brand-800 dark:text-brand-200"
+          >
             Scholar
           </Link>
         </div>
 
         <Card>
           {error && !preview ? (
-            <p className="text-center text-sm text-error">{error}</p>
+            <InlineError>{error}</InlineError>
           ) : !preview ? (
-            <p className="text-center text-sm text-neutral-400">Loading…</p>
+            <PageLoading label="Loading…" />
           ) : joined ? (
             <div className="text-center">
-              <p className="font-display text-2xl font-semibold text-neutral-900">You&apos;re in</p>
-              <p className="mt-2 text-sm text-neutral-500">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-success-bg dark:bg-success/15">
+                <PartyPopper className="h-6 w-6 text-success dark:text-success-dark" aria-hidden />
+              </div>
+              <p className="font-display text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
+                You&apos;re in
+              </p>
+              <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
                 You&apos;ve joined {preview.batchTitle}. Your classes and homework will show up in
                 the app.
               </p>
             </div>
           ) : (
             <div className="text-center">
-              <p className="text-sm text-neutral-500">You&apos;ve been invited to join</p>
-              <p className="mt-2 font-display text-2xl font-semibold text-neutral-900">
+              <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                You&apos;ve been invited to join
+              </p>
+              <p className="mt-2 font-display text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
                 {preview.batchTitle}
               </p>
 
               {preview.isExpired || preview.isExhausted ? (
-                <p className="mt-4 text-sm text-warning">
+                <p className="mt-4 flex items-center justify-center gap-1.5 text-sm text-warning dark:text-warning-dark">
+                  <AlertTriangle className="h-4 w-4" aria-hidden />
                   This invite link is no longer active. Ask your tutor for a new one.
                 </p>
               ) : (
                 <>
-                  {error && <p className="mt-4 text-sm text-error">{error}</p>}
+                  {error && (
+                    <div className="mt-4">
+                      <InlineError>{error}</InlineError>
+                    </div>
+                  )}
                   <div className="mt-6">
-                    <Button onClick={() => void join()} disabled={joining} className="w-full">
+                    <Button onClick={() => void join()} disabled={joining} loading={joining} className="w-full">
                       {joining ? 'Joining…' : 'Join this batch'}
                     </Button>
                   </div>
