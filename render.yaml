@@ -16,10 +16,11 @@ services:
     region: singapore
     healthCheckPath: /health
     envVars:
+      # PORT is deliberately not set here — Render injects its own (10000)
+      # and health-checks that port. Overriding it makes the app bind
+      # somewhere Render never probes, so the deploy times out.
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 3001
       - key: CORS_ORIGINS
         sync: false
       - key: DATABASE_URL
