@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import type { Me } from '@/lib/types';
-import { PageHeader } from '@/components/ui';
+import { PageHeader, PageLoading } from '@/components/ui';
 import { MessageThread } from '@/components/message-thread';
 
 export default function TutorThreadPage() {
@@ -17,8 +17,12 @@ export default function TutorThreadPage() {
 
   return (
     <div>
-      <PageHeader title="Conversation" description="Visible to the tutor, the student, and any consented parent." />
-      {me && <MessageThread batchId={batchId} studentId={studentId} currentUserId={me.id} />}
+      <PageHeader
+        title="Conversation"
+        description="Visible to the tutor, the student, and any consented parent."
+        back={{ href: '/dashboard/messages', label: 'All conversations' }}
+      />
+      {me ? <MessageThread batchId={batchId} studentId={studentId} currentUserId={me.id} /> : <PageLoading />}
     </div>
   );
 }
