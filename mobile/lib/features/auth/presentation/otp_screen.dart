@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/design_tokens.dart';
 import '../../../l10n/gen/app_localizations.dart';
+import '../../../widgets/widgets.dart';
 import '../application/auth_controller.dart';
 import '../data/auth_models.dart';
 
@@ -68,28 +69,38 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                     ),
                   ),
                   const SizedBox(height: 32),
-                  Form(
-                    key: _formKey,
-                    child: TextFormField(
-                      controller: _codeController,
-                      keyboardType: TextInputType.number,
-                      autofillHints: const [AutofillHints.oneTimeCode],
-                      maxLength: 6,
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        letterSpacing: 8,
+                  AppCard(
+                    elevated: true,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: DesignTokens.spacing4,
+                      vertical: DesignTokens.spacing5,
+                    ),
+                    child: Form(
+                      key: _formKey,
+                      child: TextFormField(
+                        controller: _codeController,
+                        keyboardType: TextInputType.number,
+                        autofillHints: const [AutofillHints.oneTimeCode],
+                        maxLength: 6,
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          letterSpacing: 8,
+                        ),
+                        decoration: const InputDecoration(
+                          counterText: '',
+                          border: InputBorder.none,
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().length != 6) {
+                            return l10n.otpCodeError;
+                          }
+                          return null;
+                        },
+                        onFieldSubmitted: (_) => _submit(),
                       ),
-                      decoration: const InputDecoration(counterText: ''),
-                      validator: (value) {
-                        if (value == null || value.trim().length != 6) {
-                          return l10n.otpCodeError;
-                        }
-                        return null;
-                      },
-                      onFieldSubmitted: (_) => _submit(),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
                   Text(
                     l10n.newHerePrompt,
                     style: theme.textTheme.bodySmall,
@@ -114,12 +125,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                   ),
                   if (authState.error != null) ...[
                     const SizedBox(height: 16),
-                    Text(
-                      authState.error!,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: DesignTokens.error,
-                      ),
-                    ),
+                    FormErrorBanner(message: authState.error!),
                   ],
                   const SizedBox(height: 24),
                   ElevatedButton(
