@@ -1,7 +1,22 @@
 import * as Sentry from '@sentry/nextjs';
 import posthog from 'posthog-js';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+/**
+ * No localhost fallback: an unset NEXT_PUBLIC_API_URL must fail loudly
+ * with a clear message, not silently point every request at the
+ * visitor's own machine (that produced an opaque ERR_CONNECTION_REFUSED
+ * on the live site — see handover.md §5).
+ */
+function getApiUrl(): string {
+  if (!API_URL) {
+    throw new Error(
+      'NEXT_PUBLIC_API_URL is not set. Configure it in your environment (see web/.env.example) or in the Vercel project settings.',
+    );
+  }
+  return API_URL;
+}
 
 const ACCESS_TOKEN_KEY = 'accessToken';
 const REFRESH_TOKEN_KEY = 'refreshToken';
@@ -63,7 +78,7 @@ async function refreshTokens(): Promise<boolean> {
   const refreshToken = tokenStore.refresh;
   if (!refreshToken) return false;
 
-  const res = await fetch(`${API_URL}/auth/refresh`, {
+  const res = await fetch(`${getApiUrl()}/auth/refresh`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refreshToken }),
@@ -91,7 +106,7 @@ async function request<T>(
   const accessToken = tokenStore.access;
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(`${getApiUrl()}${path}`, {
     method,
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -122,7 +137,7 @@ export const api = {
 
 /** Unauthenticated — used by the login page before tokens exist. */
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(`${getApiUrl()}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

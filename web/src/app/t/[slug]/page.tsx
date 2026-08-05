@@ -7,10 +7,18 @@ import type { PublicTutorPage } from '@/lib/types';
 import { Card, StatusBadge, buttonVariants } from '@/components/ui';
 import { cn } from '@/lib/cn';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+function getApiUrl(): string {
+  const url = process.env.NEXT_PUBLIC_API_URL;
+  if (!url) {
+    throw new Error(
+      'NEXT_PUBLIC_API_URL is not set. Configure it in your environment (see web/.env.example) or in the Vercel project settings.',
+    );
+  }
+  return url;
+}
 
 async function getTutorPage(slug: string): Promise<PublicTutorPage | null> {
-  const res = await fetch(`${API_URL}/marketplace/discovery/tutors/${slug}`, {
+  const res = await fetch(`${getApiUrl()}/marketplace/discovery/tutors/${slug}`, {
     cache: 'no-store',
   });
   if (res.status === 404) return null;

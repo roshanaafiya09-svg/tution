@@ -1,0 +1,42 @@
+# Render Blueprint for the NestJS backend. Deploy: Render dashboard →
+# "New +" → "Blueprint" → connect this repo → Render finds this file.
+#
+# DB/Redis are NOT Render-managed here (Render's own Postgres/Redis
+# require a paid plan) — point DATABASE_URL/REDIS_URL at Neon/Upstash
+# instead (see handover.md for the full walkthrough). Every var below
+# marked `sync: false` is a secret you paste into the Render dashboard
+# after the first deploy; nothing sensitive lives in this file.
+services:
+  - type: web
+    name: tuition-app-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    region: singapore
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
