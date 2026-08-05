@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Users } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
 import type { Batch, Curriculum, GradeLevel, Subject } from '@/lib/types';
 import {
@@ -11,7 +12,10 @@ import {
   StatusBadge,
   Button,
   Field,
-  inputClass,
+  Input,
+  Select,
+  InlineError,
+  CardSkeleton,
 } from '@/components/ui';
 
 export default function BatchesPage() {
@@ -83,16 +87,14 @@ export default function BatchesPage() {
         <Card className="mb-6">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Batch name">
-              <input
-                className={inputClass}
+              <Input
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 placeholder="Grade 10 Physics — Evening"
               />
             </Field>
             <Field label="Subject">
-              <select
-                className={inputClass}
+              <Select
                 value={form.subjectId}
                 onChange={(e) => setForm({ ...form, subjectId: e.target.value })}
               >
@@ -102,11 +104,10 @@ export default function BatchesPage() {
                     {s.name_i18n.en}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
             <Field label="Curriculum">
-              <select
-                className={inputClass}
+              <Select
                 value={form.curriculumId}
                 onChange={(e) => setForm({ ...form, curriculumId: e.target.value, gradeLevelId: '' })}
               >
@@ -116,11 +117,10 @@ export default function BatchesPage() {
                     {c.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
             <Field label="Grade">
-              <select
-                className={inputClass}
+              <Select
                 value={form.gradeLevelId}
                 onChange={(e) => setForm({ ...form, gradeLevelId: e.target.value })}
                 disabled={gradeLevels.length === 0}
@@ -131,30 +131,32 @@ export default function BatchesPage() {
                     {g.label}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
             <Field label="Capacity">
-              <input
+              <Input
                 type="number"
-                className={inputClass}
                 value={form.capacity}
                 onChange={(e) => setForm({ ...form, capacity: e.target.value })}
               />
             </Field>
             <Field label="Monthly fee (₹)" hint="Stored in paise — no rounding errors.">
-              <input
+              <Input
                 type="number"
-                className={inputClass}
                 value={form.feeRupees}
                 onChange={(e) => setForm({ ...form, feeRupees: e.target.value })}
               />
             </Field>
           </div>
 
-          {error && <p className="mt-3 text-sm text-error">{error}</p>}
+          {error && (
+            <div className="mt-3">
+              <InlineError>{error}</InlineError>
+            </div>
+          )}
 
           <div className="mt-4">
-            <Button onClick={() => void createBatch()} disabled={!canSubmit || saving}>
+            <Button onClick={() => void createBatch()} disabled={!canSubmit || saving} loading={saving}>
               {saving ? 'Creating…' : 'Create batch'}
             </Button>
           </div>
@@ -162,9 +164,14 @@ export default function BatchesPage() {
       )}
 
       {batches === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <CardSkeleton key={i} />
+          ))}
+        </div>
       ) : batches.length === 0 ? (
         <EmptyState
+          icon={Users}
           title="No batches yet"
           description="Create your first batch, then share the invite link on WhatsApp to bring your students in."
         />
@@ -172,12 +179,12 @@ export default function BatchesPage() {
         <div className="grid gap-4 sm:grid-cols-2">
           {batches.map((batch) => (
             <Link key={batch.id} href={`/dashboard/batches/${batch.id}`}>
-              <Card className="h-full transition-shadow hover:shadow-md">
+              <Card interactive className="h-full">
                 <div className="flex items-start justify-between">
-                  <p className="font-medium text-neutral-900">{batch.title}</p>
+                  <p className="font-medium text-neutral-900 dark:text-neutral-50">{batch.title}</p>
                   <StatusBadge status={batch.status} />
                 </div>
-                <p className="mt-3 text-sm text-neutral-500">
+                <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">
                   Up to {batch.capacity} students · {formatMinor(batch.fee_minor, batch.currency)}/
                   {batch.fee_period === 'monthly' ? 'month' : batch.fee_period}
                 </p>

@@ -3,6 +3,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import {
+  Users,
+  CalendarDays,
+  FileText,
+  ClipboardList,
+  Megaphone,
+  Link2,
+  Copy,
+  Check,
+  Sparkles,
+  Database,
+  Send,
+} from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
 import type {
   Announcement,
@@ -20,17 +33,21 @@ import {
   StatusBadge,
   Button,
   Field,
-  inputClass,
+  Input,
+  Select,
+  Textarea,
+  InlineError,
+  PageLoading,
 } from '@/components/ui';
 
 type Tab = 'students' | 'sessions' | 'materials' | 'homework' | 'announcements';
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'students', label: 'Students' },
-  { id: 'sessions', label: 'Sessions' },
-  { id: 'materials', label: 'Materials' },
-  { id: 'homework', label: 'Homework' },
-  { id: 'announcements', label: 'Announcements' },
+const TABS: { id: Tab; label: string; icon: typeof Users }[] = [
+  { id: 'students', label: 'Students', icon: Users },
+  { id: 'sessions', label: 'Sessions', icon: CalendarDays },
+  { id: 'materials', label: 'Materials', icon: FileText },
+  { id: 'homework', label: 'Homework', icon: ClipboardList },
+  { id: 'announcements', label: 'Announcements', icon: Megaphone },
 ];
 
 export default function BatchDetailPage() {
@@ -42,7 +59,7 @@ export default function BatchDetailPage() {
     void api.get<Batch>(`/batches/${id}`).then(setBatch);
   }, [id]);
 
-  if (!batch) return <p className="text-sm text-neutral-400">Loading…</p>;
+  if (!batch) return <PageLoading />;
 
   return (
     <div>
@@ -58,17 +75,18 @@ export default function BatchDetailPage() {
         }
       />
 
-      <div className="mb-6 flex gap-1 border-b border-neutral-200">
+      <div className="mb-6 flex gap-1 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800">
         {TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+            className={`-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
               tab === t.id
-                ? 'border-brand-600 text-brand-700'
-                : 'border-transparent text-neutral-500 hover:text-neutral-800'
+                ? 'border-brand-600 text-brand-700 dark:border-brand-400 dark:text-brand-200'
+                : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-100'
             }`}
           >
+            <t.icon className="h-4 w-4" aria-hidden />
             {t.label}
           </button>
         ))}
@@ -110,13 +128,16 @@ function StudentsTab({ batchId }: { batchId: string }) {
   return (
     <div className="space-y-6">
       <Card>
-        <h3 className="font-medium text-neutral-900">Invite students</h3>
-        <p className="mt-1 text-sm text-neutral-500">
+        <div className="flex items-center gap-2">
+          <Link2 className="h-4 w-4 text-brand-500 dark:text-brand-300" aria-hidden />
+          <h3 className="font-medium text-neutral-900 dark:text-neutral-50">Invite students</h3>
+        </div>
+        <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
           Share this link on WhatsApp. Students who open it land pre-enrolled in this batch.
         </p>
         {inviteUrl ? (
           <div className="mt-4 flex gap-2">
-            <input readOnly value={inviteUrl} className={`${inputClass} flex-1 bg-neutral-50`} />
+            <Input readOnly value={inviteUrl} className="flex-1 bg-neutral-50 dark:bg-neutral-900" />
             <Button
               variant="secondary"
               onClick={() => {
@@ -125,6 +146,7 @@ function StudentsTab({ batchId }: { batchId: string }) {
                 setTimeout(() => setCopied(false), 2000);
               }}
             >
+              {copied ? <Check className="h-4 w-4" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
               {copied ? 'Copied' : 'Copy'}
             </Button>
           </div>
@@ -136,26 +158,27 @@ function StudentsTab({ batchId }: { batchId: string }) {
       </Card>
 
       {students === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <PageLoading />
       ) : students.length === 0 ? (
         <EmptyState
+          icon={Users}
           title="No students yet"
           description="Share the invite link above — students appear here as soon as they join."
         />
       ) : (
-        <Card className="divide-y divide-neutral-100 p-0">
+        <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
           {students.map((student) => (
             <div key={student.id} className="flex items-center justify-between px-6 py-3">
               <div>
-                <p className="text-sm font-medium text-neutral-900">
+                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                   {student.display_name ?? student.phone_e164}
                 </p>
-                <p className="text-xs text-neutral-500">{student.phone_e164}</p>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">{student.phone_e164}</p>
               </div>
               <div className="flex items-center gap-3">
                 <Link
                   href={`/dashboard/messages/${batchId}/${student.student_id}`}
-                  className="text-sm font-medium text-brand-700 hover:underline"
+                  className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
                 >
                   Message
                 </Link>
@@ -221,32 +244,28 @@ function SessionsTab({ batchId }: { batchId: string }) {
         <Card>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Start time" hint="Your local time — daylight saving is handled for you.">
-              <input
+              <Input
                 type="datetime-local"
-                className={inputClass}
                 value={form.startLocal}
                 onChange={(e) => setForm({ ...form, startLocal: e.target.value })}
               />
             </Field>
             <Field label="Duration (minutes)">
-              <input
+              <Input
                 type="number"
-                className={inputClass}
                 value={form.durationMin}
                 onChange={(e) => setForm({ ...form, durationMin: e.target.value })}
               />
             </Field>
             <Field label="Meeting link" hint="Your own Zoom or Google Meet link.">
-              <input
-                className={inputClass}
+              <Input
                 value={form.meetingUrl}
                 onChange={(e) => setForm({ ...form, meetingUrl: e.target.value })}
                 placeholder="https://meet.google.com/abc-defg-hij"
               />
             </Field>
             <Field label="Repeat weekly on">
-              <select
-                className={inputClass}
+              <Select
                 value={form.repeat}
                 onChange={(e) => setForm({ ...form, repeat: e.target.value })}
               >
@@ -260,13 +279,12 @@ function SessionsTab({ batchId }: { batchId: string }) {
                 <option value="SU">Sundays</option>
                 <option value="MO,WE,FR">Mon, Wed, Fri</option>
                 <option value="TU,TH">Tue, Thu</option>
-              </select>
+              </Select>
             </Field>
             {form.repeat !== 'none' && (
               <Field label="Number of classes">
-                <input
+                <Input
                   type="number"
-                  className={inputClass}
                   value={form.count}
                   onChange={(e) => setForm({ ...form, count: e.target.value })}
                 />
@@ -274,7 +292,11 @@ function SessionsTab({ batchId }: { batchId: string }) {
             )}
           </div>
 
-          {error && <p className="mt-3 text-sm text-error">{error}</p>}
+          {error && (
+            <div className="mt-3">
+              <InlineError>{error}</InlineError>
+            </div>
+          )}
 
           <div className="mt-4">
             <Button onClick={() => void createSession()} disabled={!form.startLocal}>
@@ -285,18 +307,19 @@ function SessionsTab({ batchId }: { batchId: string }) {
       )}
 
       {sessions === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <PageLoading />
       ) : sessions.length === 0 ? (
         <EmptyState
+          icon={CalendarDays}
           title="No sessions scheduled"
           description="Schedule a class — recurring sessions are created in one go."
         />
       ) : (
-        <Card className="divide-y divide-neutral-100 p-0">
+        <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
           {sessions.map((session) => (
             <div key={session.id} className="flex items-center justify-between px-6 py-3">
               <div>
-                <p className="text-sm font-medium text-neutral-900">
+                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                   {new Date(session.scheduled_start_utc).toLocaleString('en-IN', {
                     timeZone: session.timezone,
                     weekday: 'short',
@@ -306,7 +329,9 @@ function SessionsTab({ batchId }: { batchId: string }) {
                     minute: '2-digit',
                   })}
                 </p>
-                <p className="text-xs text-neutral-500">{session.duration_min} minutes</p>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                  {session.duration_min} minutes
+                </p>
               </div>
               <div className="flex items-center gap-3">
                 <StatusBadge status={session.status} />
@@ -407,24 +432,36 @@ function MaterialsTab({ batchId }: { batchId: string }) {
               const file = e.target.files?.[0];
               if (file) void upload(file);
             }}
-            className="text-sm text-neutral-600 file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-brand-700"
+            className="text-sm text-neutral-600 file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-brand-700 dark:text-neutral-400 dark:file:bg-brand-500/15 dark:file:text-brand-200"
           />
         </Field>
-        {uploading && <p className="mt-2 text-sm text-neutral-500">Uploading…</p>}
-        {error && <p className="mt-2 text-sm text-error">{error}</p>}
+        {uploading && (
+          <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">Uploading…</p>
+        )}
+        {error && (
+          <div className="mt-2">
+            <InlineError>{error}</InlineError>
+          </div>
+        )}
       </Card>
 
       {materials === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <PageLoading />
       ) : materials.length === 0 ? (
-        <EmptyState title="No materials yet" description="Upload notes, worksheets, or past papers." />
+        <EmptyState
+          icon={FileText}
+          title="No materials yet"
+          description="Upload notes, worksheets, or past papers."
+        />
       ) : (
-        <Card className="divide-y divide-neutral-100 p-0">
+        <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
           {materials.map((material) => (
-            <div key={material.id} className="flex items-center justify-between px-6 py-3">
+            <div key={material.id} className="flex flex-wrap items-center justify-between gap-2 px-6 py-3">
               <div>
-                <p className="text-sm font-medium text-neutral-900">{material.title}</p>
-                <p className="text-xs text-neutral-500">
+                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                  {material.title}
+                </p>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">
                   {(material.size_bytes / 1024).toFixed(0)} KB
                 </p>
               </div>
@@ -433,25 +470,34 @@ function MaterialsTab({ batchId }: { batchId: string }) {
                   <>
                     <Button
                       variant="secondary"
+                      size="sm"
                       onClick={() => void generateQuiz(material.id)}
                       disabled={generatingId === material.id}
+                      loading={generatingId === material.id}
                     >
+                      <Sparkles className="h-3.5 w-3.5" aria-hidden />
                       {generatingId === material.id ? 'Generating…' : 'Generate quiz'}
                     </Button>
                     {indexedId === material.id ? (
-                      <span className="text-sm text-success">Indexed</span>
+                      <span className="flex items-center gap-1 text-sm text-success dark:text-success-dark">
+                        <Check className="h-3.5 w-3.5" aria-hidden />
+                        Indexed
+                      </span>
                     ) : (
                       <Button
                         variant="secondary"
+                        size="sm"
                         onClick={() => void indexForAi(material.id)}
                         disabled={indexingId === material.id}
+                        loading={indexingId === material.id}
                       >
+                        <Database className="h-3.5 w-3.5" aria-hidden />
                         {indexingId === material.id ? 'Indexing…' : 'Index for AI'}
                       </Button>
                     )}
                   </>
                 )}
-                <Button variant="secondary" onClick={() => void download(material.id)}>
+                <Button variant="secondary" size="sm" onClick={() => void download(material.id)}>
                   Open
                 </Button>
               </div>
@@ -496,25 +542,22 @@ function HomeworkTab({ batchId }: { batchId: string }) {
         <Card>
           <div className="grid gap-4">
             <Field label="Title">
-              <input
-                className={inputClass}
+              <Input
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 placeholder="Newton's laws worksheet"
               />
             </Field>
             <Field label="Instructions">
-              <textarea
-                className={inputClass}
+              <Textarea
                 rows={3}
                 value={form.instructions}
                 onChange={(e) => setForm({ ...form, instructions: e.target.value })}
               />
             </Field>
             <Field label="Due">
-              <input
+              <Input
                 type="datetime-local"
-                className={inputClass}
                 value={form.dueAtLocal}
                 onChange={(e) => setForm({ ...form, dueAtLocal: e.target.value })}
               />
@@ -529,16 +572,22 @@ function HomeworkTab({ batchId }: { batchId: string }) {
       )}
 
       {assignments === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <PageLoading />
       ) : assignments.length === 0 ? (
-        <EmptyState title="No homework set" description="Students are notified as soon as you set it." />
+        <EmptyState
+          icon={ClipboardList}
+          title="No homework set"
+          description="Students are notified as soon as you set it."
+        />
       ) : (
-        <Card className="divide-y divide-neutral-100 p-0">
+        <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
           {assignments.map((assignment) => (
             <div key={assignment.id} className="flex items-center justify-between px-6 py-3">
               <div>
-                <p className="text-sm font-medium text-neutral-900">{assignment.title}</p>
-                <p className="text-xs text-neutral-500">
+                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                  {assignment.title}
+                </p>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">
                   Due{' '}
                   {new Date(assignment.due_at_utc).toLocaleString('en-IN', {
                     timeZone: assignment.timezone,
@@ -588,8 +637,7 @@ function AnnouncementsTab({ batchId }: { batchId: string }) {
     <div className="space-y-4">
       <Card>
         <Field label="Message the whole batch" hint="Everyone gets a notification.">
-          <textarea
-            className={inputClass}
+          <Textarea
             rows={3}
             value={body}
             onChange={(e) => setBody(e.target.value)}
@@ -597,22 +645,27 @@ function AnnouncementsTab({ batchId }: { batchId: string }) {
           />
         </Field>
         <div className="mt-3">
-          <Button onClick={() => void post()} disabled={!body.trim() || posting}>
+          <Button onClick={() => void post()} disabled={!body.trim() || posting} loading={posting}>
+            <Send className="h-3.5 w-3.5" aria-hidden />
             {posting ? 'Sending…' : 'Send'}
           </Button>
         </div>
       </Card>
 
       {announcements === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <PageLoading />
       ) : announcements.length === 0 ? (
-        <EmptyState title="No announcements" description="Anything you send here reaches every student." />
+        <EmptyState
+          icon={Megaphone}
+          title="No announcements"
+          description="Anything you send here reaches every student."
+        />
       ) : (
-        <Card className="divide-y divide-neutral-100 p-0">
+        <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
           {announcements.map((announcement) => (
             <div key={announcement.id} className="px-6 py-3">
-              <p className="text-sm text-neutral-800">{announcement.body}</p>
-              <p className="mt-1 text-xs text-neutral-400">
+              <p className="text-sm text-neutral-800 dark:text-neutral-200">{announcement.body}</p>
+              <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
                 {new Date(announcement.created_at).toLocaleString('en-IN')}
               </p>
             </div>

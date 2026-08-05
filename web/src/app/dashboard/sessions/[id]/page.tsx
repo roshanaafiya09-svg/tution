@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { UserCheck, MousePointerClick, PenLine } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AttendanceRow } from '@/lib/types';
-import { Card, PageHeader, EmptyState, StatusBadge, Button } from '@/components/ui';
+import { Card, PageHeader, EmptyState, StatusBadge, Button, PageLoading } from '@/components/ui';
 
 const STATUSES = ['present', 'late', 'absent'] as const;
 
@@ -33,21 +34,27 @@ export default function SessionAttendancePage() {
       />
 
       {rows === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <PageLoading />
       ) : rows.length === 0 ? (
         <EmptyState
+          icon={UserCheck}
           title="No attendance recorded yet"
           description="Attendance appears here as students join the class."
         />
       ) : (
-        <Card className="divide-y divide-neutral-100 p-0">
+        <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
           {rows.map((row) => (
-            <div key={row.id} className="flex items-center justify-between px-6 py-3">
+            <div key={row.id} className="flex flex-wrap items-center justify-between gap-3 px-6 py-3">
               <div>
-                <p className="text-sm font-medium text-neutral-900">
+                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                   {row.display_name ?? row.student_id.slice(0, 8)}
                 </p>
-                <p className="text-xs text-neutral-500">
+                <p className="flex items-center gap-1 text-xs text-neutral-500 dark:text-neutral-400">
+                  {row.method === 'join_tap' ? (
+                    <MousePointerClick className="h-3 w-3" aria-hidden />
+                  ) : (
+                    <PenLine className="h-3 w-3" aria-hidden />
+                  )}
                   {row.method === 'join_tap' ? 'Tapped Join' : 'Marked by you'}
                 </p>
               </div>
@@ -57,9 +64,10 @@ export default function SessionAttendancePage() {
                   {STATUSES.map((status) => (
                     <Button
                       key={status}
-                      variant="secondary"
+                      variant={row.status === status ? 'primary' : 'secondary'}
+                      size="sm"
                       onClick={() => void mark(row.student_id, status)}
-                      className={row.status === status ? 'border-brand-500 text-brand-700' : ''}
+                      className="capitalize"
                     >
                       {status}
                     </Button>
