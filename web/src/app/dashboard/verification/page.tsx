@@ -1,13 +1,19 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { IdCard, GraduationCap, ShieldQuestion } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { VerificationDocType, VerificationUpload } from '@/lib/types';
-import { Card, PageHeader, EmptyState, StatusBadge } from '@/components/ui';
+import { Card, PageHeader, EmptyState, StatusBadge, InlineError, PageLoading } from '@/components/ui';
 
 const DOC_LABELS: Record<VerificationDocType, string> = {
   id_proof: 'ID proof (Aadhaar, PAN, etc.)',
   qualification: 'Qualification certificate',
+};
+
+const DOC_ICONS: Record<VerificationDocType, typeof IdCard> = {
+  id_proof: IdCard,
+  qualification: GraduationCap,
 };
 
 const ALLOWED_MIMES = ['application/pdf', 'image/jpeg', 'image/png'];
@@ -67,27 +73,35 @@ export default function VerificationPage() {
         description="Upload your ID and qualifications for review — both need to be approved before your profile shows a verified badge. Typically reviewed within 24 hours."
       />
 
-      {error && <p className="mb-4 text-sm text-error">{error}</p>}
+      {error && (
+        <div className="mb-4">
+          <InlineError>{error}</InlineError>
+        </div>
+      )}
 
       {uploads === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <PageLoading />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {(Object.keys(DOC_LABELS) as VerificationDocType[]).map((type) => {
             const latest = latestFor(type);
+            const Icon = DOC_ICONS[type];
             return (
               <Card key={type}>
-                <div className="flex items-start justify-between">
-                  <p className="font-medium text-neutral-900">{DOC_LABELS[type]}</p>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <Icon className="mt-0.5 h-5 w-5 text-brand-500 dark:text-brand-300" aria-hidden />
+                    <p className="font-medium text-neutral-900 dark:text-neutral-50">{DOC_LABELS[type]}</p>
+                  </div>
                   {latest && <StatusBadge status={latest.status} />}
                 </div>
                 {latest ? (
-                  <p className="mt-2 text-sm text-neutral-500">
+                  <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
                     Submitted {new Date(latest.created_at).toLocaleDateString('en-IN')}
                     {latest.status === 'rejected' && ' — upload again below.'}
                   </p>
                 ) : (
-                  <p className="mt-2 text-sm text-neutral-500">Not submitted yet.</p>
+                  <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">Not submitted yet.</p>
                 )}
                 {(!latest || latest.status === 'rejected') && (
                   <label className="mt-4 block">
@@ -100,11 +114,13 @@ export default function VerificationPage() {
                         const file = e.target.files?.[0];
                         if (file) void upload(type, file);
                       }}
-                      className="block w-full text-sm text-neutral-600 file:mr-3 file:rounded-md file:border-0 file:bg-brand-600 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-white hover:file:bg-brand-700"
+                      className="block w-full text-sm text-neutral-600 file:mr-3 file:rounded-md file:border-0 file:bg-brand-600 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-white hover:file:bg-brand-700 dark:text-neutral-400 dark:file:bg-brand-500 dark:hover:file:bg-brand-400"
                     />
                   </label>
                 )}
-                {uploading === type && <p className="mt-2 text-sm text-neutral-400">Uploading…</p>}
+                {uploading === type && (
+                  <p className="mt-2 text-sm text-neutral-400 dark:text-neutral-500">Uploading…</p>
+                )}
               </Card>
             );
           })}
@@ -114,6 +130,7 @@ export default function VerificationPage() {
       {uploads !== null && uploads.length === 0 && (
         <div className="mt-4">
           <EmptyState
+            icon={ShieldQuestion}
             title="No documents submitted"
             description="Upload both an ID proof and a qualification to get your verified badge."
           />

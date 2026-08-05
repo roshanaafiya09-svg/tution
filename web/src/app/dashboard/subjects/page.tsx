@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { BookMarked, Bell, X, Check } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
 import type { Curriculum, GradeLevel, Subject, TutorSubject } from '@/lib/types';
-import { Card, PageHeader, EmptyState, Button, Field, inputClass } from '@/components/ui';
+import { Card, PageHeader, EmptyState, Button, Field, Input, Select, InlineError, PageLoading } from '@/components/ui';
 
 export default function SubjectsPage() {
   const [offerings, setOfferings] = useState<TutorSubject[] | null>(null);
@@ -98,8 +99,7 @@ export default function SubjectsPage() {
         <Card className="mb-6">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Subject">
-              <select
-                className={inputClass}
+              <Select
                 value={form.subjectId}
                 onChange={(e) => setForm({ ...form, subjectId: e.target.value })}
               >
@@ -109,11 +109,10 @@ export default function SubjectsPage() {
                     {s.name_i18n.en}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
             <Field label="Curriculum">
-              <select
-                className={inputClass}
+              <Select
                 value={form.curriculumId}
                 onChange={(e) => setForm({ ...form, curriculumId: e.target.value })}
               >
@@ -123,11 +122,10 @@ export default function SubjectsPage() {
                     {c.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
             <Field label="Grade from" hint={gradeLevels.length > 0 ? undefined : 'Pick a curriculum first'}>
-              <select
-                className={inputClass}
+              <Select
                 value={form.gradeMin}
                 onChange={(e) => setForm({ ...form, gradeMin: e.target.value })}
                 disabled={gradeLevels.length === 0}
@@ -137,11 +135,10 @@ export default function SubjectsPage() {
                     {g.label}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
             <Field label="Grade to">
-              <select
-                className={inputClass}
+              <Select
                 value={form.gradeMax}
                 onChange={(e) => setForm({ ...form, gradeMax: e.target.value })}
                 disabled={gradeLevels.length === 0}
@@ -151,22 +148,25 @@ export default function SubjectsPage() {
                     {g.label}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
             <Field label="Hourly rate (₹)">
-              <input
+              <Input
                 type="number"
-                className={inputClass}
                 value={form.hourlyRateRupees}
                 onChange={(e) => setForm({ ...form, hourlyRateRupees: e.target.value })}
               />
             </Field>
           </div>
 
-          {error && <p className="mt-3 text-sm text-error">{error}</p>}
+          {error && (
+            <div className="mt-3">
+              <InlineError>{error}</InlineError>
+            </div>
+          )}
 
           <div className="mt-4">
-            <Button onClick={() => void createOffering()} disabled={!canSubmit || saving}>
+            <Button onClick={() => void createOffering()} disabled={!canSubmit || saving} loading={saving}>
               {saving ? 'Saving…' : 'Add subject'}
             </Button>
           </div>
@@ -174,39 +174,51 @@ export default function SubjectsPage() {
       )}
 
       {offerings === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <PageLoading />
       ) : offerings.length === 0 ? (
         <EmptyState
+          icon={BookMarked}
           title="No subjects added yet"
           description="Add what you teach so students can find and book you in the marketplace."
         />
       ) : (
-        <Card className="divide-y divide-neutral-100 p-0">
+        <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
           {offerings.map((offering) => (
-            <div key={offering.id} className="flex items-center justify-between px-6 py-3">
+            <div key={offering.id} className="flex flex-wrap items-center justify-between gap-2 px-6 py-3">
               <div>
-                <p className="text-sm font-medium text-neutral-900">
+                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                   {subjectName(offering.subject_id)} · {curriculumName(offering.curriculum_id)}
                 </p>
-                <p className="text-sm text-neutral-500">
+                <p className="text-sm text-neutral-500 dark:text-neutral-400">
                   Grades {offering.grade_min}–{offering.grade_max} ·{' '}
                   {formatMinor(offering.hourly_rate_minor, offering.currency)}/hr
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 {notifiedId === offering.id ? (
-                  <span className="text-sm text-success">Notified</span>
+                  <span className="flex items-center gap-1 text-sm text-success dark:text-success-dark">
+                    <Check className="h-3.5 w-3.5" aria-hidden />
+                    Notified
+                  </span>
                 ) : (
                   <Button
                     variant="secondary"
+                    size="sm"
                     onClick={() => void notifyWaitlist(offering.id)}
                     disabled={notifyingId === offering.id}
+                    loading={notifyingId === offering.id}
                   >
+                    <Bell className="h-3.5 w-3.5" aria-hidden />
                     {notifyingId === offering.id ? 'Notifying…' : 'Notify waitlist'}
                   </Button>
                 )}
-                <Button variant="secondary" onClick={() => void deleteOffering(offering.id)}>
-                  Remove
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => void deleteOffering(offering.id)}
+                  aria-label="Remove subject"
+                >
+                  <X className="h-4 w-4" aria-hidden />
                 </Button>
               </div>
             </div>

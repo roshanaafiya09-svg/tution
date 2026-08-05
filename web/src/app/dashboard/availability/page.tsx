@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { CalendarClock, CalendarOff, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AvailabilityRule, AvailabilityException } from '@/lib/types';
-import { Card, PageHeader, EmptyState, Button, Field, inputClass } from '@/components/ui';
+import { Card, PageHeader, EmptyState, Button, Field, Input, Select, InlineError, PageLoading } from '@/components/ui';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -102,10 +103,14 @@ export default function AvailabilityPage() {
         description="When you're generally free to teach — batches and sessions should fit inside these windows."
       />
 
-      {error && <p className="mb-4 text-sm text-error">{error}</p>}
+      {error && (
+        <div className="mb-4">
+          <InlineError>{error}</InlineError>
+        </div>
+      )}
 
-      <div className="mb-8 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-neutral-900">Weekly rules</h2>
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Weekly rules</h2>
         <Button variant="secondary" onClick={() => setShowRuleForm((s) => !s)}>
           {showRuleForm ? 'Cancel' : 'Add rule'}
         </Button>
@@ -115,8 +120,7 @@ export default function AvailabilityPage() {
         <Card className="mb-4">
           <div className="grid gap-3 sm:grid-cols-4">
             <Field label="Day">
-              <select
-                className={inputClass}
+              <Select
                 value={ruleForm.weekday}
                 onChange={(e) => setRuleForm({ ...ruleForm, weekday: e.target.value })}
               >
@@ -125,55 +129,58 @@ export default function AvailabilityPage() {
                     {day}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
             <Field label="From">
-              <input
+              <Input
                 type="time"
-                className={inputClass}
                 value={ruleForm.startTime}
                 onChange={(e) => setRuleForm({ ...ruleForm, startTime: e.target.value })}
               />
             </Field>
             <Field label="To">
-              <input
+              <Input
                 type="time"
-                className={inputClass}
                 value={ruleForm.endTime}
                 onChange={(e) => setRuleForm({ ...ruleForm, endTime: e.target.value })}
               />
             </Field>
             <Field label="Starting from">
-              <input
+              <Input
                 type="date"
-                className={inputClass}
                 value={ruleForm.effectiveFrom}
                 onChange={(e) => setRuleForm({ ...ruleForm, effectiveFrom: e.target.value })}
               />
             </Field>
           </div>
-          <Button className="mt-4" onClick={() => void createRule()} disabled={savingRule}>
+          <Button className="mt-4" onClick={() => void createRule()} disabled={savingRule} loading={savingRule}>
             {savingRule ? 'Saving…' : 'Save rule'}
           </Button>
         </Card>
       )}
 
       {rules === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <PageLoading />
       ) : rules.length === 0 ? (
-        <EmptyState title="No availability set" description="Add a weekly rule so students know when you teach." />
+        <EmptyState
+          icon={CalendarClock}
+          title="No availability set"
+          description="Add a weekly rule so students know when you teach."
+        />
       ) : (
-        <Card className="mb-8 divide-y divide-neutral-100 p-0">
+        <Card className="mb-8 divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
           {rules.map((rule) => (
             <div key={rule.id} className="flex items-center justify-between px-6 py-3">
               <div>
-                <p className="text-sm font-medium text-neutral-900">{WEEKDAYS[rule.weekday]}</p>
-                <p className="text-sm text-neutral-500">
+                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                  {WEEKDAYS[rule.weekday]}
+                </p>
+                <p className="text-sm text-neutral-500 dark:text-neutral-400">
                   {rule.start_time.slice(0, 5)} – {rule.end_time.slice(0, 5)}
                 </p>
               </div>
-              <Button variant="secondary" onClick={() => void deleteRule(rule.id)}>
-                Remove
+              <Button variant="ghost" size="icon" onClick={() => void deleteRule(rule.id)} aria-label="Remove rule">
+                <X className="h-4 w-4" aria-hidden />
               </Button>
             </div>
           ))}
@@ -181,7 +188,7 @@ export default function AvailabilityPage() {
       )}
 
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-neutral-900">Exceptions</h2>
+        <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Exceptions</h2>
         <Button variant="secondary" onClick={() => setShowExceptionForm((s) => !s)}>
           {showExceptionForm ? 'Cancel' : 'Add exception'}
         </Button>
@@ -191,16 +198,14 @@ export default function AvailabilityPage() {
         <Card className="mb-4">
           <div className="grid gap-3 sm:grid-cols-4 sm:items-end">
             <Field label="Date">
-              <input
+              <Input
                 type="date"
-                className={inputClass}
                 value={exceptionForm.date}
                 onChange={(e) => setExceptionForm({ ...exceptionForm, date: e.target.value })}
               />
             </Field>
             <Field label="Type">
-              <select
-                className={inputClass}
+              <Select
                 value={exceptionForm.isAvailable ? 'available' : 'off'}
                 onChange={(e) =>
                   setExceptionForm({ ...exceptionForm, isAvailable: e.target.value === 'available' })
@@ -208,22 +213,20 @@ export default function AvailabilityPage() {
               >
                 <option value="off">Day off</option>
                 <option value="available">Extra availability</option>
-              </select>
+              </Select>
             </Field>
             {exceptionForm.isAvailable && (
               <>
                 <Field label="From">
-                  <input
+                  <Input
                     type="time"
-                    className={inputClass}
                     value={exceptionForm.startTime}
                     onChange={(e) => setExceptionForm({ ...exceptionForm, startTime: e.target.value })}
                   />
                 </Field>
                 <Field label="To">
-                  <input
+                  <Input
                     type="time"
-                    className={inputClass}
                     value={exceptionForm.endTime}
                     onChange={(e) => setExceptionForm({ ...exceptionForm, endTime: e.target.value })}
                   />
@@ -231,36 +234,50 @@ export default function AvailabilityPage() {
               </>
             )}
           </div>
-          <Button className="mt-4" onClick={() => void createException()} disabled={savingException}>
+          <Button
+            className="mt-4"
+            onClick={() => void createException()}
+            disabled={savingException}
+            loading={savingException}
+          >
             {savingException ? 'Saving…' : 'Save exception'}
           </Button>
         </Card>
       )}
 
       {exceptions === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <PageLoading />
       ) : exceptions.length === 0 ? (
-        <EmptyState title="No exceptions" description="Days off or extra availability will show up here." />
+        <EmptyState
+          icon={CalendarOff}
+          title="No exceptions"
+          description="Days off or extra availability will show up here."
+        />
       ) : (
-        <Card className="divide-y divide-neutral-100 p-0">
+        <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
           {exceptions.map((exception) => (
             <div key={exception.id} className="flex items-center justify-between px-6 py-3">
               <div>
-                <p className="text-sm font-medium text-neutral-900">
+                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                   {new Date(exception.date).toLocaleDateString('en-IN', {
                     weekday: 'short',
                     day: 'numeric',
                     month: 'short',
                   })}
                 </p>
-                <p className="text-sm text-neutral-500">
+                <p className="text-sm text-neutral-500 dark:text-neutral-400">
                   {exception.is_available
                     ? `Available ${exception.start_time?.slice(0, 5)}–${exception.end_time?.slice(0, 5)}`
                     : 'Day off'}
                 </p>
               </div>
-              <Button variant="secondary" onClick={() => void deleteException(exception.id)}>
-                Remove
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => void deleteException(exception.id)}
+                aria-label="Remove exception"
+              >
+                <X className="h-4 w-4" aria-hidden />
               </Button>
             </div>
           ))}
