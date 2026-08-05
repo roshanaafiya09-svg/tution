@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { Check, Users2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import type {
   PublishedQuiz,
@@ -10,7 +11,17 @@ import type {
   QuizDraftDetail,
   QuizDraftQuestion,
 } from '@/lib/types';
-import { Card, PageHeader, StatusBadge, Button, Field, inputClass } from '@/components/ui';
+import {
+  Card,
+  PageHeader,
+  StatusBadge,
+  Button,
+  Field,
+  Input,
+  Select,
+  InlineError,
+  PageLoading,
+} from '@/components/ui';
 
 export default function QuizDraftPage() {
   const { id } = useParams<{ id: string }>();
@@ -56,7 +67,7 @@ export default function QuizDraftPage() {
     }
   }
 
-  if (!draft) return <p className="text-sm text-neutral-400">Loading…</p>;
+  if (!draft) return <PageLoading />;
 
   return (
     <div>
@@ -66,7 +77,11 @@ export default function QuizDraftPage() {
         action={<StatusBadge status={draft.status} />}
       />
 
-      {error && <p className="mb-4 text-sm text-error">{error}</p>}
+      {error && (
+        <div className="mb-4">
+          <InlineError>{error}</InlineError>
+        </div>
+      )}
 
       <div className="space-y-4">
         {draft.questions.map((question) => (
@@ -82,7 +97,7 @@ export default function QuizDraftPage() {
 
       {draft.status === 'pending_review' && (
         <div className="mt-6 flex gap-3">
-          <Button onClick={() => void review('approve')} disabled={reviewing}>
+          <Button onClick={() => void review('approve')} disabled={reviewing} loading={reviewing}>
             {reviewing ? 'Saving…' : 'Approve'}
           </Button>
           <Button variant="danger" onClick={() => void review('reject')} disabled={reviewing}>
@@ -93,7 +108,7 @@ export default function QuizDraftPage() {
 
       {draft.status === 'approved' && (
         <div className="mt-6">
-          <Button onClick={() => void publish()} disabled={publishing}>
+          <Button onClick={() => void publish()} disabled={publishing} loading={publishing}>
             {publishing ? 'Publishing…' : 'Publish to batch'}
           </Button>
         </div>
@@ -101,22 +116,25 @@ export default function QuizDraftPage() {
 
       {publishedQuiz && (
         <div className="mt-8">
-          <h2 className="mb-3 text-lg font-semibold text-neutral-900">
+          <h2 className="mb-3 text-lg font-semibold text-neutral-900 dark:text-neutral-50">
             Published — students in this batch have been notified
           </h2>
-          <h3 className="mb-2 text-sm font-medium text-neutral-700">Attempts</h3>
+          <h3 className="mb-2 flex items-center gap-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300">
+            <Users2 className="h-4 w-4" aria-hidden />
+            Attempts
+          </h3>
           {attempts === null ? (
-            <p className="text-sm text-neutral-400">Loading…</p>
+            <PageLoading label="Loading…" />
           ) : attempts.length === 0 ? (
-            <p className="text-sm text-neutral-500">No attempts yet.</p>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">No attempts yet.</p>
           ) : (
-            <Card className="divide-y divide-neutral-100 p-0">
+            <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
               {attempts.map((attempt) => (
                 <div key={attempt.id} className="flex items-center justify-between px-6 py-3">
-                  <p className="text-sm text-neutral-900">
+                  <p className="text-sm text-neutral-900 dark:text-neutral-100">
                     {attempt.display_name ?? attempt.student_id.slice(0, 8)}
                   </p>
-                  <p className="text-sm font-medium text-neutral-900">
+                  <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                     {attempt.score}/{attempt.total}
                   </p>
                 </div>
@@ -163,27 +181,29 @@ function QuestionCard({
   if (!editing) {
     return (
       <Card>
-        <div className="flex items-start justify-between">
-          <p className="font-medium text-neutral-900">{question.question_text}</p>
-          <span className="text-xs capitalize text-neutral-400">{question.difficulty}</span>
+        <div className="flex items-start justify-between gap-3">
+          <p className="font-medium text-neutral-900 dark:text-neutral-50">{question.question_text}</p>
+          <span className="shrink-0 text-xs capitalize text-neutral-400 dark:text-neutral-500">
+            {question.difficulty}
+          </span>
         </div>
         <ul className="mt-3 space-y-1">
           {question.choices.map((choice, i) => (
             <li
               key={i}
-              className={`text-sm ${
+              className={`flex items-center gap-1.5 text-sm ${
                 i === question.correct_choice_index
-                  ? 'font-medium text-success'
-                  : 'text-neutral-600'
+                  ? 'font-medium text-success dark:text-success-dark'
+                  : 'text-neutral-600 dark:text-neutral-400'
               }`}
             >
-              {i === question.correct_choice_index ? '✓ ' : ''}
+              {i === question.correct_choice_index && <Check className="h-3.5 w-3.5" aria-hidden />}
               {choice}
             </li>
           ))}
         </ul>
         {editable && (
-          <Button variant="secondary" className="mt-3" onClick={() => setEditing(true)}>
+          <Button variant="secondary" size="sm" className="mt-3" onClick={() => setEditing(true)}>
             Edit
           </Button>
         )}
@@ -194,8 +214,7 @@ function QuestionCard({
   return (
     <Card>
       <Field label="Question">
-        <input
-          className={inputClass}
+        <Input
           value={form.questionText}
           onChange={(e) => setForm({ ...form, questionText: e.target.value })}
         />
@@ -208,9 +227,10 @@ function QuestionCard({
               name={`correct-${question.id}`}
               checked={form.correctChoiceIndex === i}
               onChange={() => setForm({ ...form, correctChoiceIndex: i })}
+              className="h-4 w-4 accent-brand-600 dark:accent-brand-400"
             />
-            <input
-              className={`${inputClass} flex-1`}
+            <Input
+              className="flex-1"
               value={choice}
               onChange={(e) => {
                 const choices = [...form.choices];
@@ -223,19 +243,18 @@ function QuestionCard({
       </div>
       <div className="mt-3">
         <Field label="Difficulty">
-          <select
-            className={inputClass}
+          <Select
             value={form.difficulty}
             onChange={(e) => setForm({ ...form, difficulty: e.target.value as QuizDifficulty })}
           >
             <option value="easy">Easy</option>
             <option value="medium">Medium</option>
             <option value="hard">Hard</option>
-          </select>
+          </Select>
         </Field>
       </div>
       <div className="mt-4 flex gap-2">
-        <Button onClick={() => void save()} disabled={saving}>
+        <Button onClick={() => void save()} disabled={saving} loading={saving}>
           {saving ? 'Saving…' : 'Save'}
         </Button>
         <Button variant="secondary" onClick={() => setEditing(false)} disabled={saving}>
