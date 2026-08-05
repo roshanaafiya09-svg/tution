@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
@@ -8,6 +9,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/network/providers.dart';
 import '../../../core/theme/design_tokens.dart';
 import '../../../l10n/gen/app_localizations.dart';
+import '../../../widgets/widgets.dart';
 import '../../auth/application/auth_controller.dart';
 import '../data/account_api.dart';
 
@@ -28,7 +30,6 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _exporting = false;
   bool _deleting = false;
-  bool _confirmingDelete = false;
   String? _error;
 
   Future<void> _exportData() async {
@@ -50,7 +51,40 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  Future<void> _deleteAccount() async {
+  Future<void> _confirmAndDeleteAccount() async {
+    final l10n = AppLocalizations.of(context)!;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: Container(
+          width: 44,
+          height: 44,
+          decoration: const BoxDecoration(
+            color: DesignTokens.errorBg,
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            CupertinoIcons.exclamationmark_triangle,
+            color: DesignTokens.error,
+          ),
+        ),
+        title: Text(l10n.deleteMyAccount),
+        content: Text(l10n.deleteAccountWarning),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(l10n.cancel),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: DesignTokens.error),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(l10n.confirmDeleteAccount),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
     setState(() {
       _deleting = true;
       _error = null;
@@ -59,10 +93,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await ref.read(accountApiProvider).deleteAccount();
       await ref.read(authControllerProvider.notifier).signOut();
     } on ApiException catch (e) {
-      setState(() {
-        _error = e.message;
-        _deleting = false;
-      });
+      if (mounted) {
+        setState(() {
+          _error = e.message;
+          _deleting = false;
+        });
+      }
     }
   }
 
@@ -77,81 +113,56 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         child: ListView(
           padding: const EdgeInsets.all(DesignTokens.pageGutter),
           children: [
-            ListTile(
-              leading: const Icon(Icons.logout),
-              title: Text(l10n.signOut),
+            AppCard(
+              padding: EdgeInsets.zero,
               onTap: () => ref.read(authControllerProvider.notifier).signOut(),
+              child: ListTile(
+                leading: const Icon(Icons.logout),
+                title: Text(l10n.signOut),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+              ),
             ),
             const SizedBox(height: 24),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(DesignTokens.cardPadding),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(l10n.accountSectionTitle, style: theme.textTheme.titleMedium),
-                    const SizedBox(height: 4),
-                    Text(l10n.accountSectionBody, style: theme.textTheme.bodySmall),
-                    const SizedBox(height: 16),
-                    OutlinedButton(
-                      onPressed: _exporting ? null : _exportData,
-                      child: Text(_exporting ? l10n.preparingExport : l10n.exportMyData),
+            AppCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(l10n.accountSectionTitle, style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  Text(l10n.accountSectionBody, style: theme.textTheme.bodySmall),
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    onPressed: _exporting ? null : _exportData,
+                    icon: _exporting
+                        ? const SizedBox(
+                            height: 14,
+                            width: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(CupertinoIcons.arrow_down_doc, size: 16),
+                    label: Text(_exporting ? l10n.preparingExport : l10n.exportMyData),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: DesignTokens.error,
+                      side: const BorderSide(color: DesignTokens.error),
                     ),
-                    const SizedBox(height: 8),
-                    if (!_confirmingDelete)
-                      OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: DesignTokens.error,
-                          side: const BorderSide(color: DesignTokens.error),
-                        ),
-                        onPressed: () => setState(() => _confirmingDelete = true),
-                        child: Text(l10n.deleteMyAccount),
-                      )
-                    else ...[
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: DesignTokens.error.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
-                        ),
-                        child: Text(
-                          l10n.deleteAccountWarning,
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: FilledButton(
-                              style: FilledButton.styleFrom(
-                                backgroundColor: DesignTokens.error,
-                              ),
-                              onPressed: _deleting ? null : _deleteAccount,
-                              child: Text(
-                                _deleting ? l10n.deleting : l10n.confirmDeleteAccount,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          OutlinedButton(
-                            onPressed: _deleting
-                                ? null
-                                : () => setState(() => _confirmingDelete = false),
-                            child: Text(l10n.cancel),
-                          ),
-                        ],
-                      ),
-                    ],
-                    if (_error != null) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        _error!,
-                        style: theme.textTheme.bodySmall?.copyWith(color: DesignTokens.error),
-                      ),
-                    ],
+                    onPressed: _deleting ? null : _confirmAndDeleteAccount,
+                    icon: _deleting
+                        ? const SizedBox(
+                            height: 14,
+                            width: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(CupertinoIcons.trash, size: 16),
+                    label: Text(_deleting ? l10n.deleting : l10n.deleteMyAccount),
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 12),
+                    FormErrorBanner(message: _error!),
                   ],
-                ),
+                ],
               ),
             ),
           ],
