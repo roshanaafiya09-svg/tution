@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -6,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/design_tokens.dart';
 import '../../../l10n/gen/app_localizations.dart';
+import '../../../widgets/widgets.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../auth/data/auth_models.dart';
 import '../application/today_controller.dart';
@@ -41,9 +43,8 @@ class TodayScreen extends ConsumerWidget {
                 onRefresh: () =>
                     ref.read(todayControllerProvider.notifier).refresh(),
                 child: sessionsAsync.when(
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
-                  error: (error, _) => _ErrorView(
+                  loading: () => const LoadingView(),
+                  error: (error, _) => ErrorView(
                     message: error is ApiException
                         ? error.message
                         : l10n.todayLoadError,
@@ -81,47 +82,15 @@ class _TutorPlaceholder extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 24),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(DesignTokens.cardPadding),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(l10n.tutorPlaceholderTitle, style: theme.textTheme.titleMedium),
-                const SizedBox(height: 4),
-                Text(l10n.tutorPlaceholderBody, style: theme.textTheme.bodyMedium),
-              ],
-            ),
+        AppCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(l10n.tutorPlaceholderTitle, style: theme.textTheme.titleMedium),
+              const SizedBox(height: 4),
+              Text(l10n.tutorPlaceholderBody, style: theme.textTheme.bodyMedium),
+            ],
           ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
-    return ListView(
-      padding: const EdgeInsets.all(DesignTokens.pageGutter),
-      children: [
-        const SizedBox(height: 48),
-        Icon(
-          Icons.error_outline,
-          size: 40,
-          color: Theme.of(context).colorScheme.error,
-        ),
-        const SizedBox(height: 12),
-        Text(message, textAlign: TextAlign.center),
-        const SizedBox(height: 16),
-        Center(
-          child: OutlinedButton(onPressed: onRetry, child: Text(l10n.retry)),
         ),
       ],
     );
@@ -141,9 +110,10 @@ class _SessionList extends StatelessWidget {
       return ListView(
         padding: const EdgeInsets.all(DesignTokens.pageGutter),
         children: [
-          const SizedBox(height: 48),
-          Center(
-            child: Text(l10n.todayEmptyState, textAlign: TextAlign.center),
+          const SizedBox(height: 32),
+          EmptyStateView(
+            title: l10n.todayEmptyState,
+            icon: CupertinoIcons.calendar,
           ),
         ],
       );
@@ -161,12 +131,12 @@ class _SessionList extends StatelessWidget {
       padding: const EdgeInsets.all(DesignTokens.pageGutter),
       children: [
         if (today.isNotEmpty) ...[
-          _SectionLabel(l10n.todaySectionToday),
+          SectionLabel(l10n.todaySectionToday),
           ...today.map((s) => _SessionCard(session: s)),
           const SizedBox(height: 24),
         ],
         if (upcoming.isNotEmpty) ...[
-          _SectionLabel(l10n.todaySectionUpcoming),
+          SectionLabel(l10n.todaySectionUpcoming),
           ...upcoming.map((s) => _SessionCard(session: s)),
         ],
       ],
@@ -175,25 +145,6 @@ class _SessionList extends StatelessWidget {
 
   static bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
-}
-
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.label);
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        label,
-        style: Theme.of(
-          context,
-        ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-      ),
-    );
-  }
 }
 
 class _SessionCard extends ConsumerStatefulWidget {
@@ -218,16 +169,10 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
       if (meetingUrl != null) {
         await launchUrl(Uri.parse(meetingUrl), mode: LaunchMode.externalApplication);
       } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.joinNoLinkYet)),
-        );
+        AppSnackbar.info(context, l10n.joinNoLinkYet);
       }
     } on ApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
-      }
+      if (mounted) AppSnackbar.error(context, e.message);
     } finally {
       if (mounted) setState(() => _joining = false);
     }
@@ -241,10 +186,9 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
     final timeRange =
         '${DateFormat.jm().format(session.startLocal)} – ${DateFormat.jm().format(session.endLocal)}';
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(DesignTokens.cardPadding),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: AppCard(
         child: Row(
           children: [
             Expanded(
@@ -253,20 +197,25 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
                 children: [
                   Text(session.batchTitle, style: theme.textTheme.titleMedium),
                   const SizedBox(height: 4),
-                  Text(
-                    timeRange,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                    ),
+                  Row(
+                    children: [
+                      Icon(
+                        CupertinoIcons.clock,
+                        size: 13,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        timeRange,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    ],
                   ),
                   if (session.isCancelled) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      l10n.classCancelled,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: DesignTokens.error,
-                      ),
-                    ),
+                    const SizedBox(height: 6),
+                    const StatusChip('cancelled'),
                   ],
                 ],
               ),
