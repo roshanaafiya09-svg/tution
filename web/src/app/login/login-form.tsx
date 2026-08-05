@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Script from 'next/script';
 import posthog from 'posthog-js';
 import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
-import { Button, Field, inputClass } from '@/components/ui';
+import { Button, Field, Input, InlineError, Card } from '@/components/ui';
 import type { Me } from '@/lib/types';
 
 interface AuthTokens {
@@ -16,6 +16,8 @@ interface AuthTokens {
 type Phase = 'phone' | 'otp' | 'choose-role';
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+
+const ROLES = ['tutor', 'student', 'parent'] as const;
 
 /** Reads the `sub` claim straight out of the access token — no server
  * round-trip needed just to identify the PostHog session. */
@@ -145,7 +147,7 @@ export function LoginForm() {
   }, [phase]);
 
   return (
-    <div className="rounded-lg border border-neutral-200 bg-white p-6 shadow-sm">
+    <Card className="p-7">
       {GOOGLE_CLIENT_ID && (
         <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" />
       )}
@@ -153,15 +155,19 @@ export function LoginForm() {
       {phase === 'phone' && (
         <div className="flex flex-col gap-4">
           <Field label="Phone number" hint="We'll send a code on WhatsApp.">
-            <input
+            <Input
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+919876543210"
-              className={inputClass}
+              autoFocus
             />
           </Field>
-          <Button onClick={() => void handleSendOtp()} disabled={loading || phone.length < 8}>
+          <Button
+            onClick={() => void handleSendOtp()}
+            disabled={loading || phone.length < 8}
+            loading={loading}
+          >
             {loading ? 'Sending…' : 'Send code'}
           </Button>
         </div>
@@ -169,34 +175,37 @@ export function LoginForm() {
 
       {(phase === 'otp' || phase === 'choose-role') && (
         <div className="flex flex-col gap-4">
-          <p className="text-sm text-neutral-500">
-            Code sent to <span className="font-medium text-neutral-800">{phone}</span>.
+          <p className="text-sm text-neutral-500 dark:text-neutral-400">
+            Code sent to{' '}
+            <span className="font-medium text-neutral-800 dark:text-neutral-100">{phone}</span>.
           </p>
           <Field label="6-digit code">
-            <input
+            <Input
               type="text"
               inputMode="numeric"
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
               maxLength={6}
-              className={`${inputClass} tracking-[0.3em]`}
+              autoFocus
+              className="text-center text-lg tracking-[0.4em]"
             />
           </Field>
 
           {phase === 'choose-role' && (
             <div>
-              <p className="mb-2 text-sm text-neutral-500">
+              <p className="mb-2 text-sm text-neutral-500 dark:text-neutral-400">
                 New here — are you a tutor, a student, or a parent?
               </p>
-              <div className="flex gap-2">
-                {(['tutor', 'student', 'parent'] as const).map((role) => (
+              <div className="grid grid-cols-3 gap-2">
+                {ROLES.map((role) => (
                   <button
                     key={role}
+                    type="button"
                     onClick={() => setSignupRole(role)}
-                    className={`rounded-md border px-3 py-1.5 text-sm capitalize transition-colors ${
+                    className={`rounded-md border px-3 py-2 text-sm font-medium capitalize transition-colors focus-visible:outline-none focus-visible:shadow-focus-ring ${
                       signupRole === role
-                        ? 'border-brand-600 bg-brand-50 text-brand-700'
-                        : 'border-neutral-300 text-neutral-600 hover:bg-neutral-50'
+                        ? 'border-brand-600 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-500/15 dark:text-brand-200'
+                        : 'border-neutral-300 text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800'
                     }`}
                   >
                     {role}
@@ -209,24 +218,29 @@ export function LoginForm() {
           <Button
             onClick={() => void handleVerify(phase === 'choose-role' ? signupRole : undefined)}
             disabled={loading || code.length !== 6}
+            loading={loading}
           >
             {loading ? 'Checking…' : phase === 'choose-role' ? 'Create account' : 'Continue'}
           </Button>
         </div>
       )}
 
-      {error && <p className="mt-3 text-sm text-error">{error}</p>}
+      {error && (
+        <div className="mt-3">
+          <InlineError>{error}</InlineError>
+        </div>
+      )}
 
       {GOOGLE_CLIENT_ID && (
         <>
           <div className="my-5 flex items-center gap-3">
-            <div className="h-px flex-1 bg-neutral-200" />
-            <span className="text-xs text-neutral-400">or</span>
-            <div className="h-px flex-1 bg-neutral-200" />
+            <div className="h-px flex-1 bg-neutral-200 dark:bg-neutral-800" />
+            <span className="text-xs text-neutral-400 dark:text-neutral-500">or</span>
+            <div className="h-px flex-1 bg-neutral-200 dark:bg-neutral-800" />
           </div>
-          <div ref={googleButtonRef} />
+          <div ref={googleButtonRef} className="flex justify-center" />
         </>
       )}
-    </div>
+    </Card>
   );
 }
