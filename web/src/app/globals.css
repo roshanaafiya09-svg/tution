@@ -5,19 +5,35 @@
 :root {
   --background: #faf9f7; /* neutral.50 */
   --foreground: #211e18; /* neutral.900 */
+  --surface: #ffffff; /* neutral.0 — cards/panels */
+  --surface-raised: #ffffff; /* modals/popovers, same as surface in light */
+  --border: #e6e2db; /* neutral.200 */
+  --border-strong: #d2ccc1; /* neutral.300 */
+  color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #14120e; /* neutral.950 */
     --foreground: #f3f1ed; /* neutral.100 */
+    --surface: #1c1912; /* slightly lifted off pure background */
+    --surface-raised: #221f18; /* modals/popovers sit a level above cards */
+    --border: #332f27; /* neutral.800 */
+    --border-strong: #4a4438; /* neutral.700 */
+    color-scheme: dark;
   }
+}
+
+* {
+  border-color: var(--border);
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
   font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
 .font-display {
@@ -38,5 +54,18 @@ body {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* Respect reduced-motion system preference globally — no motion is
+   load-bearing anywhere in this app (per docs/design-system.md). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

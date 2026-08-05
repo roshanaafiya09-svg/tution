@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
 import { PHProvider } from "@/components/posthog-provider";
+import { ToastProvider, TooltipProvider } from "@/components/ui";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -31,7 +32,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${fraunces.variable} ${inter.variable} font-sans antialiased`}>
-        <PHProvider>{children}</PHProvider>
+        <PHProvider>
+          <TooltipProvider delayDuration={200}>
+            <ToastProvider>{children}</ToastProvider>
+          </TooltipProvider>
+        </PHProvider>
       </body>
     </html>
   );
