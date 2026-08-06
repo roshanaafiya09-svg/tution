@@ -12,6 +12,7 @@ For request/response shapes see the DTOs under each module's `dto/` folder — t
 | POST | `/auth/otp/request` | Request a WhatsApp OTP |
 | POST | `/auth/otp/verify` | Verify OTP, issue JWT tokens (creates account on first verify) |
 | POST | `/auth/refresh` | Rotate refresh token |
+| POST | `/auth/logout` | Revoke this device's refresh token (public — the refresh token itself is the credential, same as `/auth/refresh`) |
 | POST | `/auth/google` | Google Sign-In (web), verifies ID token |
 | GET | `/auth/me` | Get current authenticated user |
 

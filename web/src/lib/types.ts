@@ -287,20 +287,6 @@ export interface Booking {
   created_at: string;
 }
 
-export type WaitlistStatus = 'waiting' | 'notified' | 'converted' | 'expired' | 'cancelled';
-
-export interface WaitlistEntry {
-  id: string;
-  tutor_subject_id: string;
-  tutor_id: string;
-  student_id: string;
-  status: WaitlistStatus;
-  notified_at: string | null;
-  expires_at: string | null;
-  converted_booking_id: string | null;
-  created_at: string;
-}
-
 export interface TutorLocation {
   tutor_id: string;
   city: string;

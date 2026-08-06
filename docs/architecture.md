@@ -78,7 +78,7 @@ Money = integer minor units + currency code. Timestamps = UTC + IANA zone. IDs =
 
 - **Local dev:** `docker-compose.yml` runs Postgres (PostGIS+pgvector image) and Redis. Backend and web run via `npm run start:dev` / `npm run dev`; mobile via `flutter run`.
 - **Web:** deploys via Vercel directly from git (no in-repo CI pipeline) — see [`handover.md`](../handover.md) §3 for required env vars.
-- **Backend:** Docker web service on Render (Fly.io was blueprint §6's original target but requires a credit card to create any app, even free-tier; Render doesn't) + Neon Postgres + Upstash Redis. Deploy config: [`backend/Dockerfile`](../backend/Dockerfile), [`render.yaml`](../render.yaml). See [`handover.md`](../handover.md) §6.6 for current status — check there before assuming this is fully live.
+- **Backend:** Docker web service on Render (Fly.io was blueprint §6's original target but requires a credit card to create any app, even free-tier; Render doesn't) + Neon Postgres + Upstash Redis. Deploy config: [`backend/Dockerfile`](../backend/Dockerfile), [`render.yaml`](../render.yaml). Live and verified end-to-end in production — see [`handover.md`](../handover.md) §6.6.
 - **Mobile:** release keystore generated and backed up (see [`handover.md`](../handover.md) §6.1); Android release builds are release-signed, not debug.
 - **Observability:** Sentry (3 projects: backend/web/mobile) + PostHog, both env-gated (absent key = silently disabled, never a hard failure).
 - **Admin:** Retool, connected via the read-only `retool_readonly` Postgres role (migration `0011`), password set manually per environment — never committed.
