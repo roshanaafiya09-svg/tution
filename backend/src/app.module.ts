@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import {
   appConfig,
   authConfig,
@@ -64,6 +65,16 @@ import { DiscoveryModule } from './modules/marketplace/discovery/discovery.modul
         marketplaceConfig,
       ],
     }),
+    // Coarse, generous global safety net — not a substitute for
+    // OtpService's own tighter, Redis-backed request/attempt limits,
+    // which stay independent and unaffected. Sized to comfortably clear
+    // a dashboard page load (several parallel GETs on mount) while still
+    // blocking scraping/brute-force against unauthenticated endpoints
+    // like the public marketplace search and /auth/refresh — nothing in
+    // this app's own usage pattern is anywhere close to 300 req/min from
+    // one client. Relies on trustProxy (see main.ts) to key correctly on
+    // the real client IP behind Render's proxy, not shared infra IPs.
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]),
     DatabaseModule,
     RedisModule,
     AnalyticsModule,
@@ -93,6 +104,10 @@ import { DiscoveryModule } from './modules/marketplace/discovery/discovery.modul
     {
       provide: APP_FILTER,
       useClass: HttpExceptionFilter,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
     },
   ],
 })

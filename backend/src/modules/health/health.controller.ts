@@ -4,6 +4,7 @@ import {
   Inject,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { sql } from 'kysely';
 import type { Kysely } from 'kysely';
 import type Redis from 'ioredis';
@@ -11,6 +12,10 @@ import { KYSELY_CONNECTION } from '../../database/database.module';
 import { REDIS_CONNECTION } from '../../database/redis.module';
 import type { DB } from '../../database/types';
 
+/** Render polls this on its own schedule to decide container health —
+ *  exempt from the global throttle so rate limiting can never itself
+ *  cause a false "unhealthy" verdict and restart loop. */
+@SkipThrottle({ default: true })
 @Controller('health')
 export class HealthController {
   constructor(

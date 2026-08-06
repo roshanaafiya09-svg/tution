@@ -23,7 +23,13 @@ if (process.env.SENTRY_DSN) {
 }
 
 async function bootstrap() {
-  const adapter = new FastifyAdapter();
+  // Render terminates TLS and proxies to this container over a single
+  // trusted hop — without trustProxy, request.ip resolves to Render's
+  // internal proxy address for every request, not the real client. That
+  // silently broke two things: DPDP consent records (parent-links
+  // controller stashes request.ip as the legally-relevant IP at the
+  // moment consent was granted) and any future IP-based rate limiting.
+  const adapter = new FastifyAdapter({ trustProxy: true });
 
   // Raw binary bodies for the dev-only local upload endpoint that stands
   // in for Supabase Storage's presigned PUT (see LocalStorageProvider).
