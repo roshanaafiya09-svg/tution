@@ -25,7 +25,7 @@ Fastify adapter, no global route prefix (routes are `/auth`, not `/api/auth`), p
 | `identity` | Auth (WhatsApp OTP + Google Sign-In), JWT/refresh tokens, tutor/student profiles, users |
 | `catalog` | Curricula/subjects/grade levels (reference data), tutor subject offerings, tutor availability |
 | `scheduling` | Batches, enrollments, class sessions (RRULE recurrence), attendance, invite links |
-| `delivery` | Materials (R2-backed uploads), announcements |
+| `delivery` | Materials (Supabase Storage-backed uploads), announcements |
 | `assessment` | Assignments + submissions + grading, student quiz-taking (auto-graded) |
 | `billing` | Fee ledger, Razorpay payments/payouts, tutor subscriptions, parent-premium subscriptions, trial-end recap |
 | `ai` | Claude-backed weekly parent digests, RAG doubt-solver (Socratic gate), tutor-facing AI quiz drafting, embeddings provider |
@@ -43,7 +43,7 @@ Async/scheduled work (OTP delivery, digest generation, reminders) runs through t
 
 Auth: access JWT (short-lived) + rotating refresh token, `jti`-based revocation, OTP challenges and refresh tokens stored in Redis (migrations 0007/0008 show this moved off Postgres). AuthZ via `@Roles()` guards at the controller layer.
 
-Every module's provider-backed integrations (payments, payouts, push, OTP delivery, storage, AI, embeddings, analytics) follow the same pattern: an interface + a real provider (Razorpay, FCM, WhatsApp Cloud API, R2, Claude, Voyage, PostHog) + a mock/console/local provider for dev — swap via env config, never a code change.
+Every module's provider-backed integrations (payments, payouts, push, OTP delivery, storage, AI, embeddings, analytics) follow the same pattern: an interface + a real provider (Razorpay, FCM, WhatsApp Cloud API, Supabase Storage, Claude, Voyage, PostHog) + a mock/console/local provider for dev — swap via env config, never a code change.
 
 ## Web — Next.js 14 (App Router)
 
@@ -69,7 +69,7 @@ The mobile app does not sell subscriptions (web-only checkout, keeps it outside 
 |---|---|
 | Primary DB | PostgreSQL 16, custom image (`docker/postgres.Dockerfile`) layering **PostGIS** (marketplace geo-search) + **pgvector** (RAG doubt-solver embeddings) on `postgis/postgis:16-3.4` |
 | Cache | Redis 7 (also OTP/refresh-token store) |
-| Object storage | Cloudflare R2 in production; local-disk provider for dev (`materials/local-upload/local-download` routes) |
+| Object storage | Supabase Storage (S3-compatible API) in production; local-disk provider for dev (`materials/local-upload/local-download` routes) |
 | Search | Postgres FTS / PostGIS `geography` queries for marketplace discovery; no separate search service yet |
 
 Money = integer minor units + currency code. Timestamps = UTC + IANA zone. IDs = app-generated UUIDv7 (migration `0001_extensions_and_helpers.ts`).
@@ -78,8 +78,8 @@ Money = integer minor units + currency code. Timestamps = UTC + IANA zone. IDs =
 
 - **Local dev:** `docker-compose.yml` runs Postgres (PostGIS+pgvector image) and Redis. Backend and web run via `npm run start:dev` / `npm run dev`; mobile via `flutter run`.
 - **Web:** deploys via Vercel directly from git (no in-repo CI pipeline) — see [`handover.md`](../handover.md) §3 for required env vars.
-- **Backend:** targeted at Fly.io + managed Postgres (Neon at MVP) per blueprint §6; containerized. No deploy pipeline is wired up in this repo yet.
-- **Mobile:** no release keystore configured yet (see [`handover.md`](../handover.md)); Android release builds currently fall back to debug signing.
+- **Backend:** Docker web service on Render (Fly.io was blueprint §6's original target but requires a credit card to create any app, even free-tier; Render doesn't) + Neon Postgres + Upstash Redis. Deploy config: [`backend/Dockerfile`](../backend/Dockerfile), [`render.yaml`](../render.yaml). See [`handover.md`](../handover.md) §6.6 for current status — check there before assuming this is fully live.
+- **Mobile:** release keystore generated and backed up (see [`handover.md`](../handover.md) §6.1); Android release builds are release-signed, not debug.
 - **Observability:** Sentry (3 projects: backend/web/mobile) + PostHog, both env-gated (absent key = silently disabled, never a hard failure).
 - **Admin:** Retool, connected via the read-only `retool_readonly` Postgres role (migration `0011`), password set manually per environment — never committed.
 

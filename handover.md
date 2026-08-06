@@ -75,12 +75,13 @@ Not verified: mobile visual rendering after the §3 redesign (see §3 for why), 
 
 ## 5. Known gaps
 
-- **Backend isn't deployed anywhere.** No Fly.io (or equivalent) app exists, no Dockerfile/`fly.toml` in the repo. This was explicitly stopped mid-setup in an earlier pass — see §6.6 below for what's still needed. **This is why login/dashboard/booking flows don't work on the live Vercel site** — confirmed directly: the live site's requests to `NEXT_PUBLIC_API_URL` fall back to `http://localhost:3001` (the visitor's own machine) because there's no real backend URL to point at, producing `net::ERR_CONNECTION_REFUSED` on every API call.
+- **Backend is deployed and live** (Render + Neon + Upstash), `NEXT_PUBLIC_API_URL` is set in Vercel, and a full production QA pass (tutor, parent, and public marketplace/booking flows, plus OTP login for all three roles) has been run against the real stack. See §6.6 for exact status. `web/src/lib/api.ts` throws a clear error on a missing `NEXT_PUBLIC_API_URL` rather than silently falling back to `http://localhost:3001`, which used to produce an opaque `net::ERR_CONNECTION_REFUSED` with no indication of the actual cause — kept as a guard even though the var is now set.
 - **Mobile redesign (§3) hasn't been visually confirmed on a device/emulator.** `flutter analyze` is clean, but that's not the same as seeing it render — see §3 for the tooling limitation that caused this.
 - **`mobile/login_screen.png` is a committed screenshot** (tracked in git, not gitignored) — a debug artifact, not an asset the app loads. Harmless but still there; a cleanup task was flagged for this but hasn't landed.
 - **No shared job-queue module.** Redis is provisioned (OTP/refresh-token storage), but scheduled/async work (digest generation, reminder cadences) lives inline in each module's service rather than a BullMQ-backed queue, despite blueprint §6 calling for BullMQ. Fine at current scale.
 - **`docs/architecture.md` and `docs/api-reference.md` are stale on the web side** — they still describe the old 10-route web app. Needs a refresh to reflect the 29 routes in §2 above; the backend/schema portions of those docs are still accurate. Unaffected by §3 (no routes changed).
 - **Real payment/messaging/OTP providers are still unconfigured** — Razorpay, WhatsApp Cloud API, Sentry, PostHog all have real-provider code but no live credentials; everything currently runs on mock/console providers. See §6.
+- **Object storage (Supabase Storage) not yet provisioned** — uploaded materials currently use `LocalStorageProvider` and won't survive a Render redeploy. See §6.6.
 
 ## 6. Manual setup steps (need a human with account access)
 
@@ -167,9 +168,19 @@ Migration `0011_retool_readonly_role.ts` (already applied, both locally and wher
 4. Build admin views/queries against that resource. **Never** wire a Retool button to a raw SQL `UPDATE`/`INSERT`/`DELETE` against this connection — it has no write grants and would just fail, but more importantly, *any* admin write needs to go through the REST API so it's audit-logged. If a workflow needs a write, it needs a backend endpoint, not a Retool mutation query.
 5. Recommended: put Retool itself behind SSO + MFA (blueprint §2) — this doc doesn't cover Retool's own workspace security settings, only the DB connection.
 
-### 6.6 Backend deployment target — still not started
+### 6.6 Backend deployment target — live (Render, not Fly.io)
 
-Blueprint §6 targets Fly.io + managed Postgres (Neon at MVP). No deploy pipeline is wired up in this repo — provisioning a Fly.io app (or equivalent), setting `backend/.env.example`'s variables as secrets there, and pointing `DATABASE_URL`/`REDIS_URL` at managed instances (with PostGIS + pgvector enabled — see [`docs/database-schema.md`](docs/database-schema.md#extensions-in-use)) is still a from-scratch setup step. This is the single biggest remaining gap — until it's done, the live Vercel deployment can't actually do anything beyond serve static pages (confirmed live — see §5). A prior session started down this path and was explicitly told to stop before any account/provider was chosen — nothing has been provisioned.
+Blueprint §6 targets Fly.io + managed Postgres (Neon at MVP). Fly.io was tried first but requires a credit card on file before creating *any* app, even free-tier — since that's a payment detail no automated session can enter, the target was switched to **Render** (Docker web service, free tier, no card required) instead. Neon Postgres and Upstash Redis are used as originally planned.
+
+Status: fully deployed and verified end-to-end in production.
+- [`backend/Dockerfile`](backend/Dockerfile) + [`render.yaml`](render.yaml) deployed; `/health` returns `{"status":"ok","database":"up","redis":"up"}` on the live Render service.
+- Neon Postgres provisioned; all migrations applied, including the `postgis` and `vector` extensions Neon supports natively.
+- Upstash Redis provisioned and connectivity-verified.
+- `NEXT_PUBLIC_API_URL` is set in Vercel, pointing at the live Render URL — the deployed frontend can reach the backend.
+- OTP login verified against the live stack (real code → `/auth/otp/verify` → real JWTs) for all three signup roles (tutor/student/parent), plus full production walkthroughs of the tutor dashboard, parent portal, and public marketplace/booking flow.
+- **Object storage: not yet provisioned.** The provider was switched from Cloudflare R2 to **Supabase Storage** (`backend/src/modules/delivery/materials/storage/supabase-storage.provider.ts`) — both R2 and Firebase Storage now require a linked billing account/credit card just to create a bucket, even on their free tiers; Supabase's free tier does not. It's S3-compatible, so the swap was a same-shape provider, not a rewrite. Until a Supabase project/bucket exists and `SUPABASE_PROJECT_REF`/`SUPABASE_STORAGE_BUCKET`/`SUPABASE_STORAGE_REGION`/`SUPABASE_STORAGE_ACCESS_KEY_ID`/`SUPABASE_STORAGE_SECRET_ACCESS_KEY` are set on Render, uploaded materials use `LocalStorageProvider` (writes to the container's local disk) and will not survive a redeploy. Also unverified: bucket CORS allowing the browser's direct PUT (see the provider file's doc comment).
+
+Whoever picks this up next: check the Render dashboard for current deploy status before assuming any of the above is still current.
 
 ## Known environment note (not a setup step, just FYI)
 

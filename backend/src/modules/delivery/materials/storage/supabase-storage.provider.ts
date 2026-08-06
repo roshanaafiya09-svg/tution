@@ -12,25 +12,37 @@ const DEFAULT_UPLOAD_EXPIRY_SECONDS = 15 * 60;
 const DEFAULT_DOWNLOAD_EXPIRY_SECONDS = 60 * 60;
 
 /**
- * Cloudflare R2 via its S3-compatible API. Selected automatically when
- * R2 credentials are configured (see DeliveryModule).
+ * Supabase Storage via its S3-compatible API (enabled per-project under
+ * Storage settings → S3 Connection, which is where the access key/secret
+ * pair and region string below come from — they're not the project's
+ * regular API keys). Chosen over Cloudflare R2 and Firebase Storage
+ * because both of those now require a linked billing account/credit
+ * card just to create a bucket, even on their free tiers; Supabase's
+ * free-tier storage does not. Selected automatically when Supabase
+ * credentials are configured (see DeliveryModule).
  *
- * Not exercised end-to-end here — there's no R2 account in this
- * environment — so verify bucket CORS allows the PUT from the web/mobile
- * origin before relying on direct browser uploads.
+ * Supabase's S3 endpoint requires path-style addressing
+ * (bucket-in-path, not virtual-hosted-style subdomain) — forcePathStyle
+ * is required here, not optional, or every request 404s.
+ *
+ * Not exercised end-to-end here — there's no Supabase project in this
+ * environment — so verify bucket CORS allows the PUT from the
+ * web/mobile origin before relying on direct browser uploads (Storage →
+ * bucket → Policies, or the CORS config under project settings).
  */
 @Injectable()
-export class R2StorageProvider implements StorageProvider {
+export class SupabaseStorageProvider implements StorageProvider {
   private readonly client: S3Client;
   private readonly bucket: string;
 
   constructor(private readonly config: ConfigService) {
-    const accountId = this.config.getOrThrow<string>('storage.accountId');
+    const projectRef = this.config.getOrThrow<string>('storage.projectRef');
     this.bucket = this.config.getOrThrow<string>('storage.bucket');
 
     this.client = new S3Client({
-      region: 'auto',
-      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+      region: this.config.getOrThrow<string>('storage.region'),
+      endpoint: `https://${projectRef}.supabase.co/storage/v1/s3`,
+      forcePathStyle: true,
       credentials: {
         accessKeyId: this.config.getOrThrow<string>('storage.accessKeyId'),
         secretAccessKey: this.config.getOrThrow<string>(

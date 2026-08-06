@@ -34,10 +34,11 @@ export const googleAuthConfig = registerAs('googleAuth', () => ({
 }));
 
 export const storageConfig = registerAs('storage', () => ({
-  accountId: process.env.R2_ACCOUNT_ID,
-  bucket: process.env.R2_BUCKET,
-  accessKeyId: process.env.R2_ACCESS_KEY_ID,
-  secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+  projectRef: process.env.SUPABASE_PROJECT_REF,
+  bucket: process.env.SUPABASE_STORAGE_BUCKET,
+  region: process.env.SUPABASE_STORAGE_REGION,
+  accessKeyId: process.env.SUPABASE_STORAGE_ACCESS_KEY_ID,
+  secretAccessKey: process.env.SUPABASE_STORAGE_SECRET_ACCESS_KEY,
   localBaseUrl: process.env.LOCAL_STORAGE_BASE_URL,
 }));
 

@@ -71,10 +71,10 @@ export class MaterialsController {
   }
 
   /**
-   * Local-dev upload/download targets standing in for R2's presigned
-   * URLs. Unauthenticated by design, matching how a presigned URL works
-   * — the unguessable random object key is the capability. Real
-   * deployments never hit these; R2 serves the bytes directly.
+   * Local-dev upload/download targets standing in for Supabase Storage's
+   * presigned URLs. Unauthenticated by design, matching how a presigned
+   * URL works — the unguessable random object key is the capability.
+   * Real deployments never hit these; storage serves the bytes directly.
    */
   @Put('local-upload/:objectKey')
   async localUpload(

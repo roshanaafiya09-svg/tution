@@ -5,11 +5,11 @@ import { ConfigService } from '@nestjs/config';
 import { PresignedUpload, StorageProvider } from './storage-provider.interface';
 
 /**
- * Dev-only stand-in for R2 that stores files on local disk and serves
- * them through the API itself (see MaterialsController's upload/download
- * routes). Real deployments use R2 so media never touches the API —
- * this exists purely so the upload flow is runnable without cloud
- * credentials.
+ * Dev-only stand-in for Supabase Storage that stores files on local disk
+ * and serves them through the API itself (see MaterialsController's
+ * upload/download routes). Real deployments use Supabase Storage so
+ * media never touches the API — this exists purely so the upload flow
+ * is runnable without cloud credentials.
  */
 @Injectable()
 export class LocalStorageProvider implements StorageProvider {
@@ -29,7 +29,7 @@ export class LocalStorageProvider implements StorageProvider {
     mime: string,
   ): Promise<PresignedUpload> {
     this.logger.warn(
-      `Storing "${objectKey}" on local disk — configure R2 for real deployments`,
+      `Storing "${objectKey}" on local disk — configure Supabase Storage for real deployments`,
     );
     return Promise.resolve({
       uploadUrl: `${this.apiBaseUrl}/materials/local-upload/${encodeURIComponent(objectKey)}`,

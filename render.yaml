@@ -31,13 +31,15 @@ services:
         sync: false
       - key: JWT_REFRESH_SECRET
         sync: false
-      - key: R2_ACCOUNT_ID
+      - key: SUPABASE_PROJECT_REF
         sync: false
-      - key: R2_BUCKET
+      - key: SUPABASE_STORAGE_BUCKET
         sync: false
-      - key: R2_ACCESS_KEY_ID
+      - key: SUPABASE_STORAGE_REGION
         sync: false
-      - key: R2_SECRET_ACCESS_KEY
+      - key: SUPABASE_STORAGE_ACCESS_KEY_ID
+        sync: false
+      - key: SUPABASE_STORAGE_SECRET_ACCESS_KEY
         sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false

@@ -98,7 +98,7 @@ For request/response shapes see the DTOs under each module's `dto/` folder — t
 | GET | `/materials/batch/:batchId` | List materials for a batch |
 | GET | `/materials/:id/download-url` | Get a download URL |
 | DELETE | `/materials/:id` | Tutor deletes a material |
-| PUT | `/materials/local-upload/:objectKey` | Dev-only local-disk upload target (stands in for R2 presigned PUT) |
+| PUT | `/materials/local-upload/:objectKey` | Dev-only local-disk upload target (stands in for Supabase Storage presigned PUT) |
 | GET | `/materials/local-download/:objectKey` | Dev-only local-disk download target |
 
 **announcements** (`/announcements`)

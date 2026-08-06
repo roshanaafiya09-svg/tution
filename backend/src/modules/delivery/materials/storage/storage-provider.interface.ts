@@ -8,10 +8,12 @@ export interface PresignedUpload {
 }
 
 /**
- * Blueprint §6: "Cloudflare R2 + CDN — signed direct-to-R2 upload, media
- * never touches the API". The API only ever hands out a presigned URL
- * and records the resulting object key, so large files bypass it
- * entirely.
+ * Blueprint §6 originally called for Cloudflare R2; swapped to Supabase
+ * Storage (also S3-compatible) since both R2 and Firebase Storage now
+ * require a linked billing account just to create a bucket, even on
+ * their free tiers. Either way, the API only ever hands out a presigned
+ * URL and records the resulting object key, so large files bypass it
+ * entirely — that contract doesn't change with the provider.
  */
 export interface StorageProvider {
   createPresignedUpload(

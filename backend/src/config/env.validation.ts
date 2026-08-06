@@ -38,12 +38,16 @@ export const envSchema = z.object({
   // --- Google Sign-In (web) — optional; endpoint 400s until set. ---
   GOOGLE_CLIENT_ID: z.string().optional(),
 
-  // --- Object storage (Cloudflare R2) — optional; falls back to local
-  // disk for dev when unset. See blueprint §6. ---
-  R2_ACCOUNT_ID: z.string().optional(),
-  R2_BUCKET: z.string().optional(),
-  R2_ACCESS_KEY_ID: z.string().optional(),
-  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  // --- Object storage (Supabase Storage, via its S3-compatible API) —
+  // optional; falls back to local disk for dev when unset. Chosen over
+  // Cloudflare R2/Firebase Storage because both now require a linked
+  // billing account/credit card just to create a bucket, even on their
+  // free tiers. See blueprint §6. ---
+  SUPABASE_PROJECT_REF: z.string().optional(),
+  SUPABASE_STORAGE_BUCKET: z.string().optional(),
+  SUPABASE_STORAGE_REGION: z.string().optional(),
+  SUPABASE_STORAGE_ACCESS_KEY_ID: z.string().optional(),
+  SUPABASE_STORAGE_SECRET_ACCESS_KEY: z.string().optional(),
 
   // --- Local storage provider dev override — the URL the API is
   // reachable at from the *client* (mobile emulator, physical device),

@@ -13,7 +13,7 @@ class MaterialsApi {
 
   /// Local-dev download targets go through the same local-storage stand-in
   /// as uploads (see LocalStorageProvider) — the URL is whatever the
-  /// backend hands back, R2 or local.
+  /// backend hands back, Supabase Storage or local.
   Future<String> getDownloadUrl(String materialId) async {
     final data =
         await _client.get('/materials/$materialId/download-url')

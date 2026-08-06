@@ -8,7 +8,7 @@ import { MaterialsService } from './materials/materials.service';
 import { MaterialsRepository } from './materials/materials.repository';
 import { STORAGE_PROVIDER } from './materials/storage/storage-provider.interface';
 import { LocalStorageProvider } from './materials/storage/local-storage.provider';
-import { R2StorageProvider } from './materials/storage/r2-storage.provider';
+import { SupabaseStorageProvider } from './materials/storage/supabase-storage.provider';
 import { AnnouncementsController } from './announcements/announcements.controller';
 import { AnnouncementsService } from './announcements/announcements.service';
 import { AnnouncementsRepository } from './announcements/announcements.repository';
@@ -16,9 +16,9 @@ import { AnnouncementsRepository } from './announcements/announcements.repositor
 const storageLogger = new Logger('DeliveryModule');
 
 /**
- * Bounded context: materials (R2-backed uploads, per-batch visibility),
- * announcements. Assignment/submission grading lives in AssessmentModule.
- * Owns tables: materials, announcements.
+ * Bounded context: materials (Supabase Storage-backed uploads, per-batch
+ * visibility), announcements. Assignment/submission grading lives in
+ * AssessmentModule. Owns tables: materials, announcements.
  */
 @Module({
   imports: [IdentityModule, SchedulingModule, NotificationsModule],
@@ -35,19 +35,20 @@ const storageLogger = new Logger('DeliveryModule');
         localProvider: LocalStorageProvider,
       ) => {
         const configured = Boolean(
-          config.get<string>('storage.accountId') &&
+          config.get<string>('storage.projectRef') &&
           config.get<string>('storage.bucket') &&
+          config.get<string>('storage.region') &&
           config.get<string>('storage.accessKeyId') &&
           config.get<string>('storage.secretAccessKey'),
         );
         if (configured) {
           storageLogger.log(
-            'Cloudflare R2 configured — using it for material storage',
+            'Supabase Storage configured — using it for material storage',
           );
-          return new R2StorageProvider(config);
+          return new SupabaseStorageProvider(config);
         }
         storageLogger.warn(
-          'R2 not configured — materials will be stored on local disk',
+          'Supabase Storage not configured — materials will be stored on local disk',
         );
         return localProvider;
       },
