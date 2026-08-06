@@ -186,7 +186,50 @@ Status: fully deployed and verified end-to-end in production.
 - Upstash Redis provisioned and connectivity-verified.
 - `NEXT_PUBLIC_API_URL` is set in Vercel, pointing at the live Render URL — the deployed frontend can reach the backend.
 - OTP login verified against the live stack (real code → `/auth/otp/verify` → real JWTs) for all three signup roles (tutor/student/parent), plus full production walkthroughs of the tutor dashboard, parent portal, and public marketplace/booking flow.
-- **Object storage: not yet provisioned.** The provider was switched from Cloudflare R2 to **Supabase Storage** (`backend/src/modules/delivery/materials/storage/supabase-storage.provider.ts`) — both R2 and Firebase Storage now require a linked billing account/credit card just to create a bucket, even on their free tiers; Supabase's free tier does not. It's S3-compatible, so the swap was a same-shape provider, not a rewrite. Until a Supabase project/bucket exists and `SUPABASE_PROJECT_REF`/`SUPABASE_STORAGE_BUCKET`/`SUPABASE_STORAGE_REGION`/`SUPABASE_STORAGE_ACCESS_KEY_ID`/`SUPABASE_STORAGE_SECRET_ACCESS_KEY` are set on Render, uploaded materials use `LocalStorageProvider` (writes to the container's local disk) and will not survive a redeploy. Also unverified: bucket CORS allowing the browser's direct PUT (see the provider file's doc comment).
+- **Object storage: provisioned and live.** The provider was switched from Cloudflare R2 to **Supabase Storage** (`backend/src/modules/delivery/materials/storage/supabase-storage.provider.ts`) — both R2 and Firebase Storage now require a linked billing account/credit card just to create a bucket, even on their free tiers; Supabase's free tier does not. It's S3-compatible, so the swap was a same-shape provider, not a rewrite. `SUPABASE_PROJECT_REF`/`SUPABASE_STORAGE_BUCKET`/`SUPABASE_STORAGE_REGION`/`SUPABASE_STORAGE_ACCESS_KEY_ID`/`SUPABASE_STORAGE_SECRET_ACCESS_KEY` are all set on Render, and the full lifecycle — presigned upload, presigned download, and delete (both the DB row *and* the actual bucket object) — is verified end-to-end against the live bucket, not just locally.
+
+### 6.7 WhatsApp Business Cloud API (real OTP delivery)
+
+`ConsoleOtpProvider` (logs the code server-side instead of sending it) is what's live today — `IdentityModule`'s factory automatically switches to `WhatsAppCloudApiOtpProvider` the moment both `WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID` are set, with zero code changes either way. This section is what's needed to actually flip that switch.
+
+**1. Meta Business + WhatsApp Business Platform setup**
+1. Create (or use an existing) Meta Business account at [business.facebook.com](https://business.facebook.com).
+2. In [Meta for Developers](https://developers.facebook.com), create an app → add the **WhatsApp** product.
+3. WhatsApp's onboarding gives you a **test phone number** for free — fine for verifying the integration works, but messages can only go to a handful of pre-registered recipient numbers until you add a real business phone number and complete Meta's business verification.
+
+**2. Phone Number ID**
+- WhatsApp → API Setup in the Meta for Developers console shows **Phone number ID** directly (a numeric string, *not* the phone number itself) — this is `WHATSAPP_PHONE_NUMBER_ID`.
+
+**3. Access token**
+- The same API Setup page issues a **temporary token** (~24h, fine for testing only). For production, generate a **permanent** token instead: Business Settings → System Users → create a system user with the `whatsapp_business_messaging` permission on your WhatsApp Business Account, then generate a token with no expiry. This is `WHATSAPP_ACCESS_TOKEN`.
+
+**4. The authentication template**
+WhatsApp rejects any business-initiated message that isn't a pre-approved template — you cannot just send arbitrary text. In Meta Business Manager → **WhatsApp Manager → Message Templates**:
+1. Create a new template, category **Authentication** (not Marketing/Utility — authentication templates get Meta's fastest review and are the only category meant for OTPs).
+2. Meta auto-generates the body ("Your verification code is {{1}}...") — authentication templates don't allow custom body text, by design.
+3. Submit for review — usually minutes to a few hours, occasionally longer.
+4. Once approved, the template's exact name is `WHATSAPP_OTP_TEMPLATE_NAME` (defaults to `otp_login` in this codebase — name it that, or set the env var to whatever you actually named it) and its language code is `WHATSAPP_TEMPLATE_LANGUAGE` (defaults to `en_US`).
+5. `WHATSAPP_API_VERSION` defaults to `v21.0` — Meta deprecates old Graph API versions on a schedule (roughly annual), so this may need bumping over time; check [developers.facebook.com/docs/graph-api/changelog](https://developers.facebook.com/docs/graph-api/changelog) if sends start failing with a version-related error.
+
+**5. Deployment**
+Set all five vars on Render (`render.yaml` already reserves the slots — Environment tab, paste values):
+| Variable | Example | Notes |
+|---|---|---|
+| `WHATSAPP_ACCESS_TOKEN` | (long opaque string) | permanent system-user token, not the 24h temporary one |
+| `WHATSAPP_PHONE_NUMBER_ID` | `109876543212345` | numeric, from API Setup |
+| `WHATSAPP_OTP_TEMPLATE_NAME` | `otp_login` | must exactly match the approved template's name |
+| `WHATSAPP_TEMPLATE_LANGUAGE` | `en_US` | must exactly match the template's approved language |
+| `WHATSAPP_API_VERSION` | `v21.0` | |
+
+No restart/redeploy step beyond setting the vars — Render restarts the service automatically on an env var change, and `IdentityModule`'s factory re-evaluates on that fresh boot.
+
+**6. Troubleshooting**
+`WhatsAppCloudApiOtpProvider` logs Meta's own error type/message (never the access token) on any failure — check Render logs, filtering for `OTP (WhatsApp)`, for the specific cause:
+- **"Error validating access token" / HTTP 401** — token expired (if you used the 24h temporary one) or revoked. Generate a new permanent system-user token.
+- **HTTP 429 / rate limited** — the WhatsApp Business *Account* hit its send-rate cap (a Meta-side account-wide limit, unrelated to `OtpService`'s own per-phone-number request limiter, which runs first and independently). New accounts start on a low tier that scales up with quality/volume over time.
+- **Any message containing "template"** — the template name/language doesn't match what's approved, or the template was paused/rejected. Double-check `WHATSAPP_OTP_TEMPLATE_NAME`/`WHATSAPP_TEMPLATE_LANGUAGE` against WhatsApp Manager exactly (case-sensitive).
+- **Nothing arrives but no error either** — confirm the recipient number is either your verified business line's allowed audience, or (on a test number) one of the pre-registered test recipients — Meta silently accepts the API call but never delivers to numbers outside that list until business verification completes.
+- **Provider not switching from console to WhatsApp at all** — check Render logs at boot for `IdentityModule`'s own log line (`"WhatsApp Cloud API configured"` vs `"WHATSAPP_ACCESS_TOKEN/WHATSAPP_PHONE_NUMBER_ID not set"`) — confirms whether both required vars actually reached the container.
 
 Whoever picks this up next: check the Render dashboard for current deploy status before assuming any of the above is still current.
 
