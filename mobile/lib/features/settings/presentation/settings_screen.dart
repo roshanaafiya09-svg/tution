@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
@@ -12,9 +13,14 @@ import '../../../l10n/gen/app_localizations.dart';
 import '../../../widgets/widgets.dart';
 import '../../auth/application/auth_controller.dart';
 import '../data/account_api.dart';
+import '../data/parent_links_api.dart';
 
 final accountApiProvider = Provider<AccountApi>(
   (ref) => AccountApi(ref.watch(apiClientProvider)),
+);
+
+final parentLinksApiProvider = Provider<ParentLinksApi>(
+  (ref) => ParentLinksApi(ref.watch(apiClientProvider)),
 );
 
 /// Blueprint §4 platform requirement: "in-app account deletion + data
@@ -30,7 +36,70 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _exporting = false;
   bool _deleting = false;
+  bool _generatingInvite = false;
   String? _error;
+  String? _inviteError;
+
+  Future<void> _generateParentInvite() async {
+    final l10n = AppLocalizations.of(context)!;
+    setState(() {
+      _generatingInvite = true;
+      _inviteError = null;
+    });
+    String? token;
+    String? error;
+    try {
+      token = await ref.read(parentLinksApiProvider).createInvite();
+    } on ApiException catch (e) {
+      error = e.message;
+    } finally {
+      if (mounted) setState(() => _generatingInvite = false);
+    }
+    if (!mounted) return;
+    if (error != null) {
+      setState(() => _inviteError = error);
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.parentInviteDialogTitle),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SelectableText(
+              token!,
+              style: Theme.of(
+                dialogContext,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            Text(l10n.parentInviteDialogBody),
+          ],
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: token!));
+              if (dialogContext.mounted) {
+                ScaffoldMessenger.of(
+                  dialogContext,
+                ).showSnackBar(SnackBar(content: Text(l10n.codeCopied)));
+              }
+            },
+            icon: const Icon(CupertinoIcons.doc_on_clipboard, size: 16),
+            label: Text(l10n.copyCode),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(l10n.close),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _exportData() async {
     setState(() {
@@ -106,6 +175,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
+    final isStudent = ref.watch(authControllerProvider).user?.isStudent ?? false;
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settingsTitle)),
@@ -122,6 +192,42 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 trailing: const Icon(Icons.chevron_right, size: 18),
               ),
             ),
+            if (isStudent) ...[
+              const SizedBox(height: 24),
+              AppCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l10n.inviteParentSectionTitle,
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(l10n.inviteParentSectionBody, style: theme.textTheme.bodySmall),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: _generatingInvite ? null : _generateParentInvite,
+                      icon: _generatingInvite
+                          ? const SizedBox(
+                              height: 14,
+                              width: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(CupertinoIcons.person_add, size: 16),
+                      label: Text(
+                        _generatingInvite
+                            ? l10n.generatingCode
+                            : l10n.generateParentInviteCode,
+                      ),
+                    ),
+                    if (_inviteError != null) ...[
+                      const SizedBox(height: 12),
+                      FormErrorBanner(message: _inviteError!),
+                    ],
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
             AppCard(
               child: Column(

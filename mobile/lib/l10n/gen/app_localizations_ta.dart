@@ -209,6 +209,36 @@ class AppLocalizationsTa extends AppLocalizations {
   String get joining => 'சேர்கிறது…';
 
   @override
+  String get inviteParentSectionTitle => 'பெற்றோரை இணைக்கவும்';
+
+  @override
+  String get inviteParentSectionBody =>
+      'ஒரு குறியீட்டை உருவாக்கி உங்கள் பெற்றோருடன் பகிரவும் — அவர்கள் அதைப் பயன்படுத்தி உங்கள் வருகை, முன்னேற்றம் மற்றும் வாராந்திர சுருக்கத்தைப் பார்க்கலாம்.';
+
+  @override
+  String get generateParentInviteCode => 'குறியீட்டை உருவாக்கு';
+
+  @override
+  String get generatingCode => 'உருவாக்குகிறது…';
+
+  @override
+  String get parentInviteDialogTitle =>
+      'இந்த குறியீட்டை உங்கள் பெற்றோருடன் பகிரவும்';
+
+  @override
+  String get parentInviteDialogBody =>
+      'இதை வாட்ஸ்ஆப்பில் அவர்களுக்கு அனுப்பவும் — அவர்கள் தங்கள் சொந்த \"குழந்தையை இணைக்கவும்\" திரையில் இதை ஒட்டுவார்கள்.';
+
+  @override
+  String get copyCode => 'நகலெடு';
+
+  @override
+  String get codeCopied => 'குறியீடு நகலெடுக்கப்பட்டது';
+
+  @override
+  String get close => 'மூடு';
+
+  @override
   String get accountSectionTitle => 'உங்கள் தரவு';
 
   @override

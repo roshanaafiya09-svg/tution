@@ -208,6 +208,35 @@ class AppLocalizationsEn extends AppLocalizations {
   String get joining => 'Joining…';
 
   @override
+  String get inviteParentSectionTitle => 'Link a parent';
+
+  @override
+  String get inviteParentSectionBody =>
+      'Generate a code and share it with your parent — they\'ll use it to see your attendance, progress, and weekly digest.';
+
+  @override
+  String get generateParentInviteCode => 'Generate a code';
+
+  @override
+  String get generatingCode => 'Generating…';
+
+  @override
+  String get parentInviteDialogTitle => 'Share this code with your parent';
+
+  @override
+  String get parentInviteDialogBody =>
+      'Send it to them on WhatsApp — they\'ll paste it into their own \"Link a child\" screen.';
+
+  @override
+  String get copyCode => 'Copy';
+
+  @override
+  String get codeCopied => 'Code copied';
+
+  @override
+  String get close => 'Close';
+
+  @override
   String get accountSectionTitle => 'Your data';
 
   @override

@@ -470,6 +470,60 @@ abstract class AppLocalizations {
   /// **'Joining…'**
   String get joining;
 
+  /// No description provided for @inviteParentSectionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Link a parent'**
+  String get inviteParentSectionTitle;
+
+  /// No description provided for @inviteParentSectionBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Generate a code and share it with your parent — they\'ll use it to see your attendance, progress, and weekly digest.'**
+  String get inviteParentSectionBody;
+
+  /// No description provided for @generateParentInviteCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Generate a code'**
+  String get generateParentInviteCode;
+
+  /// No description provided for @generatingCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Generating…'**
+  String get generatingCode;
+
+  /// No description provided for @parentInviteDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Share this code with your parent'**
+  String get parentInviteDialogTitle;
+
+  /// No description provided for @parentInviteDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Send it to them on WhatsApp — they\'ll paste it into their own \"Link a child\" screen.'**
+  String get parentInviteDialogBody;
+
+  /// No description provided for @copyCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get copyCode;
+
+  /// No description provided for @codeCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Code copied'**
+  String get codeCopied;
+
+  /// No description provided for @close.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get close;
+
   /// No description provided for @accountSectionTitle.
   ///
   /// In en, this message translates to:
