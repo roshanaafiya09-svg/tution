@@ -29,4 +29,8 @@ export interface StorageProvider {
    *  server-side to extract text; humans still only ever get a
    *  presigned URL via createDownloadUrl above. */
   read(objectKey: string): Promise<Buffer>;
+  /** Removes the object from storage. Must be idempotent — deleting an
+   *  already-gone key is a no-op, not an error, so callers can always
+   *  clean up without first checking existence. */
+  delete(objectKey: string): Promise<void>;
 }

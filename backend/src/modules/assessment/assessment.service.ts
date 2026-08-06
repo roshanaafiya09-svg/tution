@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { DateTime } from 'luxon';
@@ -28,6 +29,8 @@ const SUBMISSION_MIME_EXTENSIONS: Record<string, string> = {
 
 @Injectable()
 export class AssessmentService {
+  private readonly logger = new Logger(AssessmentService.name);
+
   constructor(
     private readonly assignments: AssignmentsRepository,
     private readonly submissions: SubmissionsRepository,
@@ -86,6 +89,18 @@ export class AssessmentService {
   async deleteAssignment(tutorId: string, assignmentId: string): Promise<void> {
     const assignment = await this.getAssignmentOrThrow(assignmentId);
     await this.batchesService.getOwnedBatch(tutorId, assignment.batch_id);
+
+    // submissions.assignment_id is ON DELETE CASCADE — deleting the
+    // assignment below removes every submission row for it at the DB
+    // level, with no application code in the loop. Gather every
+    // submission's object_keys first so those files aren't orphaned in
+    // storage once the rows referencing them are gone.
+    const submissions = await this.submissions.listForAssignment(assignmentId);
+    const objectKeys = submissions.flatMap(
+      (s) => s.object_keys as unknown as string[],
+    );
+    await Promise.all(objectKeys.map((key) => this.storage.delete(key)));
+
     await this.assignments.delete(assignmentId);
   }
 
@@ -113,11 +128,38 @@ export class AssessmentService {
     const assignment = await this.getAssignmentOrThrow(assignmentId);
     await this.assertEnrolled(studentId, assignment.batch_id);
 
+    // A resubmission overwrites object_keys on the existing row (see
+    // SubmissionsRepository.upsert) — capture the old keys first so the
+    // files they point at can be cleaned up once the new ones are safely
+    // recorded, instead of being orphaned in storage forever.
+    const previous = await this.submissions.findForStudent(
+      assignmentId,
+      studentId,
+    );
+
     const submission = await this.submissions.upsert(
       assignmentId,
       studentId,
       objectKeys,
     );
+
+    if (previous) {
+      const staleKeys = (previous.object_keys as unknown as string[]).filter(
+        (key) => !objectKeys.includes(key),
+      );
+      await Promise.all(
+        staleKeys.map((key) =>
+          this.storage.delete(key).catch((err: unknown) => {
+            // The new submission is already saved — a stale file that
+            // fails to clean up is a non-fatal storage-cost concern, not
+            // a reason to fail the student's resubmission.
+            this.logger.warn(
+              `Failed to delete stale submission file "${key}": ${err instanceof Error ? err.message : err}`,
+            );
+          }),
+        ),
+      );
+    }
 
     this.analytics.capture(studentId, 'assignment_submitted', {
       assignmentId,

@@ -88,6 +88,10 @@ export class MaterialsService {
     const material = await this.repository.findById(materialId);
     if (!material) throw new NotFoundException('Material not found');
     await this.batchesService.getOwnedBatch(tutorId, material.batch_id);
+    // Storage first: a failed delete here leaves the DB row (and the
+    // file) intact so the caller can retry, rather than leaving a DB
+    // row that points at a file that's already gone.
+    await this.storage.delete(material.object_key);
     await this.repository.delete(materialId);
   }
 

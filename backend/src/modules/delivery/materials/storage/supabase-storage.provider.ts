@@ -4,6 +4,7 @@ import {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
+  DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { PresignedUpload, StorageProvider } from './storage-provider.interface';
@@ -87,5 +88,13 @@ export class SupabaseStorageProvider implements StorageProvider {
     if (!response.Body) throw new NotFoundException('Object not found');
     const bytes = await response.Body.transformToByteArray();
     return Buffer.from(bytes);
+  }
+
+  async delete(objectKey: string): Promise<void> {
+    // S3's DeleteObject is already idempotent — a missing key returns
+    // 204, not an error — so no existence check is needed here.
+    await this.client.send(
+      new DeleteObjectCommand({ Bucket: this.bucket, Key: objectKey }),
+    );
   }
 }

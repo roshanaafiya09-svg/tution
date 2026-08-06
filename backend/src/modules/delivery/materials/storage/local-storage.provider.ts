@@ -54,6 +54,16 @@ export class LocalStorageProvider implements StorageProvider {
     return fs.readFile(this.resolveKey(objectKey));
   }
 
+  async delete(objectKey: string): Promise<void> {
+    // Matches S3 DeleteObject's idempotent semantics — a missing file
+    // is a no-op, not an error.
+    try {
+      await fs.unlink(this.resolveKey(objectKey));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+  }
+
   /** Guards against `..` traversal escaping the uploads directory. */
   private resolveKey(objectKey: string): string {
     const target = path.resolve(this.root, objectKey);
