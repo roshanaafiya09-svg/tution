@@ -318,6 +318,7 @@ export interface ParentLink {
   status: ParentLinkStatus;
   consent_record_id: string | null;
   created_at: string;
+  student_display_name: string | null;
 }
 
 export interface Digest {

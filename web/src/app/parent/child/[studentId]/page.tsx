@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { CalendarCheck, ClipboardCheck, Award, TrendingUp, TrendingDown, Minus, MessageSquareText, Wallet } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
-import type { Digest, ProgressSummary, StudentFeeEntry } from '@/lib/types';
+import type { Digest, ParentLink, ProgressSummary, StudentFeeEntry } from '@/lib/types';
 import { Card, PageHeader, EmptyState, StatusBadge, InlineError, PageLoading } from '@/components/ui';
 
 function TrendIcon({ trend }: { trend: string }) {
@@ -19,8 +19,15 @@ export default function ChildDetailPage() {
   const [progress, setProgress] = useState<ProgressSummary | null>(null);
   const [fees, setFees] = useState<StudentFeeEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
 
   useEffect(() => {
+    void api
+      .get<ParentLink[]>('/parent-links/me')
+      .then((links) => {
+        const link = links.find((l) => l.student_id === studentId);
+        if (link?.student_display_name) setDisplayName(link.student_display_name);
+      });
     void api
       .get<Digest[]>('/digests/me')
       .then((all) => setDigests(all.filter((d) => d.student_id === studentId)));
@@ -34,7 +41,7 @@ export default function ChildDetailPage() {
   return (
     <div>
       <PageHeader
-        title={`Student ${studentId.slice(0, 8)}`}
+        title={displayName ?? `Student ${studentId.slice(0, 8)}`}
         description="Progress, digests, and fee history."
         back={{ href: '/parent', label: 'Your children' }}
       />

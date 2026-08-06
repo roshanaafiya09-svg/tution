@@ -64,7 +64,7 @@ export default function ParentHomePage() {
               <Link key={link.id} href={`/parent/child/${link.student_id}`}>
                 <Card interactive className="h-full">
                   <p className="font-medium text-neutral-900 dark:text-neutral-50">
-                    Student {link.student_id.slice(0, 8)}
+                    {link.student_display_name ?? `Student ${link.student_id.slice(0, 8)}`}
                   </p>
                   {digest ? (
                     <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
@@ -91,7 +91,7 @@ export default function ParentHomePage() {
             {pending.map((link) => (
               <div key={link.id} className="flex items-center justify-between px-6 py-3">
                 <p className="text-sm text-neutral-700 dark:text-neutral-300">
-                  Student {link.student_id.slice(0, 8)}
+                  {link.student_display_name ?? `Student ${link.student_id.slice(0, 8)}`}
                 </p>
                 <div className="flex items-center gap-3">
                   <StatusBadge status="pending" />
