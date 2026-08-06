@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { IdentityModule } from '../identity/identity.module';
 import { SchedulingModule } from '../scheduling/scheduling.module';
 import { ParentsModule } from '../parents/parents.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { MessagesController } from './messages.controller';
 import { MessagesService } from './messages.service';
 import { MessagesRepository } from './messages.repository';
@@ -15,7 +16,7 @@ import { MessagesRepository } from './messages.repository';
  * Owns table: messages.
  */
 @Module({
-  imports: [IdentityModule, SchedulingModule, ParentsModule],
+  imports: [IdentityModule, SchedulingModule, ParentsModule, NotificationsModule],
   controllers: [MessagesController],
   providers: [MessagesService, MessagesRepository],
 })

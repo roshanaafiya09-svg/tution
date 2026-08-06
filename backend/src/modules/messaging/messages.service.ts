@@ -4,7 +4,10 @@ import type { SenderRole } from './messages.repository';
 import { BatchesRepository } from '../scheduling/batches/batches.repository';
 import { ParentLinksRepository } from '../parents/parent-links.repository';
 import { AnalyticsService } from '../analytics/analytics.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import type { AccessTokenPayload } from '../identity/auth/tokens.service';
+
+const NOTIFICATION_BODY_MAX_LENGTH = 140;
 
 /**
  * Monitored-only adult<->minor messaging (blueprint §9). A thread is
@@ -21,6 +24,7 @@ export class MessagesService {
     private readonly batchesRepository: BatchesRepository,
     private readonly parentLinksRepository: ParentLinksRepository,
     private readonly analytics: AnalyticsService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async send(
@@ -42,7 +46,42 @@ export class MessagesService {
       studentId,
       senderRole: role,
     });
+    await this.notifyOtherParticipants(user.sub, batchId, studentId, body);
     return message;
+  }
+
+  /** Every other participant in the (batchId, studentId) thread — the
+   *  tutor, the student, and any actively-consented parent — minus the
+   *  sender. Mirrors resolveAccess's notion of who's "in" a thread. */
+  private async notifyOtherParticipants(
+    senderId: string,
+    batchId: string,
+    studentId: string,
+    body: string,
+  ): Promise<void> {
+    const [batch, parentLinks] = await Promise.all([
+      this.batchesRepository.findById(batchId),
+      this.parentLinksRepository.listForStudent(studentId),
+    ]);
+    if (!batch) return;
+
+    const recipientIds = new Set<string>([batch.tutor_id, studentId]);
+    for (const link of parentLinks) {
+      if (link.status === 'active') recipientIds.add(link.parent_id);
+    }
+    recipientIds.delete(senderId);
+    if (recipientIds.size === 0) return;
+
+    await this.notificationsService.notify({
+      userIds: [...recipientIds],
+      type: 'new_message',
+      title: `New message — ${batch.title}`,
+      body:
+        body.length > NOTIFICATION_BODY_MAX_LENGTH
+          ? `${body.slice(0, NOTIFICATION_BODY_MAX_LENGTH)}…`
+          : body,
+      payload: { batchId, studentId },
+    });
   }
 
   async listThread(user: AccessTokenPayload, batchId: string, studentId: string) {
