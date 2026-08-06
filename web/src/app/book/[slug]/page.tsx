@@ -24,6 +24,7 @@ export default function BookSessionPage() {
   const [startLocal, setStartLocal] = useState(defaultStart());
   const [durationMin, setDurationMin] = useState('60');
   const [error, setError] = useState<string | null>(null);
+  const [slotUnavailable, setSlotUnavailable] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [joinedWaitlist, setJoinedWaitlist] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -45,6 +46,7 @@ export default function BookSessionPage() {
     }
 
     setError(null);
+    setSlotUnavailable(false);
     setSubmitting(true);
     try {
       const booking = await api.post<Booking>('/marketplace/bookings', {
@@ -61,11 +63,17 @@ export default function BookSessionPage() {
         onError: (message) => setError(message),
       });
     } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? err.message
-          : 'Could not book that slot. Try a different time.',
-      );
+      // Booking-domain conflicts (bad slot, double-booking, outside
+      // availability) are 400s with a message meant to be user-facing —
+      // that's the only case where "join waitlist" makes sense. Anything
+      // else (403 wrong role, 401 expired session, 5xx) gets a generic
+      // message instead of leaking the raw guard/exception text.
+      if (err instanceof ApiError && err.status === 400) {
+        setError(err.message);
+        setSlotUnavailable(true);
+      } else {
+        setError('Could not book that slot. Try again.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -170,7 +178,7 @@ export default function BookSessionPage() {
                 {submitting ? 'Booking…' : 'Book & pay'}
               </Button>
 
-              {error && !joinedWaitlist && (
+              {error && slotUnavailable && !joinedWaitlist && (
                 <Button variant="secondary" onClick={() => void joinWaitlist()}>
                   <Clock3 className="h-4 w-4" aria-hidden />
                   That time doesn&apos;t work — join waitlist instead
