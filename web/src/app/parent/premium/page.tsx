@@ -50,7 +50,7 @@ export default function ParentPremiumPage() {
     <div>
       <PageHeader
         title="Parent Premium"
-        description="AI doubt solver for your child, plus richer weekly digests."
+        description="Richer weekly digests for your child, with more attendance and score detail."
       />
 
       {error && (

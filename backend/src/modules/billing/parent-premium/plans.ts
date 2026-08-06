@@ -6,10 +6,17 @@
  * (₹149) as the one concrete monthly plan, plus an annual option at
  * the same 2-months-free discount used for tutor plans. Prices live
  * here, in server config, never hardcoded in a client.
+ *
+ * Label deliberately doesn't mention the AI doubt solver: it has zero
+ * student-facing UI anywhere (web or mobile) as of this launch, so
+ * advertising it at the point of a real purchase would be selling a
+ * feature buyers can't actually reach. DigestsService's premium tier
+ * (richer weekly digest) is the only premium benefit that's actually
+ * live — restore the doubt-solver mention once it ships a real UI.
  */
 export const PARENT_PREMIUM_PLANS = {
   monthly: {
-    label: 'Parent Premium — monthly (AI doubt solver + rich digests)',
+    label: 'Parent Premium — monthly (richer weekly digests)',
     priceMinor: 14_900,
     periodDays: 30,
   },
