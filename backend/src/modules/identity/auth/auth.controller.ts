@@ -49,6 +49,16 @@ export class AuthController {
     return this.authService.refresh(dto.refreshToken, undefined);
   }
 
+  /** Revokes this device's refresh token server-side. Unauthenticated
+   *  by design — the refresh token itself is the credential being
+   *  surrendered, same as /auth/refresh. */
+  @Post('logout')
+  @HttpCode(200)
+  async logout(@Body() dto: RefreshDto) {
+    await this.authService.logout(dto.refreshToken);
+    return { loggedOut: true };
+  }
+
   @Post('google')
   @HttpCode(200)
   googleSignIn(@Body() dto: GoogleSignInDto) {

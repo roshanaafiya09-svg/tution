@@ -100,7 +100,12 @@ class AuthController extends Notifier<AuthState> {
   Future<void> signOut() async {
     await Analytics.capture('logout');
     await Analytics.reset();
-    await ref.read(tokenStorageProvider).clear();
+    final storage = ref.read(tokenStorageProvider);
+    final refreshToken = await storage.readRefreshToken();
+    await storage.clear();
     state = const AuthState(status: AuthStatus.signedOut);
+    if (refreshToken != null) {
+      unawaited(_api.logout(refreshToken).catchError((_) {}));
+    }
   }
 }

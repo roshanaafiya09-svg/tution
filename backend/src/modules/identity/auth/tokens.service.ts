@@ -95,4 +95,17 @@ export class TokensService {
   revokeAllSessions(userId: string): Promise<void> {
     return this.refreshTokenRepository.revokeAllForUser(userId);
   }
+
+  /** Single-device sign-out: revokes only this refresh token's session,
+   *  leaving the caller's other devices logged in. Tolerant of an
+   *  already-invalid/expired token — the caller's goal ("I'm logged
+   *  out") is already satisfied in that case, so this never throws. */
+  async revokeSession(refreshToken: string): Promise<void> {
+    try {
+      const { jti } = await this.verifyRefreshToken(refreshToken);
+      await this.refreshTokenRepository.revoke(jti);
+    } catch {
+      // Already invalid, expired, or previously revoked — nothing to do.
+    }
+  }
 }

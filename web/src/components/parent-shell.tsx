@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import posthog from 'posthog-js';
 import { User, LogOut } from 'lucide-react';
-import { api, tokenStore, ApiError } from '@/lib/api';
+import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
 import type { Me } from '@/lib/types';
 import { NotificationsBell } from '@/components/notifications-bell';
 import {
@@ -50,9 +50,16 @@ export function ParentShell({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   function signOut() {
+    const refreshToken = tokenStore.refresh;
     tokenStore.clear();
     if (posthog.__loaded) posthog.reset();
     router.replace('/login');
+    // Best-effort: the device is signed out locally regardless of
+    // whether this reaches the server, but a reachable one should
+    // actually revoke the refresh token rather than leave it valid.
+    if (refreshToken) {
+      void apiPost('/auth/logout', { refreshToken }).catch(() => {});
+    }
   }
 
   if (error) {

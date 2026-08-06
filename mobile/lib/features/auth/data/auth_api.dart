@@ -30,4 +30,12 @@ class AuthApi {
     final data = await _client.get('/auth/me') as Map<String, dynamic>;
     return CurrentUser.fromJson(data);
   }
+
+  /// Revokes this device's refresh token server-side. Best-effort by
+  /// design — the caller clears local storage regardless of whether
+  /// this succeeds, since the device signing out locally is the part
+  /// that must never fail.
+  Future<void> logout(String refreshToken) async {
+    await _client.post('/auth/logout', {'refreshToken': refreshToken});
+  }
 }
