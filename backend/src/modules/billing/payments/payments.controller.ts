@@ -6,6 +6,8 @@ import { Roles } from '../../identity/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../identity/auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
 import { PaymentsService } from './payments.service';
+import { CreateSubscriptionOrderDto } from './dto/create-subscription-order.dto';
+import { CreateParentPremiumOrderDto } from './dto/create-parent-premium-order.dto';
 
 @Controller('payments')
 export class PaymentsController {
@@ -22,28 +24,27 @@ export class PaymentsController {
   }
 
   /** The tutor's own subscription purchase (blueprint §5) — distinct
-   *  from fee collection above. Body: { planId }. */
+   *  from fee collection above. */
   @Post('subscription/order')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('tutor')
   createSubscriptionOrder(
     @CurrentUser() user: AccessTokenPayload,
-    @Body('planId') planId: string,
+    @Body() dto: CreateSubscriptionOrderDto,
   ) {
-    return this.paymentsService.initiateSubscriptionOrder(user, planId);
+    return this.paymentsService.initiateSubscriptionOrder(user, dto.planId);
   }
 
   /** A parent's own AI premium purchase (blueprint §5/§10 Phase 3) —
-   *  distinct from fee collection and the tutor subscription above.
-   *  Body: { planId }. */
+   *  distinct from fee collection and the tutor subscription above. */
   @Post('parent-premium/order')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('parent')
   createParentPremiumOrder(
     @CurrentUser() user: AccessTokenPayload,
-    @Body('planId') planId: string,
+    @Body() dto: CreateParentPremiumOrderDto,
   ) {
-    return this.paymentsService.initiateParentPremiumOrder(user, planId);
+    return this.paymentsService.initiateParentPremiumOrder(user, dto.planId);
   }
 
   /** A student's 1:1 marketplace booking purchase (blueprint §5/§10
