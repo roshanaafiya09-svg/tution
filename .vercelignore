@@ -1,0 +1,9 @@
+mobile/
+backend/
+docker/
+docs/
+scripts/
+*.md
+dump.rdb
+docker-compose.yml
+render.yaml
