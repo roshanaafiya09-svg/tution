@@ -92,19 +92,25 @@ export class MessagesRepository {
       .execute();
   }
 
-  /** The student's own inbox — one row per batch thread they're in. */
+  /** The student's own inbox — one row per batch thread they're in.
+   *  Includes student_id even though it's constant (always the caller's
+   *  own id) — callers share the same ThreadSummary shape as
+   *  listThreadsForTutor's, which needs it to disambiguate between
+   *  different students, and the frontend relies on it always being
+   *  present (e.g. as a React key and a display-name fallback). */
   listThreadsForStudent(studentId: string) {
     return this.db
       .selectFrom('messages')
       .innerJoin('batches', 'batches.id', 'messages.batch_id')
       .select((eb) => [
         'messages.batch_id',
+        'messages.student_id',
         'batches.title as batch_title',
         eb.fn.max('messages.created_at').as('last_message_at'),
         eb.fn.countAll().as('message_count'),
       ])
       .where('messages.student_id', '=', studentId)
-      .groupBy(['messages.batch_id', 'batches.title'])
+      .groupBy(['messages.batch_id', 'messages.student_id', 'batches.title'])
       .orderBy('last_message_at', 'desc')
       .execute();
   }
