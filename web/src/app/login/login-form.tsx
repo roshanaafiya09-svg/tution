@@ -37,7 +37,13 @@ export function LoginForm() {
   const next = searchParams.get('next');
 
   const [phase, setPhase] = useState<Phase>('phone');
-  const [phone, setPhone] = useState('+91');
+  // Only the 10 local digits live in state — +91 is fixed and rendered
+  // separately, so it's structurally impossible to submit a phoneE164
+  // that's missing/mangled the country code (previously a free-text
+  // field pre-filled with "+91" that the user could edit or delete,
+  // producing malformed E.164 strings the backend then rejected).
+  const [phoneDigits, setPhoneDigits] = useState('');
+  const phoneE164 = `+91${phoneDigits}`;
   const [code, setCode] = useState('');
   const [signupRole, setSignupRole] = useState<'tutor' | 'student' | 'parent'>('tutor');
   const [error, setError] = useState<string | null>(null);
@@ -73,7 +79,7 @@ export function LoginForm() {
     setError(null);
     setLoading(true);
     try {
-      await apiPost('/auth/otp/request', { phoneE164: phone });
+      await apiPost('/auth/otp/request', { phoneE164 });
       setPhase('otp');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not send the code.');
@@ -87,7 +93,7 @@ export function LoginForm() {
     setLoading(true);
     try {
       const tokens = await apiPost<AuthTokens>('/auth/otp/verify', {
-        phoneE164: phone,
+        phoneE164,
         code,
         signupRole: withRole,
       });
@@ -155,17 +161,25 @@ export function LoginForm() {
       {phase === 'phone' && (
         <div className="flex flex-col gap-4">
           <Field label="Phone number" hint="We'll send a code on WhatsApp.">
-            <Input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="+919876543210"
-              autoFocus
-            />
+            <div className="flex items-center gap-2">
+              <span className="flex h-10 items-center rounded-md border border-neutral-300 bg-neutral-50 px-3 text-sm text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400">
+                +91
+              </span>
+              <Input
+                type="tel"
+                inputMode="numeric"
+                value={phoneDigits}
+                onChange={(e) => setPhoneDigits(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                placeholder="9876543210"
+                maxLength={10}
+                autoFocus
+                className="flex-1"
+              />
+            </div>
           </Field>
           <Button
             onClick={() => void handleSendOtp()}
-            disabled={loading || phone.length < 8}
+            disabled={loading || phoneDigits.length !== 10}
             loading={loading}
           >
             {loading ? 'Sending…' : 'Send code'}
@@ -177,7 +191,7 @@ export function LoginForm() {
         <div className="flex flex-col gap-4">
           <p className="text-sm text-neutral-500 dark:text-neutral-400">
             Code sent to{' '}
-            <span className="font-medium text-neutral-800 dark:text-neutral-100">{phone}</span>.
+            <span className="font-medium text-neutral-800 dark:text-neutral-100">{phoneE164}</span>.
           </p>
           <Field label="6-digit code">
             <Input
