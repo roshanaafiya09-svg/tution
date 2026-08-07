@@ -106,10 +106,10 @@ export class TelegramUpdatesPoller implements OnModuleInit, OnModuleDestroy {
       } catch (err) {
         // Never let a transient Telegram/network failure kill the loop
         // or the app. Log the reason only — the bot token lives in the
-        // request URL and must not reach the logs.
-        this.logger.error(
-          `Update poll failed: ${err instanceof Error ? err.message : 'unknown error'}`,
-        );
+        // request URL and must not reach the logs; describeError only
+        // surfaces DNS/TCP-layer detail (e.g. ENOTFOUND, ECONNRESET),
+        // which comes from the connection attempt, not the request.
+        this.logger.error(`Update poll failed: ${describeError(err)}`);
         await this.sleep(ERROR_BACKOFF_MS);
       }
     }
@@ -275,4 +275,20 @@ export class TelegramUpdatesPoller implements OnModuleInit, OnModuleDestroy {
  *  are already normalized to (see identifier.util.ts). */
 function normalizeTelegramPhone(raw: string): string {
   return `+${raw.replace(/\D/g, '')}`;
+}
+
+/** Node's fetch wraps every network-level failure in a generic
+ *  TypeError('fetch failed'); the actual reason (DNS, connection
+ *  refused, TLS, timeout) is nested in `cause`. Surfacing cause's
+ *  `code` turns an opaque log line into an actionable one. */
+function describeError(err: unknown): string {
+  if (!(err instanceof Error)) return 'unknown error';
+  const cause = (err as { cause?: unknown }).cause;
+  if (cause instanceof Error) {
+    const code = (cause as NodeJS.ErrnoException).code;
+    return code
+      ? `${err.message} (${code}: ${cause.message})`
+      : `${err.message} (${cause.message})`;
+  }
+  return err.message;
 }
