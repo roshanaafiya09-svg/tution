@@ -4,7 +4,16 @@ import { REDIS_CONNECTION } from '../../../database/redis.module';
 
 export interface TelegramLinkRequest {
   identifier: string;
-  /** Set once the user actually pressed Start and the poller saw it. */
+  /**
+   * Set once `/start <token>` is seen, before the link is trusted — the
+   * chat we've asked to prove it owns `identifier` by sharing its
+   * Telegram-verified phone number. NOT the same as being linked: a
+   * chat_id only ever reaches `chatId` below once that phone number is
+   * confirmed to match. See TelegramUpdatesPoller.
+   */
+  pendingChatId?: string;
+  /** Set only once the pending chat's shared contact phone number was
+   *  confirmed to match `identifier` — this is what "linked" means. */
   chatId?: string;
 }
 
@@ -33,6 +42,10 @@ export class TelegramLinkRepository {
     return `tg:link:id:${identifier}`;
   }
 
+  private pendingChatKey(chatId: string): string {
+    return `tg:link:pending-chat:${chatId}`;
+  }
+
   private rateLimitKey(identifier: string): string {
     return `tg:link:ratelimit:${identifier}`;
   }
@@ -59,10 +72,47 @@ export class TelegramLinkRepository {
   }
 
   /**
-   * Records the chat id against an existing request. Returns false if
-   * the token expired or never existed — the poller uses that to reply
-   * "this link expired" instead of silently doing nothing. KEEPTTL so a
-   * completed link doesn't outlive its original window.
+   * Records that `/start <token>` was seen from `chatId`, without yet
+   * trusting it — this chat still has to prove ownership by sharing its
+   * contact (see TelegramUpdatesPoller). Returns false if the token
+   * expired or never existed. The reverse pointer is what lets the
+   * *next* update (a `contact` message, which carries no token) find its
+   * way back to this pending request.
+   */
+  async markAwaitingContact(token: string, chatId: string): Promise<boolean> {
+    const key = this.tokenKey(token);
+    const raw = await this.redis.get(key);
+    if (!raw) return false;
+
+    const request = JSON.parse(raw) as TelegramLinkRequest;
+    request.pendingChatId = chatId;
+    await this.redis
+      .multi()
+      .set(key, JSON.stringify(request), 'KEEPTTL')
+      .set(this.pendingChatKey(chatId), token, 'EX', LINK_TTL_SECONDS)
+      .exec();
+    return true;
+  }
+
+  /** Finds the pending request a chat is mid-verifying, if any — used to
+   *  route an incoming `contact` share back to the token it belongs to.
+   *  Returns the token too since `markLinked` needs it and the caller
+   *  otherwise has no way to know it (only the chat id, from Telegram). */
+  async findByPendingChatId(
+    chatId: string,
+  ): Promise<{ token: string; request: TelegramLinkRequest } | null> {
+    const token = await this.redis.get(this.pendingChatKey(chatId));
+    if (!token) return null;
+    const request = await this.findByToken(token);
+    return request ? { token, request } : null;
+  }
+
+  /**
+   * Finalizes the link once the shared contact's phone number has been
+   * confirmed to match — this, not `markAwaitingContact`, is what
+   * `linkedChatIdFor`/the status endpoint mean by "linked". Returns
+   * false if the token expired or never existed. KEEPTTL so a completed
+   * link doesn't outlive its original window.
    */
   async markLinked(token: string, chatId: string): Promise<boolean> {
     const key = this.tokenKey(token);
@@ -71,16 +121,24 @@ export class TelegramLinkRepository {
 
     const request = JSON.parse(raw) as TelegramLinkRequest;
     request.chatId = chatId;
-    await this.redis.set(key, JSON.stringify(request), 'KEEPTTL');
+    await this.redis
+      .multi()
+      .set(key, JSON.stringify(request), 'KEEPTTL')
+      .del(this.pendingChatKey(chatId))
+      .exec();
     return true;
   }
 
   async consume(token: string, identifier: string): Promise<void> {
-    await this.redis
+    const request = await this.findByToken(token);
+    const multi = this.redis
       .multi()
       .del(this.tokenKey(token))
-      .del(this.identifierKey(identifier))
-      .exec();
+      .del(this.identifierKey(identifier));
+    if (request?.pendingChatId) {
+      multi.del(this.pendingChatKey(request.pendingChatId));
+    }
+    await multi.exec();
   }
 
   /** Same shape as OtpRepository.incrementRequestCount — starting a link

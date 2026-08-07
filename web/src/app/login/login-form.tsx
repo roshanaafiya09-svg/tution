@@ -297,9 +297,10 @@ export function LoginForm() {
               Connect Telegram
             </p>
             <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-              Codes are sent on Telegram. Open our bot and press{' '}
-              <span className="font-medium text-neutral-700 dark:text-neutral-300">Start</span> —
-              we&apos;ll send your code here automatically.
+              Open our bot and press{' '}
+              <span className="font-medium text-neutral-700 dark:text-neutral-300">Start</span>,
+              then tap the button it shows you to confirm your number — that's how we know it's
+              really you. We&apos;ll send your code here automatically once that's done.
             </p>
           </div>
 
@@ -313,7 +314,7 @@ export function LoginForm() {
           </a>
 
           <p className="text-xs text-neutral-400 dark:text-neutral-500">
-            Waiting for you to press Start…
+            Waiting for you to finish connecting…
           </p>
 
           <button

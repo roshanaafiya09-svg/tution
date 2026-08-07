@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UsersRepository } from '../users/users.repository';
-import { normalizeIdentifier } from '../identifier.util';
+import { identifierType, normalizeIdentifier } from '../identifier.util';
 import { TelegramLinkRepository } from './telegram-link.repository';
 
 const MAX_LINK_REQUESTS_PER_WINDOW = 5;
@@ -35,6 +35,18 @@ export class TelegramLinkService {
    * their own Telegram, and receive that account's login codes — a full
    * takeover, since the OTP *is* the credential. An existing unlinked
    * account therefore gets a 409 and has to be linked out-of-band.
+   *
+   * Even for a brand-new identifier, "whoever presses Start owns it" is
+   * not actually true on its own — pressing Start only proves control of
+   * *some* Telegram chat, not of the phone number/email being claimed.
+   * `TelegramUpdatesPoller` closes that gap for phone numbers by making
+   * the chat prove ownership via Telegram's own request_contact button
+   * (a platform-verified phone, not user-typed text) before it's ever
+   * treated as linked. Telegram has no equivalent proof for an email
+   * address, so a brand-new *email* identifier is refused here — new
+   * accounts can only be created via phone; email becomes available as
+   * a login identifier once it's added to an already-verified account
+   * (see POST /auth/contact, which requires being signed in already).
    */
   async startLink(rawIdentifier: string): Promise<StartLinkResult> {
     const identifier = normalizeIdentifier(rawIdentifier);
@@ -65,6 +77,12 @@ export class TelegramLinkService {
       }
       throw new ConflictException(
         'This account predates Telegram sign-in and needs to be connected by support before you can sign in.',
+      );
+    }
+
+    if (identifierType(identifier) !== 'phone') {
+      throw new BadRequestException(
+        'New accounts need a phone number to sign up — Telegram has no way to verify an email address belongs to you. Sign up with your phone, then add your email afterward from your profile.',
       );
     }
 

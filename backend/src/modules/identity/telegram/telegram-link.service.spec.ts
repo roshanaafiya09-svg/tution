@@ -57,16 +57,21 @@ describe('TelegramLinkService', () => {
     expect(linkRepo.create).toHaveBeenCalledWith(result.token, '+919876543210');
   });
 
-  it('lower-cases an email identifier so casing cannot fork the account', async () => {
-    await build().startLink('Student@Example.COM');
-
-    expect(linkRepo.create).toHaveBeenCalledWith(
-      expect.any(String),
-      'student@example.com',
+  it('normalizes (lower-cases) an email identifier before checking it, even though it will be refused below', async () => {
+    await expect(build().startLink('Student@Example.COM')).rejects.toBeInstanceOf(
+      BadRequestException,
     );
+
     expect(usersRepo.findByIdentifier).toHaveBeenCalledWith(
       'student@example.com',
     );
+  });
+
+  it('refuses to start a brand-new account with an email — only a phone number can, since Telegram has no way to verify email ownership', async () => {
+    await expect(build().startLink('new@example.com')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(linkRepo.create).not.toHaveBeenCalled();
   });
 
   it('refuses to link an existing account that has no Telegram yet (takeover guard)', async () => {

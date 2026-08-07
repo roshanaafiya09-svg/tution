@@ -13,6 +13,15 @@ interface TelegramUpdate {
   message?: {
     text?: string;
     chat?: { id?: number };
+    contact?: {
+      phone_number?: string;
+      /** Telegram guarantees this equals the sender's own id when a
+       *  contact reaches a bot via a request_contact button tap — that
+       *  UI can only ever share the tapping account's own contact card,
+       *  never an arbitrary one, so this is what makes the phone number
+       *  below trustworthy rather than just user-supplied text. */
+      user_id?: number;
+    };
   };
 }
 
@@ -27,10 +36,23 @@ const LONG_POLL_TIMEOUT_SECONDS = 25;
 const ERROR_BACKOFF_MS = 5_000;
 
 /**
- * Learns users' chat ids. A Telegram bot can't message anyone who
- * hasn't messaged it first, so the only way to get a chat id is to read
- * the bot's own inbound updates and match a `/start <token>` against a
- * pending link request.
+ * Learns users' chat ids — and, critically, verifies they're allowed to
+ * claim the identifier they're signing up with before recording them.
+ *
+ * `/start <token>` alone only proves control of *some* Telegram chat; it
+ * says nothing about whether the phone number typed into the signup
+ * form belongs to that chat. Pressing Start used to be treated as
+ * sufficient on its own, which let anyone bind their own Telegram to a
+ * phone number they don't own (e.g. a family member's). The fix: after
+ * `/start <token>`, the chat is asked to tap a `request_contact` button
+ * — a Telegram-native UI element that can only ever share the tapping
+ * account's own, platform-verified phone number, never an arbitrary
+ * one. Only once that number matches the identifier being linked does
+ * `markLinked` ever get called. See TelegramLinkService.startLink for
+ * the other half of this: it now refuses to issue a token for a
+ * brand-new *email* identifier at all, since Telegram has no equivalent
+ * ownership proof for email — this contact-share check is meaningless
+ * without an actual phone number to compare against.
  *
  * Long-polling `getUpdates` rather than a webhook: no public URL is
  * needed, so this works identically in local dev and on Render, and the
@@ -108,9 +130,16 @@ export class TelegramUpdatesPoller implements OnModuleInit, OnModuleDestroy {
   }
 
   private async handleUpdate(update: TelegramUpdate): Promise<void> {
-    const text = update.message?.text?.trim();
     const chatId = update.message?.chat?.id;
-    if (!text || chatId === undefined) return;
+    if (chatId === undefined) return;
+
+    if (update.message?.contact) {
+      await this.handleContactShare(chatId, update.message.contact);
+      return;
+    }
+
+    const text = update.message?.text?.trim();
+    if (!text) return;
 
     const match = /^\/start\s+(\S+)$/.exec(text);
     if (!match) {
@@ -126,11 +155,60 @@ export class TelegramUpdatesPoller implements OnModuleInit, OnModuleDestroy {
     }
 
     const token = match[1];
-    const linked = await this.linkRepository.markLinked(token, String(chatId));
-    if (!linked) {
+    const awaiting = await this.linkRepository.markAwaitingContact(
+      token,
+      String(chatId),
+    );
+    if (!awaiting) {
       // Expired, already-consumed, or fabricated token. The reply is
       // deliberately identical either way so a stranger can't probe for
       // which tokens are live.
+      await this.reply(
+        chatId,
+        'That sign-in link has expired. Start again from the app.',
+      );
+      return;
+    }
+
+    await this.reply(
+      chatId,
+      'Almost done — tap the button below to confirm this is your number.',
+      { requestContact: true },
+    );
+  }
+
+  /**
+   * The verification step this whole redesign exists for: only a
+   * `contact` sharing from a Telegram-native request_contact button tap
+   * reaches here, so `user_id` is guaranteed to be this chat's own —
+   * there's no way this phone number could belong to someone else. If
+   * it doesn't match what was typed into the signup form, this chat
+   * simply isn't who it's claiming to be; refuse and leave the pending
+   * request unlinked rather than trusting it anyway.
+   */
+  private async handleContactShare(
+    chatId: number,
+    contact: { phone_number?: string; user_id?: number },
+  ): Promise<void> {
+    const pending = await this.linkRepository.findByPendingChatId(
+      String(chatId),
+    );
+    if (!pending || !contact.phone_number) return;
+
+    const sharedPhone = normalizeTelegramPhone(contact.phone_number);
+    if (sharedPhone !== pending.request.identifier) {
+      await this.reply(
+        chatId,
+        "That phone number doesn't match the one you're signing up with. Open the Telegram account registered to that number and try again from the app.",
+      );
+      return;
+    }
+
+    const linked = await this.linkRepository.markLinked(
+      pending.token,
+      String(chatId),
+    );
+    if (!linked) {
       await this.reply(
         chatId,
         'That sign-in link has expired. Start again from the app.',
@@ -142,16 +220,13 @@ export class TelegramUpdatesPoller implements OnModuleInit, OnModuleDestroy {
     // id straight onto it. TelegramLinkService.startLink only issues
     // tokens for identifiers with no account, so this normally can't
     // happen — but an account could have been created in the window
-    // between issuing the token and the user pressing Start, and
-    // recording it here keeps that account usable.
-    const request = await this.linkRepository.findByToken(token);
-    if (request) {
-      const user = await this.usersRepository.findByIdentifier(
-        request.identifier,
-      );
-      if (user && !user.telegram_chat_id) {
-        await this.usersRepository.setTelegramChatId(user.id, String(chatId));
-      }
+    // between issuing the token and finishing verification here, and
+    // recording it now keeps that account usable.
+    const user = await this.usersRepository.findByIdentifier(
+      pending.request.identifier,
+    );
+    if (user && !user.telegram_chat_id) {
+      await this.usersRepository.setTelegramChatId(user.id, String(chatId));
     }
 
     await this.reply(
@@ -160,17 +235,29 @@ export class TelegramUpdatesPoller implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  private async reply(chatId: number, text: string): Promise<void> {
+  private async reply(
+    chatId: number,
+    text: string,
+    options?: { requestContact?: boolean },
+  ): Promise<void> {
     const botToken = this.config.getOrThrow<string>('telegram.botToken');
+    const body: Record<string, unknown> = { chat_id: chatId, text };
+    if (options?.requestContact) {
+      body.reply_markup = {
+        keyboard: [[{ text: 'Share my phone number', request_contact: true }]],
+        resize_keyboard: true,
+        one_time_keyboard: true,
+      };
+    }
     try {
       await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text }),
+        body: JSON.stringify(body),
       });
     } catch (err) {
-      // A failed courtesy reply must not abort the link itself — the
-      // chat id is already recorded by this point.
+      // A failed reply must not abort the link itself — nothing here
+      // has been recorded as linked until markLinked succeeds anyway.
       this.logger.warn(
         `Could not reply to chat: ${err instanceof Error ? err.message : 'unknown error'}`,
       );
@@ -180,4 +267,12 @@ export class TelegramUpdatesPoller implements OnModuleInit, OnModuleDestroy {
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
+}
+
+/** Telegram's contact.phone_number isn't guaranteed to include a
+ *  leading '+' (format varies by client/locale) — strip everything but
+ *  digits and re-add exactly one, matching the E.164 shape identifiers
+ *  are already normalized to (see identifier.util.ts). */
+function normalizeTelegramPhone(raw: string): string {
+  return `+${raw.replace(/\D/g, '')}`;
 }
