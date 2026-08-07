@@ -22,7 +22,7 @@ const SEND_CHUNK_SIZE = 500; // FCM's per-batch limit
  * Real Android delivery via Firebase Cloud Messaging. Always instantiated
  * by Nest (see notifications.module.ts's PUSH_PROVIDER factory) even when
  * FCM isn't configured, so credential parsing happens lazily in send()
- * rather than the constructor — mirrors WhatsAppCloudApiOtpProvider.
+ * rather than the constructor — mirrors TelegramOtpProvider.
  */
 @Injectable()
 export class FcmPushProvider implements PushProvider {

@@ -1,29 +1,25 @@
 export const OTP_PROVIDER = 'OTP_PROVIDER';
 
 /**
- * Where to actually deliver a code — phone_e164 alone is enough for
- * WhatsApp/console, but Email and Telegram need a destination that isn't
- * derivable from a phone number. Optional and additive: existing
- * providers ignore it entirely.
+ * Where to actually deliver a code. A Telegram bot can only message a
+ * chat that has already messaged it, so the chat id can't be derived
+ * from the login identifier (phone or email) the way an SMS number
+ * could — it has to be captured up front by the linking flow (see
+ * TelegramLinkService) and passed in here.
  */
 export interface OtpContact {
-  email?: string;
   telegramChatId?: string;
 }
 
-export type OtpChannel = 'console' | 'whatsapp' | 'email' | 'telegram';
+export type OtpChannel = 'console' | 'telegram';
 
 /**
- * Blueprint §4: WhatsApp OTP (Meta Cloud API) primary, SMS fallback.
- * Email/Telegram sit below it as cheaper channels that don't need a Meta
- * Business account. Every implementation is behind this interface —
- * swap the active one via IdentityModule's provider-selection factory
- * without touching OtpService.
+ * Telegram is the only real delivery channel; ConsoleOtpProvider is the
+ * zero-credential dev fallback that logs the code instead of sending it.
+ * IdentityModule's factory picks between them on whether a bot token is
+ * configured — swapping the active one never touches OtpService.
  */
 export interface OtpProvider {
-  /** Tags which delivery channel this is — see IdentityModule's
-   *  selection factory and AuthService's contact-persistence logic,
-   *  which only trusts a contact field it can attribute to this. */
   readonly channel: OtpChannel;
-  send(phoneE164: string, code: string, contact?: OtpContact): Promise<void>;
+  send(identifier: string, code: string, contact?: OtpContact): Promise<void>;
 }

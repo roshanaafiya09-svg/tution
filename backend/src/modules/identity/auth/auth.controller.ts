@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  Param,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -13,11 +14,28 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { GoogleSignInDto } from './dto/google-signin.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
+import { StartTelegramLinkDto } from './dto/start-telegram-link.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import type { AccessTokenPayload } from './tokens.service';
 import { UsersRepository } from '../users/users.repository';
 import { GoogleAuthService } from './google-auth.service';
+import { TelegramLinkService } from '../telegram/telegram-link.service';
+
+/** `identifier` is the current field; `phoneE164` is the deprecated
+ *  alias the shipped mobile app still sends. Exactly one is required. */
+function resolveIdentifier(dto: {
+  identifier?: string;
+  phoneE164?: string;
+}): string {
+  const identifier = dto.identifier ?? dto.phoneE164;
+  if (!identifier) {
+    throw new BadRequestException(
+      'identifier is required (a phone number or email address).',
+    );
+  }
+  return identifier;
+}
 
 @Controller('auth')
 export class AuthController {
@@ -25,15 +43,13 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly usersRepository: UsersRepository,
     private readonly googleAuthService: GoogleAuthService,
+    private readonly telegramLinkService: TelegramLinkService,
   ) {}
 
   @Post('otp/request')
   @HttpCode(200)
   async requestOtp(@Body() dto: RequestOtpDto) {
-    await this.authService.requestOtp(dto.phoneE164, {
-      email: dto.email,
-      telegramChatId: dto.telegramChatId,
-    });
+    await this.authService.requestOtp(resolveIdentifier(dto));
     return { sent: true };
   }
 
@@ -41,12 +57,29 @@ export class AuthController {
   @HttpCode(200)
   verifyOtp(@Body() dto: VerifyOtpDto) {
     return this.authService.verifyOtpAndIssueTokens(
-      dto.phoneE164,
+      resolveIdentifier(dto),
       dto.code,
       dto.signupRole,
       dto.deviceLabel,
-      { email: dto.email, telegramChatId: dto.telegramChatId },
+      dto.phoneForSignup,
     );
+  }
+
+  /** Starts Telegram linking for an identifier that has no account yet.
+   *  Public by design — it runs before any account exists, so there's no
+   *  session to authenticate. See TelegramLinkService.startLink for why
+   *  an *existing* account can't be linked this way. */
+  @Post('telegram/link/start')
+  @HttpCode(200)
+  startTelegramLink(@Body() dto: StartTelegramLinkDto) {
+    return this.telegramLinkService.startLink(dto.identifier);
+  }
+
+  /** Polled by the client while the user is off pressing Start in
+   *  Telegram. Returns only a boolean — never the chat id. */
+  @Get('telegram/link/:token/status')
+  telegramLinkStatus(@Param('token') token: string) {
+    return this.telegramLinkService.linkStatus(token);
   }
 
   @Post('refresh')
@@ -79,14 +112,12 @@ export class AuthController {
       id: user.sub,
       roles: user.roles,
       phoneE164: record?.phone_e164,
+      email: record?.email,
       locale: record?.locale,
     };
   }
 
-  /** Lets an already-signed-in user set/update the address OTPs should
-   *  go to when Email/Telegram is the active channel — the phone-OTP
-   *  signup path can only capture whichever one channel actually
-   *  delivered the code (see AuthService.verifyOtpAndIssueTokens). */
+  /** Sets the email a signed-in user can then also sign in with. */
   @Post('contact')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
@@ -94,15 +125,7 @@ export class AuthController {
     @CurrentUser() user: AccessTokenPayload,
     @Body() dto: UpdateContactDto,
   ) {
-    if (!dto.email && !dto.telegramChatId) {
-      throw new BadRequestException(
-        'Provide at least one of "email" or "telegramChatId".',
-      );
-    }
-    await this.usersRepository.updateContact(user.sub, {
-      email: dto.email,
-      telegramChatId: dto.telegramChatId,
-    });
+    await this.usersRepository.updateEmail(user.sub, dto.email.toLowerCase());
     return { updated: true };
   }
 }

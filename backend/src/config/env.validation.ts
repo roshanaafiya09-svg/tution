@@ -27,28 +27,11 @@ export const envSchema = z.object({
     .default('http://localhost:3000')
     .describe('Comma-separated list of allowed origins for the web dashboard'),
 
-  // --- WhatsApp OTP (Meta Cloud API) — optional; falls back to a
-  // console-logging dev provider when unset. See blueprint §4/§6. ---
-  WHATSAPP_ACCESS_TOKEN: z.string().optional(),
-  WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
-  WHATSAPP_OTP_TEMPLATE_NAME: z.string().default('otp_login'),
-  WHATSAPP_TEMPLATE_LANGUAGE: z.string().default('en_US'),
-  WHATSAPP_API_VERSION: z.string().default('v21.0'),
-
-  // --- Email OTP (SMTP via Nodemailer) — optional; requires all four
-  // of HOST/PORT/USER/PASS to be considered "configured" (see
-  // IdentityModule's provider-selection factory). Ranks below WhatsApp,
-  // above Telegram — see handover.md §6.8. ---
-  SMTP_HOST: z.string().optional(),
-  SMTP_PORT: z.coerce.number().int().positive().optional(),
-  SMTP_USER: z.string().optional(),
-  SMTP_PASS: z.string().optional(),
-  SMTP_FROM: z.string().optional(),
-
-  // --- Telegram OTP (Bot API) — optional; lowest-priority real channel,
-  // used only when neither WhatsApp nor Email is configured. See
-  // handover.md §6.9. ---
+  // --- Telegram OTP (Bot API) — the only real OTP delivery channel.
+  // Both vars optional together: unset falls back to a console-logging
+  // dev provider (no code changes). See handover.md §6.7. ---
   TELEGRAM_BOT_TOKEN: z.string().optional(),
+  TELEGRAM_BOT_USERNAME: z.string().optional(),
 
   // --- Google Sign-In (web) — optional; endpoint 400s until set. ---
   GOOGLE_CLIENT_ID: z.string().optional(),

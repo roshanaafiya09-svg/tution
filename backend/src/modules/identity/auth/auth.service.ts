@@ -1,12 +1,31 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { OtpService } from '../otp/otp.service';
-import type { OtpContact } from '../otp/providers/otp-provider.interface';
 import { UsersRepository } from '../users/users.repository';
+import { TelegramLinkService } from '../telegram/telegram-link.service';
+import { identifierType, normalizeIdentifier } from '../identifier.util';
 import { TokensService } from './tokens.service';
 
 export interface AuthTokens {
   accessToken: string;
   refreshToken: string;
+}
+
+/** Signals that the caller must complete Telegram linking before a code
+ *  can be delivered. Carries `telegramLinkRequired` so clients can
+ *  branch on it rather than string-matching the message. */
+export class TelegramLinkRequiredException extends ForbiddenException {
+  constructor(message: string) {
+    super({
+      statusCode: 403,
+      error: 'Forbidden',
+      message,
+      telegramLinkRequired: true,
+    });
+  }
 }
 
 @Injectable()
@@ -15,65 +34,83 @@ export class AuthService {
     private readonly otpService: OtpService,
     private readonly usersRepository: UsersRepository,
     private readonly tokensService: TokensService,
+    private readonly telegramLinkService: TelegramLinkService,
   ) {}
 
   /**
-   * `contact` is only needed when the active OTP channel is Email or
-   * Telegram (WhatsApp/console ignore it) and isn't already on file —
-   * falls back to whatever's stored for this phone number so a returning
-   * user who set their contact via POST /auth/contact doesn't have to
-   * resupply it every login.
+   * Codes go out over Telegram only, and a bot can't message a chat that
+   * hasn't messaged it — so delivery is gated on a linked chat id.
+   * Existing accounts read theirs from `users`; a brand-new identifier
+   * reads it from the pending link record it just completed.
    */
-  async requestOtp(phoneE164: string, contact?: OtpContact): Promise<void> {
-    let effectiveContact = contact;
-    if (!effectiveContact?.email && !effectiveContact?.telegramChatId) {
-      const user = await this.usersRepository.findByPhone(phoneE164);
-      if (user) {
-        effectiveContact = {
-          email: user.email ?? undefined,
-          telegramChatId: user.telegram_chat_id ?? undefined,
-        };
-      }
-    }
-    return this.otpService.requestOtp(phoneE164, effectiveContact);
-  }
+  async requestOtp(rawIdentifier: string): Promise<void> {
+    const identifier = normalizeIdentifier(rawIdentifier);
+    const user = await this.usersRepository.findByIdentifier(identifier);
 
-  async verifyOtpAndIssueTokens(
-    phoneE164: string,
-    code: string,
-    signupRole: 'tutor' | 'student' | 'parent' | undefined,
-    deviceLabel: string | undefined,
-    contact?: OtpContact,
-  ): Promise<AuthTokens> {
-    await this.otpService.checkOtp(phoneE164, code);
+    const telegramChatId = user
+      ? user.telegram_chat_id
+      : await this.telegramLinkService.linkedChatIdFor(identifier);
 
-    let user = await this.usersRepository.findByPhone(phoneE164);
-    if (!user) {
-      if (!signupRole) {
-        throw new BadRequestException(
-          'No account with this number yet — pass signupRole ("tutor", "student", or "parent") to create one.',
-        );
-      }
-      // Only persist the contact field matching the channel that just
-      // delivered (and proved) this code — e.g. if Telegram is active
-      // but the request also included an unrelated `email`, that email
-      // was never actually verified and must not be trusted onto the
-      // new account (would let anyone claim someone else's address and
-      // hijack their future Google Sign-In, which matches by email).
-      const channel = this.otpService.activeChannel;
-      const verifiedContact: OtpContact = {
-        email: channel === 'email' ? contact?.email : undefined,
-        telegramChatId:
-          channel === 'telegram' ? contact?.telegramChatId : undefined,
-      };
-      user = await this.usersRepository.createWithRole(
-        phoneE164,
-        signupRole,
-        verifiedContact,
+    if (!telegramChatId) {
+      throw new TelegramLinkRequiredException(
+        user
+          ? 'This account needs Telegram connected before you can sign in.'
+          : 'Connect Telegram to receive your sign-in code.',
       );
     }
 
-    await this.otpService.consumeOtp(phoneE164);
+    await this.otpService.requestOtp(identifier, { telegramChatId });
+  }
+
+  async verifyOtpAndIssueTokens(
+    rawIdentifier: string,
+    code: string,
+    signupRole: 'tutor' | 'student' | 'parent' | undefined,
+    deviceLabel: string | undefined,
+    phoneE164?: string,
+  ): Promise<AuthTokens> {
+    const identifier = normalizeIdentifier(rawIdentifier);
+    await this.otpService.checkOtp(identifier, code);
+
+    let user = await this.usersRepository.findByIdentifier(identifier);
+    if (!user) {
+      if (!signupRole) {
+        throw new BadRequestException(
+          'No account yet — pass signupRole ("tutor", "student", or "parent") to create one.',
+        );
+      }
+
+      // The chat id comes from the link record Telegram itself
+      // completed, never from the request body — a client can't claim
+      // someone else's chat. Its presence is already implied by
+      // requestOtp having succeeded; re-reading it here keeps signup
+      // honest rather than trusting that ordering.
+      const telegramChatId =
+        await this.telegramLinkService.linkedChatIdFor(identifier);
+      if (!telegramChatId) {
+        throw new TelegramLinkRequiredException(
+          'Connect Telegram to finish creating your account.',
+        );
+      }
+
+      if (identifierType(identifier) === 'email' && !phoneE164) {
+        // phone_e164 is NOT NULL — an email-identified signup still has
+        // to supply one. Surfaced as a 400 rather than a DB constraint
+        // error so the client can ask for it.
+        throw new BadRequestException(
+          'Signing up with an email also requires a phone number.',
+        );
+      }
+
+      user = await this.usersRepository.createWithRole(
+        identifier,
+        signupRole,
+        telegramChatId,
+        phoneE164,
+      );
+    }
+
+    await this.otpService.consumeOtp(identifier);
 
     const roles = await this.usersRepository.getRoles(user.id);
     const accessToken = this.tokensService.signAccessToken(user.id, roles);

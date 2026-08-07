@@ -1,28 +1,21 @@
-import {
-  IsEmail,
-  IsOptional,
-  IsPhoneNumber,
-  IsString,
-  MaxLength,
-} from 'class-validator';
+import { IsOptional, IsPhoneNumber } from 'class-validator';
+import { IsLoginIdentifier } from './identifier.validator';
 
 export class RequestOtpDto {
-  @IsPhoneNumber(undefined, {
-    message: 'phone must be a valid E.164 number, e.g. +919876543210',
-  })
-  phoneE164!: string;
-
   /**
-   * Where to deliver the code when the active OtpProvider is Email or
-   * Telegram (ignored by WhatsApp/console). Optional if this phone
-   * number already has a contact on file — see AuthService.requestOtp.
+   * Phone number or email address. Optional *only* because `phoneE164`
+   * is still accepted as a deprecated alias for the existing Flutter
+   * app — the controller requires exactly one of the two.
    */
   @IsOptional()
-  @IsEmail(undefined, { message: 'email must be a valid email address' })
-  email?: string;
+  @IsLoginIdentifier()
+  identifier?: string;
 
+  /** @deprecated Use `identifier`. Kept so the shipped mobile app keeps
+   *  working against this endpoint unchanged. */
   @IsOptional()
-  @IsString()
-  @MaxLength(64)
-  telegramChatId?: string;
+  @IsPhoneNumber(undefined, {
+    message: 'phoneE164 must be a valid E.164 number, e.g. +919876543210',
+  })
+  phoneE164?: string;
 }

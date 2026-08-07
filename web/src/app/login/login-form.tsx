@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Script from 'next/script';
 import posthog from 'posthog-js';
-import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
+import { api, apiPost, apiGetPublic, tokenStore, ApiError } from '@/lib/api';
 import { Button, Field, Input, InlineError, Card } from '@/components/ui';
 import type { Me } from '@/lib/types';
 
@@ -13,11 +13,13 @@ interface AuthTokens {
   refreshToken: string;
 }
 
-type Phase = 'phone' | 'otp' | 'choose-role';
+type Phase = 'identify' | 'connect-telegram' | 'otp' | 'choose-role';
+type IdentifierKind = 'phone' | 'email';
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
 const ROLES = ['tutor', 'student', 'parent'] as const;
+const TELEGRAM_POLL_MS = 2000;
 
 /** Reads the `sub` claim straight out of the access token — no server
  * round-trip needed just to identify the PostHog session. */
@@ -36,19 +38,27 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const next = searchParams.get('next');
 
-  const [phase, setPhase] = useState<Phase>('phone');
+  const [phase, setPhase] = useState<Phase>('identify');
+  const [kind, setKind] = useState<IdentifierKind>('phone');
   // Only the 10 local digits live in state — +91 is fixed and rendered
-  // separately, so it's structurally impossible to submit a phoneE164
-  // that's missing/mangled the country code (previously a free-text
-  // field pre-filled with "+91" that the user could edit or delete,
-  // producing malformed E.164 strings the backend then rejected).
+  // separately, so it's structurally impossible to submit a phone that's
+  // missing or has mangled the country code.
   const [phoneDigits, setPhoneDigits] = useState('');
-  const phoneE164 = `+91${phoneDigits}`;
+  const [email, setEmail] = useState('');
+  // Signing up with an email still needs a phone (users.phone_e164 is
+  // NOT NULL) — collected on the role step, only in that case.
+  const [signupPhoneDigits, setSignupPhoneDigits] = useState('');
   const [code, setCode] = useState('');
   const [signupRole, setSignupRole] = useState<'tutor' | 'student' | 'parent'>('tutor');
+  const [telegramLink, setTelegramLink] = useState<{ token: string; deepLink: string } | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const googleButtonRef = useRef<HTMLDivElement>(null);
+
+  const identifier = kind === 'phone' ? `+91${phoneDigits}` : email.trim();
+  const identifierReady = kind === 'phone' ? phoneDigits.length === 10 : email.includes('@');
 
   async function onAuthenticated(tokens: AuthTokens) {
     tokenStore.set(tokens.accessToken, tokens.refreshToken);
@@ -75,27 +85,83 @@ export function LoginForm() {
     }
   }
 
+  /** Shared by the initial submit and the post-linking retry. Returns
+   *  true once a code is actually on its way. */
+  const sendOtp = useCallback(async (): Promise<boolean> => {
+    try {
+      await apiPost('/auth/otp/request', { identifier });
+      setPhase('otp');
+      return true;
+    } catch (err) {
+      if (err instanceof ApiError && err.telegramLinkRequired) {
+        // No Telegram chat on file. Ask the backend to start a link —
+        // it refuses (409) for an account that already exists but was
+        // created before Telegram sign-in, which can't self-link safely.
+        try {
+          const link = await apiPost<{ token: string; deepLink: string }>(
+            '/auth/telegram/link/start',
+            { identifier },
+          );
+          setTelegramLink(link);
+          setPhase('connect-telegram');
+        } catch (linkErr) {
+          setError(
+            linkErr instanceof ApiError ? linkErr.message : 'Could not start Telegram sign-in.',
+          );
+        }
+        return false;
+      }
+      setError(err instanceof ApiError ? err.message : 'Could not send the code.');
+      return false;
+    }
+  }, [identifier]);
+
   async function handleSendOtp() {
     setError(null);
     setLoading(true);
-    try {
-      await apiPost('/auth/otp/request', { phoneE164 });
-      setPhase('otp');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not send the code.');
-    } finally {
-      setLoading(false);
-    }
+    await sendOtp();
+    setLoading(false);
   }
+
+  // While the user is off in Telegram pressing Start, poll for the link
+  // completing, then send the code automatically so they come back to a
+  // code prompt rather than having to re-submit.
+  useEffect(() => {
+    if (phase !== 'connect-telegram' || !telegramLink) return;
+
+    let cancelled = false;
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          const { linked } = await apiGetPublic<{ linked: boolean }>(
+            `/auth/telegram/link/${telegramLink.token}/status`,
+          );
+          if (linked && !cancelled) {
+            clearInterval(timer);
+            await sendOtp();
+          }
+        } catch {
+          // Transient poll failure — the next tick retries.
+        }
+      })();
+    }, TELEGRAM_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [phase, telegramLink, sendOtp]);
 
   async function handleVerify(withRole?: 'tutor' | 'student' | 'parent') {
     setError(null);
     setLoading(true);
     try {
       const tokens = await apiPost<AuthTokens>('/auth/otp/verify', {
-        phoneE164,
+        identifier,
         code,
         signupRole: withRole,
+        phoneForSignup:
+          withRole && kind === 'email' ? `+91${signupPhoneDigits}` : undefined,
       });
       await onAuthenticated(tokens);
     } catch (err) {
@@ -152,34 +218,71 @@ export function LoginForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
+  const toggleClass = (active: boolean) =>
+    `rounded-md border px-3 py-2 text-sm font-medium capitalize transition-colors focus-visible:outline-none focus-visible:shadow-focus-ring ${
+      active
+        ? 'border-brand-600 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-500/15 dark:text-brand-200'
+        : 'border-neutral-300 text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800'
+    }`;
+
   return (
     <Card className="p-7">
       {GOOGLE_CLIENT_ID && (
         <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" />
       )}
 
-      {phase === 'phone' && (
+      {phase === 'identify' && (
         <div className="flex flex-col gap-4">
-          <Field label="Phone number" hint="We'll send a code on WhatsApp.">
-            <div className="flex items-center gap-2">
-              <span className="flex h-10 items-center rounded-md border border-neutral-300 bg-neutral-50 px-3 text-sm text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400">
-                +91
-              </span>
+          <div className="grid grid-cols-2 gap-2">
+            {(['phone', 'email'] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => {
+                  setKind(option);
+                  setError(null);
+                }}
+                className={toggleClass(kind === option)}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+
+          {kind === 'phone' ? (
+            <Field label="Phone number" hint="We'll send a code on Telegram.">
+              <div className="flex items-center gap-2">
+                <span className="flex h-10 items-center rounded-md border border-neutral-300 bg-neutral-50 px-3 text-sm text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400">
+                  +91
+                </span>
+                <Input
+                  type="tel"
+                  inputMode="numeric"
+                  value={phoneDigits}
+                  onChange={(e) => setPhoneDigits(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  placeholder="9876543210"
+                  maxLength={10}
+                  autoFocus
+                  className="flex-1"
+                />
+              </div>
+            </Field>
+          ) : (
+            <Field label="Email address" hint="We'll send a code on Telegram.">
               <Input
-                type="tel"
-                inputMode="numeric"
-                value={phoneDigits}
-                onChange={(e) => setPhoneDigits(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                placeholder="9876543210"
-                maxLength={10}
+                type="email"
+                inputMode="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
                 autoFocus
-                className="flex-1"
               />
-            </div>
-          </Field>
+            </Field>
+          )}
+
           <Button
             onClick={() => void handleSendOtp()}
-            disabled={loading || phoneDigits.length !== 10}
+            disabled={loading || !identifierReady}
             loading={loading}
           >
             {loading ? 'Sending…' : 'Send code'}
@@ -187,11 +290,54 @@ export function LoginForm() {
         </div>
       )}
 
+      {phase === 'connect-telegram' && telegramLink && (
+        <div className="flex flex-col gap-4">
+          <div>
+            <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
+              Connect Telegram
+            </p>
+            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+              Codes are sent on Telegram. Open our bot and press{' '}
+              <span className="font-medium text-neutral-700 dark:text-neutral-300">Start</span> —
+              we&apos;ll send your code here automatically.
+            </p>
+          </div>
+
+          <a
+            href={telegramLink.deepLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-10 items-center justify-center rounded-md bg-brand-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline-none focus-visible:shadow-focus-ring"
+          >
+            Open Telegram
+          </a>
+
+          <p className="text-xs text-neutral-400 dark:text-neutral-500">
+            Waiting for you to press Start…
+          </p>
+
+          <button
+            type="button"
+            onClick={() => {
+              setTelegramLink(null);
+              setError(null);
+              setPhase('identify');
+            }}
+            className="text-sm text-neutral-500 underline hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
+          >
+            Back
+          </button>
+        </div>
+      )}
+
       {(phase === 'otp' || phase === 'choose-role') && (
         <div className="flex flex-col gap-4">
           <p className="text-sm text-neutral-500 dark:text-neutral-400">
             Code sent to{' '}
-            <span className="font-medium text-neutral-800 dark:text-neutral-100">{phoneE164}</span>.
+            <span className="font-medium text-neutral-800 dark:text-neutral-100">
+              {identifier}
+            </span>{' '}
+            on Telegram.
           </p>
           <Field label="6-digit code">
             <Input
@@ -206,32 +352,55 @@ export function LoginForm() {
           </Field>
 
           {phase === 'choose-role' && (
-            <div>
-              <p className="mb-2 text-sm text-neutral-500 dark:text-neutral-400">
-                New here — are you a tutor, a student, or a parent?
-              </p>
-              <div className="grid grid-cols-3 gap-2">
-                {ROLES.map((role) => (
-                  <button
-                    key={role}
-                    type="button"
-                    onClick={() => setSignupRole(role)}
-                    className={`rounded-md border px-3 py-2 text-sm font-medium capitalize transition-colors focus-visible:outline-none focus-visible:shadow-focus-ring ${
-                      signupRole === role
-                        ? 'border-brand-600 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-500/15 dark:text-brand-200'
-                        : 'border-neutral-300 text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800'
-                    }`}
-                  >
-                    {role}
-                  </button>
-                ))}
+            <>
+              <div>
+                <p className="mb-2 text-sm text-neutral-500 dark:text-neutral-400">
+                  New here — are you a tutor, a student, or a parent?
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {ROLES.map((role) => (
+                    <button
+                      key={role}
+                      type="button"
+                      onClick={() => setSignupRole(role)}
+                      className={toggleClass(signupRole === role)}
+                    >
+                      {role}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+
+              {kind === 'email' && (
+                <Field label="Phone number" hint="Required to create your account.">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-10 items-center rounded-md border border-neutral-300 bg-neutral-50 px-3 text-sm text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400">
+                      +91
+                    </span>
+                    <Input
+                      type="tel"
+                      inputMode="numeric"
+                      value={signupPhoneDigits}
+                      onChange={(e) =>
+                        setSignupPhoneDigits(e.target.value.replace(/\D/g, '').slice(0, 10))
+                      }
+                      placeholder="9876543210"
+                      maxLength={10}
+                      className="flex-1"
+                    />
+                  </div>
+                </Field>
+              )}
+            </>
           )}
 
           <Button
             onClick={() => void handleVerify(phase === 'choose-role' ? signupRole : undefined)}
-            disabled={loading || code.length !== 6}
+            disabled={
+              loading ||
+              code.length !== 6 ||
+              (phase === 'choose-role' && kind === 'email' && signupPhoneDigits.length !== 10)
+            }
             loading={loading}
           >
             {loading ? 'Checking…' : phase === 'choose-role' ? 'Create account' : 'Continue'}

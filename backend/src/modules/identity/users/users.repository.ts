@@ -3,6 +3,7 @@ import type { Kysely } from 'kysely';
 import { KYSELY_CONNECTION } from '../../../database/database.module';
 import type { DB, UserRole } from '../../../database/types';
 import { newId } from '../../../database/id';
+import { identifierType } from '../identifier.util';
 
 @Injectable()
 export class UsersRepository {
@@ -26,6 +27,14 @@ export class UsersRepository {
       .executeTakeFirst();
   }
 
+  /** Resolves a login identifier (phone or email — see
+   *  identifier.util.ts) to an account, whichever column it lives in. */
+  findByIdentifier(identifier: string) {
+    return identifierType(identifier) === 'email'
+      ? this.findByEmail(identifier)
+      : this.findByPhone(identifier);
+  }
+
   findById(id: string) {
     return this.db
       .selectFrom('users')
@@ -35,19 +44,32 @@ export class UsersRepository {
       .executeTakeFirst();
   }
 
+  /**
+   * Creates an account from whichever identifier signup was driven by.
+   * phone_e164 is NOT NULL, so an email-identified signup still needs a
+   * phone — callers pass `phoneE164` explicitly for that case rather
+   * than this method inventing a placeholder.
+   */
   async createWithRole(
-    phoneE164: string,
+    identifier: string,
     role: UserRole,
-    contact?: { email?: string; telegramChatId?: string },
+    telegramChatId: string,
+    phoneE164?: string,
   ) {
+    const isEmail = identifierType(identifier) === 'email';
+    const phone = isEmail ? phoneE164 : identifier;
+    if (!phone) {
+      throw new Error('createWithRole needs a phone number');
+    }
+
     return this.db.transaction().execute(async (trx) => {
       const user = await trx
         .insertInto('users')
         .values({
           id: newId(),
-          phone_e164: phoneE164,
-          email: contact?.email ?? null,
-          telegram_chat_id: contact?.telegramChatId ?? null,
+          phone_e164: phone,
+          email: isEmail ? identifier : null,
+          telegram_chat_id: telegramChatId,
         })
         .returningAll()
         .executeTakeFirstOrThrow();
@@ -61,24 +83,24 @@ export class UsersRepository {
     });
   }
 
-  /** Self-service contact update for an already-authenticated user (see
-   *  POST /auth/contact) — distinct from the contact captured at signup
-   *  in createWithRole, which is only ever the field an OTP delivery
-   *  itself proved control of. Only supplied fields are touched. */
-  updateContact(
-    userId: string,
-    contact: { email?: string; telegramChatId?: string },
-  ) {
-    const updates: { email?: string; telegram_chat_id?: string } = {};
-    if (contact.email !== undefined) updates.email = contact.email;
-    if (contact.telegramChatId !== undefined) {
-      updates.telegram_chat_id = contact.telegramChatId;
-    }
-    if (Object.keys(updates).length === 0) return Promise.resolve();
-
+  /** Editable profile field for an already-authenticated user (see
+   *  POST /auth/contact). Deliberately cannot touch telegram_chat_id —
+   *  that only ever comes from Telegram itself via the linking flow, so
+   *  a client can't claim someone else's chat. */
+  updateEmail(userId: string, email: string) {
     return this.db
       .updateTable('users')
-      .set(updates)
+      .set({ email })
+      .where('id', '=', userId)
+      .execute();
+  }
+
+  /** Only ever called with a chat id Telegram itself reported to the
+   *  updates poller — never a client-supplied value. */
+  setTelegramChatId(userId: string, telegramChatId: string) {
+    return this.db
+      .updateTable('users')
+      .set({ telegram_chat_id: telegramChatId })
       .where('id', '=', userId)
       .execute();
   }

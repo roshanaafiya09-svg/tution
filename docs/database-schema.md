@@ -52,7 +52,8 @@ Full column-level detail for these is in [`BLUEPRINT 2.md`](../BLUEPRINT%202.md)
 
 | # | Migration | Adds |
 |---|---|---|
-| 0025 | `0025_otp_contact_channels.ts` | `users.telegram_chat_id` (nullable) — Email OTP already had `users.email` (0002) to send to; Telegram needed its own per-user destination the same way |
+| 0025 | `0025_otp_contact_channels.ts` | `users.telegram_chat_id` (nullable) — the per-user Telegram destination OTPs are delivered to |
+| 0026 | `0026_email_login_identifier.ts` | Partial unique index on `users(email) where email is not null and deleted_at is null` — email became a login identifier alongside `phone_e164`, so it has to be unambiguous. Partial on `deleted_at` so a soft-deleted account doesn't reserve an address forever. `phone_e164` stays NOT NULL |
 
 ## `payments` XOR settlement target
 

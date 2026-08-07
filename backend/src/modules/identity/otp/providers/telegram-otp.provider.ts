@@ -15,13 +15,14 @@ interface TelegramErrorResponse {
 }
 
 /**
- * Sends OTPs via the official Telegram Bot API's sendMessage method.
- * Lowest-priority real channel in IdentityModule's provider-selection
- * factory (after WhatsApp, then Email) — free, but Telegram's platform
- * rule is that a bot can only message a chat that has *already* started
- * a conversation with it (no cold-messaging a username), so
- * contact.telegramChatId must be the numeric chat id from that prior
- * /start, not an @username.
+ * Sends OTPs via the official Telegram Bot API's sendMessage method —
+ * the only real delivery channel (ConsoleOtpProvider is the
+ * no-credentials dev fallback). Telegram's platform rule is that a bot
+ * can only message a chat that has *already* started a conversation
+ * with it (no cold-messaging a username), so contact.telegramChatId
+ * must be the numeric chat id captured by the linking flow (see
+ * TelegramLinkService / TelegramUpdatesPoller), never a client-supplied
+ * value or an @username.
  */
 @Injectable()
 export class TelegramOtpProvider implements OtpProvider {
@@ -31,14 +32,16 @@ export class TelegramOtpProvider implements OtpProvider {
   constructor(private readonly config: ConfigService) {}
 
   async send(
-    phoneE164: string,
+    identifier: string,
     code: string,
     contact?: OtpContact,
   ): Promise<void> {
     const chatId = contact?.telegramChatId;
     if (!chatId) {
+      // AuthService gates on a linked chat id before ever calling this,
+      // so reaching here means a wiring bug, not user error.
       throw new BadRequestException(
-        'Telegram OTP delivery requires a chat id — include "telegramChatId" in the request.',
+        'Telegram is not linked for this account yet.',
       );
     }
 

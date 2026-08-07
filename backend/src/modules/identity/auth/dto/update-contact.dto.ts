@@ -1,14 +1,9 @@
-import { IsEmail, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEmail } from 'class-validator';
 
-/** POST /auth/contact — self-service, requires an existing session. See
- *  UsersRepository.updateContact. */
+/** POST /auth/contact — self-service email update for a signed-in user.
+ *  Deliberately cannot set telegram_chat_id: that only ever comes from
+ *  Telegram itself via the linking flow, never from a client. */
 export class UpdateContactDto {
-  @IsOptional()
   @IsEmail(undefined, { message: 'email must be a valid email address' })
-  email?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(64)
-  telegramChatId?: string;
+  email!: string;
 }

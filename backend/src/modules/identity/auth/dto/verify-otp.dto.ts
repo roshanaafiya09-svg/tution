@@ -1,5 +1,4 @@
 import {
-  IsEmail,
   IsIn,
   IsOptional,
   IsPhoneNumber,
@@ -7,12 +6,21 @@ import {
   Length,
   MaxLength,
 } from 'class-validator';
+import { IsLoginIdentifier } from './identifier.validator';
 
 export class VerifyOtpDto {
+  /** Phone number or email — must match what /auth/otp/request was
+   *  called with. See RequestOtpDto for why this is optional. */
+  @IsOptional()
+  @IsLoginIdentifier()
+  identifier?: string;
+
+  /** @deprecated Use `identifier`. Kept for the shipped mobile app. */
+  @IsOptional()
   @IsPhoneNumber(undefined, {
-    message: 'phone must be a valid E.164 number, e.g. +919876543210',
+    message: 'phoneE164 must be a valid E.164 number, e.g. +919876543210',
   })
-  phoneE164!: string;
+  phoneE164?: string;
 
   @IsString()
   @Length(6, 6, { message: 'code must be exactly 6 digits' })
@@ -31,17 +39,11 @@ export class VerifyOtpDto {
   @MaxLength(120)
   deviceLabel?: string;
 
-  /**
-   * Should match whatever was sent to /auth/otp/request — on first-time
-   * signup, only the field matching the active OTP channel actually gets
-   * persisted onto the new account (see AuthService.verifyOtpAndIssueTokens).
-   */
+  /** Required only when signing up with an email identifier —
+   *  `users.phone_e164` is NOT NULL, so an account still needs one. */
   @IsOptional()
-  @IsEmail(undefined, { message: 'email must be a valid email address' })
-  email?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(64)
-  telegramChatId?: string;
+  @IsPhoneNumber(undefined, {
+    message: 'phone must be a valid E.164 number, e.g. +919876543210',
+  })
+  phoneForSignup?: string;
 }

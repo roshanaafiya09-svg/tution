@@ -22,7 +22,7 @@ Fastify adapter, no global route prefix (routes are `/auth`, not `/api/auth`), p
 
 | Module | Responsibility |
 |---|---|
-| `identity` | Auth (phone OTP via WhatsApp/Email/Telegram + Google Sign-In), JWT/refresh tokens, tutor/student profiles, users |
+| `identity` | Auth (phone-or-email OTP delivered via Telegram + Google Sign-In), Telegram account linking, JWT/refresh tokens, tutor/student profiles, users |
 | `catalog` | Curricula/subjects/grade levels (reference data), tutor subject offerings, tutor availability |
 | `scheduling` | Batches, enrollments, class sessions (RRULE recurrence), attendance, invite links |
 | `delivery` | Materials (Supabase Storage-backed uploads), announcements |

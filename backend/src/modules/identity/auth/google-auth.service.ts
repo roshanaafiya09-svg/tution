@@ -12,14 +12,14 @@ import type { AuthTokens } from './auth.service';
 
 /**
  * Blueprint §4/§6: "Google Sign-In on web". Our schema keys accounts on
- * phone_e164 (NOT NULL) — WhatsApp OTP is how an account is *created*.
- * Google Sign-In here links to an *existing* account by email rather
- * than creating a phone-less one; making phone_e164 nullable to support
- * Google-first signup is a real schema decision, not something to slip
- * in unasked. Not exercised end-to-end in this environment (no Google
- * OAuth client available to test against) — the ID-token verification
- * itself is real, but the account-linking behavior above is a design
- * call worth confirming before this ships.
+ * phone_e164 (NOT NULL) — phone/email OTP (delivered via Telegram) is how
+ * an account is *created*. Google Sign-In here links to an *existing*
+ * account by email rather than creating a phone-less one; making
+ * phone_e164 nullable to support Google-first signup is a real schema
+ * decision, not something to slip in unasked. Not exercised end-to-end in
+ * this environment (no Google OAuth client available to test against) —
+ * the ID-token verification itself is real, but the account-linking
+ * behavior above is a design call worth confirming before this ships.
  */
 @Injectable()
 export class GoogleAuthService {
@@ -59,7 +59,7 @@ export class GoogleAuthService {
     const user = await this.usersRepository.findByEmail(email);
     if (!user) {
       throw new NotFoundException(
-        'No account linked to this Google email yet — sign up with WhatsApp OTP first.',
+        'No account linked to this Google email yet — sign up with a phone number or email first.',
       );
     }
 

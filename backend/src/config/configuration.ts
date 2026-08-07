@@ -21,24 +21,12 @@ export const redisConfig = registerAs('redis', () => ({
   url: process.env.REDIS_URL as string,
 }));
 
-export const whatsappConfig = registerAs('whatsapp', () => ({
-  accessToken: process.env.WHATSAPP_ACCESS_TOKEN,
-  phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID,
-  templateName: process.env.WHATSAPP_OTP_TEMPLATE_NAME ?? 'otp_login',
-  templateLanguage: process.env.WHATSAPP_TEMPLATE_LANGUAGE ?? 'en_US',
-  apiVersion: process.env.WHATSAPP_API_VERSION ?? 'v21.0',
-}));
-
-export const emailConfig = registerAs('email', () => ({
-  smtpHost: process.env.SMTP_HOST,
-  smtpPort: process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined,
-  smtpUser: process.env.SMTP_USER,
-  smtpPass: process.env.SMTP_PASS,
-  smtpFrom: process.env.SMTP_FROM,
-}));
-
 export const telegramConfig = registerAs('telegram', () => ({
   botToken: process.env.TELEGRAM_BOT_TOKEN,
+  // Needed to build the t.me/<username>?start=<token> deep link the
+  // linking flow hands to the user — the Bot API never exposes the
+  // bot's own username on the send path, so it has to be configured.
+  botUsername: process.env.TELEGRAM_BOT_USERNAME,
 }));
 
 export const googleAuthConfig = registerAs('googleAuth', () => ({

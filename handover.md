@@ -79,8 +79,8 @@ Not verified: mobile visual rendering after the §3 redesign (see §3 for why), 
 - **Mobile redesign (§3) hasn't been visually confirmed on a device/emulator.** `flutter analyze` is clean, but that's not the same as seeing it render — see §3 for the tooling limitation that caused this.
 - **`mobile/login_screen.png` is a committed screenshot** (tracked in git, not gitignored) — a debug artifact, not an asset the app loads. Harmless but still there; a cleanup task was flagged for this but hasn't landed.
 - **No shared job-queue module.** Redis is provisioned (OTP/refresh-token storage), but scheduled/async work (digest generation, reminder cadences) lives inline in each module's service rather than a BullMQ-backed queue, despite blueprint §6 calling for BullMQ. Fine at current scale.
-- **Real payment/messaging/OTP providers are still unconfigured** — Razorpay, WhatsApp Cloud API, Email OTP (SMTP), Telegram OTP, Sentry, PostHog all have real-provider code but no live credentials; everything currently runs on mock/console providers. See §6.
-- **Email/Telegram OTP added as lower-priority fallback channels below WhatsApp** *(new)* — `EmailOtpProvider` (Nodemailer/SMTP) and `TelegramOtpProvider` (Bot API) implement the existing `OtpProvider` interface unchanged; `IdentityModule`'s selection factory now tries WhatsApp → Email → Telegram → console, first configured wins. Neither channel can derive a destination from `phone_e164` the way WhatsApp/console do, so `OtpContact` (`email`/`telegramChatId`) flows through `RequestOtpDto`/`VerifyOtpDto` → `AuthService` → the provider; a new `POST /auth/contact` (authenticated) lets a signed-in user set it once instead of resupplying it every login. **Security-relevant design point:** only the contact field matching whichever channel *actually delivered* the code gets persisted onto a newly-created account (`OtpService.activeChannel` gates this in `AuthService.verifyOtpAndIssueTokens`) — otherwise a signup request could plant an unproven `email` and later hijack that address's Google Sign-In linkage (`GoogleAuthService` matches accounts by `email`). Migration `0025` adds `users.telegram_chat_id` (nullable; `email` already existed). **Not yet applied to the production Neon database**, same as `0024` above — run `npm run migrate:up` against production before relying on this. See §6.8/§6.9 for the setup walkthroughs. **Pushed to `origin/master`** (commit `8542d7d`) — code is on the remote, but the migration step above still hasn't been run against production.
+- **Real payment/OTP providers are still unconfigured** — Razorpay, Telegram Bot API, Sentry, PostHog all have real-provider code but no live credentials; everything currently runs on mock/console providers. See §6.
+- **Auth rearchitected to phone-or-email login, Telegram-only delivery** *(new, supersedes the WhatsApp/Email OTP work below)* — `TelegramOtpProvider` is now the sole real delivery channel (`ConsoleOtpProvider` stays as the zero-credential dev fallback); `WhatsAppCloudApiOtpProvider` and `EmailOtpProvider` (Nodemailer/SMTP) were both deleted, along with their env vars. Sign-in now accepts either a phone number or an email as the login `identifier` (generalized from the old phone-only `phoneE164` key throughout `OtpRepository`/`OtpService` — same hashing/TTL/rate-limit constants, just keyed by a different string). Because a Telegram bot can't message anyone who hasn't messaged it first, every account must *connect* Telegram once — a new linking subsystem (`TelegramLinkRepository`/`TelegramLinkService`/`TelegramUpdatesPoller`) issues a `t.me/<bot>?start=<token>` deep link, long-polls `getUpdates` to learn the resulting chat id, and only then does `POST /auth/otp/request` succeed (403 `telegramLinkRequired` otherwise). **Security-relevant design point:** `POST /auth/telegram/link/start` refuses to link an identifier that already has an account (409) — self-linking is only safe for a brand-new signup, otherwise anyone could attach their own Telegram to someone else's phone/email and start receiving that account's login codes. This means **all ~20 pre-existing accounts (0 with an email, 0 with a `telegram_chat_id`) are locked out of login until connected out-of-band** — there is deliberately no admin/self-serve path for that yet. Migration `0026` adds a unique index on `users.email` (partial, live rows only) so email is unambiguous as a login key; `phone_e164` stays `NOT NULL` on purpose. `POST /auth/contact` now only sets `email` — it can no longer accept a client-supplied `telegramChatId`, since a chat id must come from Telegram itself. Full walkthrough, troubleshooting, and what's verified vs. not: §6.7.
 - **Object storage (Supabase Storage) is provisioned and live** — verified end-to-end in production (presigned upload → download → delete, confirmed the object is actually gone from the bucket afterward, not just the DB row). No longer a gap.
 - **No UI anywhere lets a student generate a parent-invite code** *(fixed)* — `POST /parent-links/invite` (student-only) had zero caller in web or mobile; the entire parent portal was unreachable by a real user. Added to mobile Settings (student-only, since students are mobile-only). Found and fixed in a pre-launch audit.
 - **"Sign out" never revoked the refresh token server-side** *(fixed)* — only cleared local storage; a copied/leaked refresh token stayed valid for its full 30-day life. Added `POST /auth/logout` and wired both web and mobile to call it. Verified live: a never-refreshed token is rejected immediately after logout.
@@ -189,107 +189,54 @@ Status: fully deployed and verified end-to-end in production.
 - OTP login verified against the live stack (real code → `/auth/otp/verify` → real JWTs) for all three signup roles (tutor/student/parent), plus full production walkthroughs of the tutor dashboard, parent portal, and public marketplace/booking flow.
 - **Object storage: provisioned and live.** The provider was switched from Cloudflare R2 to **Supabase Storage** (`backend/src/modules/delivery/materials/storage/supabase-storage.provider.ts`) — both R2 and Firebase Storage now require a linked billing account/credit card just to create a bucket, even on their free tiers; Supabase's free tier does not. It's S3-compatible, so the swap was a same-shape provider, not a rewrite. `SUPABASE_PROJECT_REF`/`SUPABASE_STORAGE_BUCKET`/`SUPABASE_STORAGE_REGION`/`SUPABASE_STORAGE_ACCESS_KEY_ID`/`SUPABASE_STORAGE_SECRET_ACCESS_KEY` are all set on Render, and the full lifecycle — presigned upload, presigned download, and delete (both the DB row *and* the actual bucket object) — is verified end-to-end against the live bucket, not just locally.
 
-### 6.7 WhatsApp Business Cloud API (real OTP delivery)
+### 6.7 Telegram OTP (Bot API) — the only OTP delivery channel
 
-`ConsoleOtpProvider` (logs the code server-side instead of sending it) is what's live today — `IdentityModule`'s factory automatically switches to `WhatsAppCloudApiOtpProvider` the moment both `WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID` are set, with zero code changes either way. This section is what's needed to actually flip that switch.
+Sign-in accepts a **phone number or an email address** as the identifier, but the code itself is always delivered over **Telegram**. WhatsApp, SMS, and email/SMTP delivery were all removed — `TelegramOtpProvider` is the only real provider, with `ConsoleOtpProvider` (logs the code server-side) as the zero-credential dev fallback. `IdentityModule`'s factory switches automatically the moment both `TELEGRAM_BOT_TOKEN` and `TELEGRAM_BOT_USERNAME` are set, with no code changes either way.
 
-**1. Meta Business + WhatsApp Business Platform setup**
-1. Create (or use an existing) Meta Business account at [business.facebook.com](https://business.facebook.com).
-2. In [Meta for Developers](https://developers.facebook.com), create an app → add the **WhatsApp** product.
-3. WhatsApp's onboarding gives you a **test phone number** for free — fine for verifying the integration works, but messages can only go to a handful of pre-registered recipient numbers until you add a real business phone number and complete Meta's business verification.
-
-**2. Phone Number ID**
-- WhatsApp → API Setup in the Meta for Developers console shows **Phone number ID** directly (a numeric string, *not* the phone number itself) — this is `WHATSAPP_PHONE_NUMBER_ID`.
-
-**3. Access token**
-- The same API Setup page issues a **temporary token** (~24h, fine for testing only). For production, generate a **permanent** token instead: Business Settings → System Users → create a system user with the `whatsapp_business_messaging` permission on your WhatsApp Business Account, then generate a token with no expiry. This is `WHATSAPP_ACCESS_TOKEN`.
-
-**4. The authentication template**
-WhatsApp rejects any business-initiated message that isn't a pre-approved template — you cannot just send arbitrary text. In Meta Business Manager → **WhatsApp Manager → Message Templates**:
-1. Create a new template, category **Authentication** (not Marketing/Utility — authentication templates get Meta's fastest review and are the only category meant for OTPs).
-2. Meta auto-generates the body ("Your verification code is {{1}}...") — authentication templates don't allow custom body text, by design.
-3. Submit for review — usually minutes to a few hours, occasionally longer.
-4. Once approved, the template's exact name is `WHATSAPP_OTP_TEMPLATE_NAME` (defaults to `otp_login` in this codebase — name it that, or set the env var to whatever you actually named it) and its language code is `WHATSAPP_TEMPLATE_LANGUAGE` (defaults to `en_US`).
-5. `WHATSAPP_API_VERSION` defaults to `v21.0` — Meta deprecates old Graph API versions on a schedule (roughly annual), so this may need bumping over time; check [developers.facebook.com/docs/graph-api/changelog](https://developers.facebook.com/docs/graph-api/changelog) if sends start failing with a version-related error.
-
-**5. Deployment**
-Set all five vars on Render (`render.yaml` already reserves the slots — Environment tab, paste values):
-| Variable | Example | Notes |
-|---|---|---|
-| `WHATSAPP_ACCESS_TOKEN` | (long opaque string) | permanent system-user token, not the 24h temporary one |
-| `WHATSAPP_PHONE_NUMBER_ID` | `109876543212345` | numeric, from API Setup |
-| `WHATSAPP_OTP_TEMPLATE_NAME` | `otp_login` | must exactly match the approved template's name |
-| `WHATSAPP_TEMPLATE_LANGUAGE` | `en_US` | must exactly match the template's approved language |
-| `WHATSAPP_API_VERSION` | `v21.0` | |
-
-No restart/redeploy step beyond setting the vars — Render restarts the service automatically on an env var change, and `IdentityModule`'s factory re-evaluates on that fresh boot.
-
-**6. Troubleshooting**
-`WhatsAppCloudApiOtpProvider` logs Meta's own error type/message (never the access token) on any failure — check Render logs, filtering for `OTP (WhatsApp)`, for the specific cause:
-- **"Error validating access token" / HTTP 401** — token expired (if you used the 24h temporary one) or revoked. Generate a new permanent system-user token.
-- **HTTP 429 / rate limited** — the WhatsApp Business *Account* hit its send-rate cap (a Meta-side account-wide limit, unrelated to `OtpService`'s own per-phone-number request limiter, which runs first and independently). New accounts start on a low tier that scales up with quality/volume over time.
-- **Any message containing "template"** — the template name/language doesn't match what's approved, or the template was paused/rejected. Double-check `WHATSAPP_OTP_TEMPLATE_NAME`/`WHATSAPP_TEMPLATE_LANGUAGE` against WhatsApp Manager exactly (case-sensitive).
-- **Nothing arrives but no error either** — confirm the recipient number is either your verified business line's allowed audience, or (on a test number) one of the pre-registered test recipients — Meta silently accepts the API call but never delivers to numbers outside that list until business verification completes.
-- **Provider not switching from console to WhatsApp at all** — check Render logs at boot for `IdentityModule`'s own log line (`"WhatsApp Cloud API configured"` vs `"WHATSAPP_ACCESS_TOKEN/WHATSAPP_PHONE_NUMBER_ID not set"`) — confirms whether both required vars actually reached the container.
-
-Whoever picks this up next: check the Render dashboard for current deploy status before assuming any of the above is still current.
-
-### 6.8 Email OTP (SMTP via Nodemailer)
-
-`EmailOtpProvider` is used only if WhatsApp isn't configured (see §6.7) — `IdentityModule`'s factory checks `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS` all being set. Any standard SMTP provider works (SendGrid, Mailgun, Amazon SES, Postmark, or Gmail with an [app password](https://myaccount.google.com/apppasswords) for quick testing) — Nodemailer talks plain SMTP, no provider-specific SDK.
-
-**1. Pick a provider and get SMTP credentials**
-Free tiers that work fine for this volume: SendGrid (100/day), Mailgun (sandbox domain), or a Gmail app password for testing only (not recommended for real user volume — low sending limits, easily flagged as spam).
-
-**2. Set the five vars**
-| Variable | Example | Notes |
-|---|---|---|
-| `SMTP_HOST` | `smtp.sendgrid.net` | provider's SMTP endpoint |
-| `SMTP_PORT` | `587` | 587 = STARTTLS (most common); 465 = implicit TLS, handled automatically by `EmailOtpProvider` |
-| `SMTP_USER` | `apikey` (SendGrid literally uses this) | provider-specific — check their SMTP docs, not always your account email |
-| `SMTP_PASS` | (SMTP password / API key) | never logged — see `EmailOtpProvider`'s error handling |
-| `SMTP_FROM` | `otp@yourdomain.com` | should be a domain you've verified with the provider (SPF/DKIM), or most providers will silently spam-folder or reject the send |
-
-**3. The recipient problem — this is the part that's easy to miss**
-Unlike WhatsApp/console, Email can't derive a destination from `phone_e164` — there's no address to send to until one is on file. Two ways it gets there:
-- The client includes `email` on `POST /auth/otp/request` (validated as a real email address). On first-time signup, that address is what actually receives the code — and *only if it's the code that gets verified* does it get saved onto the new account (see the security note in §5's Email/Telegram OTP gap bullet).
-- A signed-in user calls `POST /auth/contact` with `{"email": "..."}` once, and every future `/auth/otp/request` for that phone number auto-resolves it — no need to resupply it each login (`AuthService.requestOtp`'s fallback lookup).
-
-If neither applies, `EmailOtpProvider` returns a 400 telling the caller to supply `email` — not a 500, so client apps can prompt for it inline.
-
-**4. Deployment**
-Same pattern as WhatsApp: set the five vars on Render (`render.yaml` reserves the slots), no restart step needed beyond that.
-
-**5. Troubleshooting**
-`EmailOtpProvider` logs only the failure reason (never the SMTP password or the OTP itself) under `OTP (Email)`:
-- **Auth failures (535, "Invalid login")** — wrong `SMTP_USER`/`SMTP_PASS`, or the provider needs an API key rather than your account password (common with SendGrid/Mailgun).
-- **Connection refused / timeout** — wrong `SMTP_HOST`/`SMTP_PORT`, or the provider blocks the sending IP (Render's IPs aren't static; some providers require IP allowlisting — check theirs).
-- **Delivers but lands in spam** — `SMTP_FROM` isn't on a domain with SPF/DKIM configured for that provider; cosmetic for testing, fix before relying on this for real users.
-- **400 "requires an email address"** — expected when neither the request nor the account's stored contact has one; not a bug.
-
-### 6.9 Telegram OTP (Bot API)
-
-`TelegramOtpProvider` is the lowest-priority real channel — used only if neither WhatsApp nor Email is configured. Free, but has a hard platform constraint: **a bot cannot cold-message a username** — it can only message a chat that has already sent it a `/start` (or any message) first.
+**The constraint that shapes everything here:** a Telegram bot cannot message anyone who hasn't messaged it first. There's no way to derive a chat id from a phone number or email, so every account has to *connect* Telegram once before it can receive codes.
 
 **1. Create the bot**
-Message [@BotFather](https://t.me/BotFather) on Telegram, `/newbot`, follow the prompts. It gives you a token immediately — this is `TELEGRAM_BOT_TOKEN`.
+Message [@BotFather](https://t.me/BotFather) on Telegram → `/newbot` → follow the prompts. You get a token immediately (`TELEGRAM_BOT_TOKEN`) and choose a username (`TELEGRAM_BOT_USERNAME`, without the `@`). Both are required — the token sends messages, the username builds the `t.me/<username>?start=<token>` deep link users tap to connect.
 
-**2. Getting a chat id (the part that trips people up)**
-There's no way around the user messaging the bot first:
-1. The end user opens the bot (`t.me/<your_bot_username>`) and sends any message, e.g. `/start`.
-2. Call `https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getUpdates` — the response's `message.chat.id` (a signed integer, e.g. `123456789`) is the `telegramChatId` this app needs.
-3. That numeric id — not the `@username` — is what goes into `POST /auth/otp/request`'s `telegramChatId` field or `POST /auth/contact`.
+**2. How connecting works**
+1. User enters a phone/email and asks for a code.
+2. If that account has no chat id on file, the API returns **403 with `telegramLinkRequired: true`**.
+3. The client calls `POST /auth/telegram/link/start`, gets `{token, deepLink}`, and shows a "Connect Telegram" button.
+4. User taps it, Telegram opens the bot, they press **Start** — which sends `/start <token>` to the bot.
+5. `TelegramUpdatesPoller` (long-polling `getUpdates`) sees it, records the chat id against that pending link, and replies in-chat to confirm.
+6. The client is polling `GET /auth/telegram/link/:token/status`; once it flips to `linked: true` it re-requests the code, which now delivers.
 
-A real product would wrap step 2 with a deep-link (`t.me/<bot>?start=<token>`) that ties the chat id back to a specific signup attempt server-side; that flow doesn't exist yet — right now the client is trusted to pass the correct chat id, same trust level the app already places in a client-supplied `email`.
+**3. Security rule worth understanding before changing it**
+`link/start` **refuses** an identifier that already has an account (409). This is deliberate: if any caller could attach their own Telegram to an existing phone/email, they'd start receiving that account's login codes — and since the OTP *is* the credential, that's a full account takeover. Self-serve connecting is therefore only allowed when no account exists yet, where the person connecting is by definition the one creating the account.
 
-**3. Deployment**
-One var: `TELEGRAM_BOT_TOKEN`, set on Render (`render.yaml` reserves the slot).
+**Consequence:** accounts created before Telegram sign-in existed (there are ~20 in the current DB, none with a chat id) **cannot sign in** until their `telegram_chat_id` is set out-of-band — a direct DB update, or a future authenticated flow. There is deliberately no admin endpoint for this.
 
-**4. Troubleshooting**
-`TelegramOtpProvider` logs only Telegram's own error description (never the bot token) under `OTP (Telegram)`:
-- **400 "chat not found"** — the user never messaged the bot first (see step 2 above), or the chat id is wrong. Surfaced to the caller as a 400, not a 500 — the client should tell the user to message the bot.
-- **401/403** — bad bot token, or the user blocked the bot after initially starting a chat with it.
-- **429** — Telegram's own rate limit on the bot; `OtpService`'s per-phone-number limiter runs first and independently, same relationship as WhatsApp's 429 handling in §6.7.
+**4. Long-polling, not a webhook**
+`TelegramUpdatesPoller` calls `getUpdates` in a background loop (`OnModuleInit`/`OnModuleDestroy`), chosen over a webhook because it needs no public URL — it works identically in local dev and on Render, and the whole flow is testable without a tunnel. **It must run in exactly one process**: Telegram deletes an update once it's confirmed via `offset`, so a second instance would steal updates from the first. Fine on Render's single-instance free tier; scaling out means switching to a webhook. The loop no-ops entirely when no bot token is set, and transient Telegram/network failures log and back off rather than crashing boot.
+
+**5. Deployment**
+Set both vars on Render (`render.yaml` reserves the slots — Environment tab, paste values). Render restarts on an env change and the factory re-evaluates on that fresh boot, so there's no extra step.
+
+| Variable | Example | Notes |
+|---|---|---|
+| `TELEGRAM_BOT_TOKEN` | `123456:ABC-DEF...` | from @BotFather; never logged |
+| `TELEGRAM_BOT_USERNAME` | `scholar_otp_bot` | no `@`; builds the connect deep link |
+
+**6. Troubleshooting**
+`TelegramOtpProvider` and `TelegramUpdatesPoller` log only Telegram's own error description (never the bot token) under `OTP (Telegram)` / `Telegram (updates)`:
+- **403 `telegramLinkRequired` on every sign-in attempt** — expected for an account with no chat id yet; the client should route to the connect flow. For a *pre-existing* account it's terminal until linked out-of-band (see §3).
+- **409 on `link/start`** — either already connected, or an existing account that can't self-link by design.
+- **503 "Telegram sign-in is not configured"** — `TELEGRAM_BOT_USERNAME` is missing, so no deep link can be built.
+- **400 "chat not found"** on send — the recorded chat id is stale or the user blocked the bot.
+- **401/403** on send — bad/revoked bot token, or the user blocked the bot.
+- **429** — Telegram's own per-bot rate limit; `OtpService`'s per-identifier limiter (5 per 15 min) runs first and independently.
+- **Nothing happens after pressing Start** — check the boot log for `IdentityModule`'s line (`"Telegram bot configured"` vs `"TELEGRAM_BOT_TOKEN/TELEGRAM_BOT_USERNAME not set"`), which confirms whether both vars reached the container and therefore whether the poller is even running.
+
+**7. What's verified and what isn't**
+The full flow — connect → code → verify → JWT — has been exercised end-to-end against the live local stack for **both** phone and email identifiers, including the 409 takeover guard, expired/invalid codes, rate limiting, and the `phoneForSignup` requirement for email signups. Refresh, logout, RBAC, and `/auth/me` were regression-checked and are unchanged. **Not verified: an actual message arriving in Telegram** — that needs a real `TELEGRAM_BOT_TOKEN`, which this environment doesn't have; the send path is unit-tested against mocked `fetch` instead. Same credential gap as Razorpay/Sentry/PostHog.
+
+**Mobile is not updated.** The Flutter app still sends the deprecated `phoneE164` field (kept working on purpose), but it has no "Connect Telegram" UI — so any mobile user without a chat id gets the 403 and cannot proceed. Mobile needs a follow-up pass to reach parity; its rendering can't be visually verified in this environment (see §3).
+
 
 ## Known environment note (not a setup step, just FYI)
 

@@ -36,9 +36,9 @@ export class OtpService {
     return this.otpProvider.channel;
   }
 
-  async requestOtp(phoneE164: string, contact?: OtpContact): Promise<void> {
+  async requestOtp(identifier: string, contact?: OtpContact): Promise<void> {
     const requestCount = await this.otpRepository.incrementRequestCount(
-      phoneE164,
+      identifier,
       REQUEST_WINDOW_SECONDS,
     );
     if (requestCount > MAX_REQUESTS_PER_WINDOW) {
@@ -47,11 +47,11 @@ export class OtpService {
 
     const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
     await this.otpRepository.create(
-      phoneE164,
+      identifier,
       hashCode(code),
       CODE_TTL_SECONDS,
     );
-    await this.otpProvider.send(phoneE164, code, contact);
+    await this.otpProvider.send(identifier, code, contact);
   }
 
   /**
@@ -60,11 +60,11 @@ export class OtpService {
    * which role to sign up as) must be able to re-check the same code.
    * Call consumeOtp() once the caller is committing to the result.
    */
-  async checkOtp(phoneE164: string, code: string): Promise<void> {
-    const challenge = await this.otpRepository.findActive(phoneE164);
+  async checkOtp(identifier: string, code: string): Promise<void> {
+    const challenge = await this.otpRepository.findActive(identifier);
     if (!challenge) {
       throw new UnauthorizedException(
-        'No active OTP for this number. Request a new one.',
+        'No active OTP for this account. Request a new one.',
       );
     }
     if (challenge.attempts >= MAX_VERIFY_ATTEMPTS) {
@@ -74,12 +74,12 @@ export class OtpService {
     }
 
     if (hashCode(code) !== challenge.codeHash) {
-      await this.otpRepository.incrementAttempts(phoneE164);
+      await this.otpRepository.incrementAttempts(identifier);
       throw new UnauthorizedException('Incorrect OTP.');
     }
   }
 
-  consumeOtp(phoneE164: string): Promise<void> {
-    return this.otpRepository.consume(phoneE164);
+  consumeOtp(identifier: string): Promise<void> {
+    return this.otpRepository.consume(identifier);
   }
 }

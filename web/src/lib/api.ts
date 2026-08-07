@@ -25,6 +25,10 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public readonly status: number,
+    /** Set by the backend when OTP delivery is blocked because the
+     *  account has no Telegram chat linked yet — the login form branches
+     *  on this rather than string-matching the message. */
+    public readonly telegramLinkRequired = false,
   ) {
     super(message);
   }
@@ -53,7 +57,11 @@ async function parseError(res: Response): Promise<never> {
     typeof data === 'object' && data !== null && 'message' in data
       ? String((data as { message: unknown }).message)
       : 'Something went wrong. Try again.';
-  const error = new ApiError(message, res.status);
+  const telegramLinkRequired =
+    typeof data === 'object' &&
+    data !== null &&
+    (data as { telegramLinkRequired?: unknown }).telegramLinkRequired === true;
+  const error = new ApiError(message, res.status, telegramLinkRequired);
 
   // Single choke point every api.get/post/put/delete call funnels
   // through — captures every API failure without per-call-site wiring.
@@ -142,6 +150,14 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  if (!res.ok) return parseError(res);
+  return (await res.json()) as T;
+}
+
+/** Unauthenticated GET — used by the login flow's Telegram-link polling,
+ *  which runs before any session exists. */
+export async function apiGetPublic<T>(path: string): Promise<T> {
+  const res = await fetch(`${getApiUrl()}${path}`);
   if (!res.ok) return parseError(res);
   return (await res.json()) as T;
 }

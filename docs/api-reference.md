@@ -9,13 +9,17 @@ For request/response shapes see the DTOs under each module's `dto/` folder — t
 **auth** (`/auth`)
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/auth/otp/request` | Request an OTP — delivered via WhatsApp, Email, or Telegram (first configured, in that order; see `IdentityModule`), else logged to the console in dev. Accepts optional `email`/`telegramChatId` for Email/Telegram delivery when not already on file |
-| POST | `/auth/otp/verify` | Verify OTP, issue JWT tokens (creates account on first verify; the field matching whichever channel actually delivered the code is saved as that account's contact) |
+| POST | `/auth/otp/request` | Request an OTP for `identifier` (phone number **or** email). Always delivered via Telegram — 403 with `telegramLinkRequired: true` if that account has no Telegram connected. `phoneE164` still accepted as a deprecated alias for `identifier` |
+| POST | `/auth/otp/verify` | Verify OTP, issue JWT tokens (creates account on first verify; needs `signupRole`, plus `phoneForSignup` when signing up with an email, since `users.phone_e164` is NOT NULL) |
+| POST | `/auth/telegram/link/start` | **Public** — start connecting Telegram for an identifier with no account yet; returns `{token, deepLink}`. 409s for an existing account (see note below) |
+| GET | `/auth/telegram/link/:token/status` | **Public** — `{linked: bool}`; polled while the user is in Telegram. Never returns the chat id |
 | POST | `/auth/refresh` | Rotate refresh token |
 | POST | `/auth/logout` | Revoke this device's refresh token (public — the refresh token itself is the credential, same as `/auth/refresh`) |
 | POST | `/auth/google` | Google Sign-In (web), verifies ID token |
 | GET | `/auth/me` | Get current authenticated user |
-| POST | `/auth/contact` | Set/update own `email`/`telegramChatId` so future OTP requests don't need to resupply them |
+| POST | `/auth/contact` | Set/update own `email` (an alternate login identifier). Cannot set `telegram_chat_id` — that only ever comes from Telegram itself |
+
+**Telegram linking.** A Telegram bot can't message anyone who hasn't messaged it first, so every account connects once before it can receive codes. `link/start` deliberately refuses identifiers that already have an account: otherwise anyone could enter someone else's phone/email, attach their own Telegram, and receive that account's login codes. Accounts predating Telegram sign-in must be connected out-of-band. See handover.md §6.7.
 
 **profiles** (`/profiles`)
 | Method | Path | Purpose |

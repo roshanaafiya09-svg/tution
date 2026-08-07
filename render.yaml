@@ -43,25 +43,10 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
-      - key: WHATSAPP_ACCESS_TOKEN
-        sync: false
-      - key: WHATSAPP_PHONE_NUMBER_ID
-        sync: false
-      - key: WHATSAPP_OTP_TEMPLATE_NAME
-        sync: false
-      - key: WHATSAPP_TEMPLATE_LANGUAGE
-        sync: false
-      - key: WHATSAPP_API_VERSION
-        sync: false
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_PORT
-        sync: false
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASS
-        sync: false
-      - key: SMTP_FROM
-        sync: false
+      # Telegram is the only OTP delivery channel. Both are required
+      # together — unset falls back to console-logged codes, which is a
+      # dev-only mode and must not be relied on in production.
       - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_BOT_USERNAME
         sync: false
