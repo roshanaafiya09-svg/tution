@@ -327,8 +327,9 @@ export function LoginForm() {
             <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
               Open our bot and press{' '}
               <span className="font-medium text-neutral-700 dark:text-neutral-300">Start</span>,
-              then tap the button it shows you to confirm your number — that's how we know it's
-              really you. We&apos;ll send your code here automatically once that's done.
+              then tap the button it shows you to confirm your number — that&apos;s how we know
+              it&apos;s really you. We&apos;ll send your code here automatically once that&apos;s
+              done.
             </p>
           </div>
 
