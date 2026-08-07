@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { ConflictException, Inject, Injectable } from '@nestjs/common';
 import type { Kysely } from 'kysely';
 import { KYSELY_CONNECTION } from '../../../database/database.module';
 import type { DB, UserRole } from '../../../database/types';
@@ -49,6 +49,16 @@ export class UsersRepository {
    * phone_e164 is NOT NULL, so an email-identified signup still needs a
    * phone — callers pass `phoneE164` explicitly for that case rather
    * than this method inventing a placeholder.
+   *
+   * The checks earlier in the signup flow (AuthService, TelegramLinkService)
+   * can't see everything Postgres's own unique constraints catch here —
+   * concurrent duplicate requests, or the same already-linked Telegram
+   * account being reused for a brand-new phone number (its own account
+   * has no conflicting phone, so nothing upstream flags it; only the
+   * insert itself, against `telegram_chat_id`, does). Left uncaught,
+   * that's a raw driver error with no HTTP status, which the app's
+   * global exception filter turns into an opaque 500 — translating it
+   * here gives the caller something they can actually act on.
    */
   async createWithRole(
     identifier: string,
@@ -62,25 +72,29 @@ export class UsersRepository {
       throw new Error('createWithRole needs a phone number');
     }
 
-    return this.db.transaction().execute(async (trx) => {
-      const user = await trx
-        .insertInto('users')
-        .values({
-          id: newId(),
-          phone_e164: phone,
-          email: isEmail ? identifier : null,
-          telegram_chat_id: telegramChatId,
-        })
-        .returningAll()
-        .executeTakeFirstOrThrow();
+    try {
+      return await this.db.transaction().execute(async (trx) => {
+        const user = await trx
+          .insertInto('users')
+          .values({
+            id: newId(),
+            phone_e164: phone,
+            email: isEmail ? identifier : null,
+            telegram_chat_id: telegramChatId,
+          })
+          .returningAll()
+          .executeTakeFirstOrThrow();
 
-      await trx
-        .insertInto('user_roles')
-        .values({ user_id: user.id, role })
-        .execute();
+        await trx
+          .insertInto('user_roles')
+          .values({ user_id: user.id, role })
+          .execute();
 
-      return user;
-    });
+        return user;
+      });
+    } catch (err) {
+      throw translateSignupConflict(err);
+    }
   }
 
   /** Editable profile field for an already-authenticated user (see
@@ -151,5 +165,47 @@ export class UsersRepository {
       })
       .where('id', '=', userId)
       .execute();
+  }
+}
+
+/** Postgres SQLSTATE 23505 = unique_violation. `pg` attaches `code` and
+ *  `constraint` to the thrown error but doesn't export a typed error
+ *  class for it, so this is a structural check rather than an
+ *  `instanceof`. */
+function isUniqueViolation(
+  err: unknown,
+): err is { code: '23505'; constraint?: string } {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { code?: unknown }).code === '23505'
+  );
+}
+
+/** Maps a unique-constraint violation to a clean, specific 409 instead
+ *  of leaking a raw driver error up to the global exception filter
+ *  (which would otherwise turn it into an opaque 500). Anything that
+ *  isn't a unique violation is returned unchanged — this only ever
+ *  narrows a known failure mode, never masks a genuine bug. */
+function translateSignupConflict(err: unknown): unknown {
+  if (!isUniqueViolation(err)) return err;
+
+  switch (err.constraint) {
+    case 'users_telegram_chat_id_unique_idx':
+      return new ConflictException(
+        'This Telegram account is already connected to a different account. Sign in with that account instead, or contact support to reconnect it.',
+      );
+    case 'users_phone_e164_key':
+      return new ConflictException(
+        'An account with this phone number already exists — try signing in instead.',
+      );
+    case 'users_email_unique_idx':
+      return new ConflictException(
+        'An account with this email already exists — try signing in instead.',
+      );
+    default:
+      return new ConflictException(
+        'An account with these details already exists.',
+      );
   }
 }
