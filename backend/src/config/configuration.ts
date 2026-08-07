@@ -29,6 +29,18 @@ export const whatsappConfig = registerAs('whatsapp', () => ({
   apiVersion: process.env.WHATSAPP_API_VERSION ?? 'v21.0',
 }));
 
+export const emailConfig = registerAs('email', () => ({
+  smtpHost: process.env.SMTP_HOST,
+  smtpPort: process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined,
+  smtpUser: process.env.SMTP_USER,
+  smtpPass: process.env.SMTP_PASS,
+  smtpFrom: process.env.SMTP_FROM,
+}));
+
+export const telegramConfig = registerAs('telegram', () => ({
+  botToken: process.env.TELEGRAM_BOT_TOKEN,
+}));
+
 export const googleAuthConfig = registerAs('googleAuth', () => ({
   clientId: process.env.GOOGLE_CLIENT_ID,
 }));

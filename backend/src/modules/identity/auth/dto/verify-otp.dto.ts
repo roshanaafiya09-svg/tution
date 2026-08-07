@@ -1,4 +1,5 @@
 import {
+  IsEmail,
   IsIn,
   IsOptional,
   IsPhoneNumber,
@@ -29,4 +30,18 @@ export class VerifyOtpDto {
   @IsString()
   @MaxLength(120)
   deviceLabel?: string;
+
+  /**
+   * Should match whatever was sent to /auth/otp/request — on first-time
+   * signup, only the field matching the active OTP channel actually gets
+   * persisted onto the new account (see AuthService.verifyOtpAndIssueTokens).
+   */
+  @IsOptional()
+  @IsEmail(undefined, { message: 'email must be a valid email address' })
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  telegramChatId?: string;
 }

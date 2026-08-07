@@ -16,6 +16,11 @@ export interface UsersTable {
   id: string;
   phone_e164: string;
   email: ColumnType<string | null, string | null | undefined, string | null>;
+  telegram_chat_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   locale: Generated<'en' | 'ta'>;
   timezone: Generated<string>;
   dob: ColumnType<string | null, string | null | undefined, string | null>;

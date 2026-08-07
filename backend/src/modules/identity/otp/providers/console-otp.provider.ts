@@ -8,6 +8,7 @@ import { OtpProvider } from './otp-provider.interface';
  */
 @Injectable()
 export class ConsoleOtpProvider implements OtpProvider {
+  readonly channel = 'console' as const;
   private readonly logger = new Logger('OTP (dev)');
 
   send(phoneE164: string, code: string): Promise<void> {

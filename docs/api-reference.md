@@ -9,12 +9,13 @@ For request/response shapes see the DTOs under each module's `dto/` folder — t
 **auth** (`/auth`)
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/auth/otp/request` | Request a WhatsApp OTP |
-| POST | `/auth/otp/verify` | Verify OTP, issue JWT tokens (creates account on first verify) |
+| POST | `/auth/otp/request` | Request an OTP — delivered via WhatsApp, Email, or Telegram (first configured, in that order; see `IdentityModule`), else logged to the console in dev. Accepts optional `email`/`telegramChatId` for Email/Telegram delivery when not already on file |
+| POST | `/auth/otp/verify` | Verify OTP, issue JWT tokens (creates account on first verify; the field matching whichever channel actually delivered the code is saved as that account's contact) |
 | POST | `/auth/refresh` | Rotate refresh token |
 | POST | `/auth/logout` | Revoke this device's refresh token (public — the refresh token itself is the credential, same as `/auth/refresh`) |
 | POST | `/auth/google` | Google Sign-In (web), verifies ID token |
 | GET | `/auth/me` | Get current authenticated user |
+| POST | `/auth/contact` | Set/update own `email`/`telegramChatId` so future OTP requests don't need to resupply them |
 
 **profiles** (`/profiles`)
 | Method | Path | Purpose |

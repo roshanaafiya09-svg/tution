@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -11,6 +12,7 @@ import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { GoogleSignInDto } from './dto/google-signin.dto';
+import { UpdateContactDto } from './dto/update-contact.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import type { AccessTokenPayload } from './tokens.service';
@@ -28,7 +30,10 @@ export class AuthController {
   @Post('otp/request')
   @HttpCode(200)
   async requestOtp(@Body() dto: RequestOtpDto) {
-    await this.authService.requestOtp(dto.phoneE164);
+    await this.authService.requestOtp(dto.phoneE164, {
+      email: dto.email,
+      telegramChatId: dto.telegramChatId,
+    });
     return { sent: true };
   }
 
@@ -40,6 +45,7 @@ export class AuthController {
       dto.code,
       dto.signupRole,
       dto.deviceLabel,
+      { email: dto.email, telegramChatId: dto.telegramChatId },
     );
   }
 
@@ -75,5 +81,28 @@ export class AuthController {
       phoneE164: record?.phone_e164,
       locale: record?.locale,
     };
+  }
+
+  /** Lets an already-signed-in user set/update the address OTPs should
+   *  go to when Email/Telegram is the active channel — the phone-OTP
+   *  signup path can only capture whichever one channel actually
+   *  delivered the code (see AuthService.verifyOtpAndIssueTokens). */
+  @Post('contact')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  async updateContact(
+    @CurrentUser() user: AccessTokenPayload,
+    @Body() dto: UpdateContactDto,
+  ) {
+    if (!dto.email && !dto.telegramChatId) {
+      throw new BadRequestException(
+        'Provide at least one of "email" or "telegramChatId".',
+      );
+    }
+    await this.usersRepository.updateContact(user.sub, {
+      email: dto.email,
+      telegramChatId: dto.telegramChatId,
+    });
+    return { updated: true };
   }
 }

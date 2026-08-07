@@ -71,7 +71,7 @@ A follow-up pass took every screen on both platforms through a full visual/UX re
 - Every frontend phase from §2 was browser-tested end-to-end against the real local API when it was first built — including a genuine 3-way messaging conversation, a real AI-generated quiz taken by a real student account with the tutor's attempts view showing the actual score, and a full Razorpay checkout round-trip (mock-provider path) for each of the three purchase flows (tutor subscription, parent premium, marketplace booking). See §3 for the redesign pass's own (separate) verification.
 - Known pre-existing lint debt (not introduced by either pass) remains in payments/payouts/messaging/notifications/parents modules — left alone, out of scope.
 
-Not verified: mobile visual rendering after the §3 redesign (see §3 for why), or the Razorpay/WhatsApp/Sentry/PostHog integrations against real credentials (all are env-gated and mock-backed in dev).
+Not verified: mobile visual rendering after the §3 redesign (see §3 for why), or the Razorpay/WhatsApp/Email-OTP/Telegram-OTP/Sentry/PostHog integrations against real credentials (all are env-gated and mock/console-backed in dev). Email/Telegram OTP's *code paths* — signup, login, invalid OTP, contact persistence, provider fallback — were exercised end-to-end against the live local stack via `ConsoleOtpProvider` (see §6.8/§6.9); only the actual SMTP/Telegram Bot API calls are unverified, same gap class as WhatsApp.
 
 ## 5. Known gaps
 
@@ -79,7 +79,8 @@ Not verified: mobile visual rendering after the §3 redesign (see §3 for why), 
 - **Mobile redesign (§3) hasn't been visually confirmed on a device/emulator.** `flutter analyze` is clean, but that's not the same as seeing it render — see §3 for the tooling limitation that caused this.
 - **`mobile/login_screen.png` is a committed screenshot** (tracked in git, not gitignored) — a debug artifact, not an asset the app loads. Harmless but still there; a cleanup task was flagged for this but hasn't landed.
 - **No shared job-queue module.** Redis is provisioned (OTP/refresh-token storage), but scheduled/async work (digest generation, reminder cadences) lives inline in each module's service rather than a BullMQ-backed queue, despite blueprint §6 calling for BullMQ. Fine at current scale.
-- **Real payment/messaging/OTP providers are still unconfigured** — Razorpay, WhatsApp Cloud API, Sentry, PostHog all have real-provider code but no live credentials; everything currently runs on mock/console providers. See §6.
+- **Real payment/messaging/OTP providers are still unconfigured** — Razorpay, WhatsApp Cloud API, Email OTP (SMTP), Telegram OTP, Sentry, PostHog all have real-provider code but no live credentials; everything currently runs on mock/console providers. See §6.
+- **Email/Telegram OTP added as lower-priority fallback channels below WhatsApp** *(new)* — `EmailOtpProvider` (Nodemailer/SMTP) and `TelegramOtpProvider` (Bot API) implement the existing `OtpProvider` interface unchanged; `IdentityModule`'s selection factory now tries WhatsApp → Email → Telegram → console, first configured wins. Neither channel can derive a destination from `phone_e164` the way WhatsApp/console do, so `OtpContact` (`email`/`telegramChatId`) flows through `RequestOtpDto`/`VerifyOtpDto` → `AuthService` → the provider; a new `POST /auth/contact` (authenticated) lets a signed-in user set it once instead of resupplying it every login. **Security-relevant design point:** only the contact field matching whichever channel *actually delivered* the code gets persisted onto a newly-created account (`OtpService.activeChannel` gates this in `AuthService.verifyOtpAndIssueTokens`) — otherwise a signup request could plant an unproven `email` and later hijack that address's Google Sign-In linkage (`GoogleAuthService` matches accounts by `email`). Migration `0025` adds `users.telegram_chat_id` (nullable; `email` already existed). **Not yet applied to the production Neon database**, same as `0024` above — run `npm run migrate:up` against production before relying on this. See §6.8/§6.9 for the setup walkthroughs.
 - **Object storage (Supabase Storage) is provisioned and live** — verified end-to-end in production (presigned upload → download → delete, confirmed the object is actually gone from the bucket afterward, not just the DB row). No longer a gap.
 - **No UI anywhere lets a student generate a parent-invite code** *(fixed)* — `POST /parent-links/invite` (student-only) had zero caller in web or mobile; the entire parent portal was unreachable by a real user. Added to mobile Settings (student-only, since students are mobile-only). Found and fixed in a pre-launch audit.
 - **"Sign out" never revoked the refresh token server-side** *(fixed)* — only cleared local storage; a copied/leaked refresh token stayed valid for its full 30-day life. Added `POST /auth/logout` and wired both web and mobile to call it. Verified live: a never-refreshed token is rejected immediately after logout.
@@ -232,6 +233,63 @@ No restart/redeploy step beyond setting the vars — Render restarts the service
 - **Provider not switching from console to WhatsApp at all** — check Render logs at boot for `IdentityModule`'s own log line (`"WhatsApp Cloud API configured"` vs `"WHATSAPP_ACCESS_TOKEN/WHATSAPP_PHONE_NUMBER_ID not set"`) — confirms whether both required vars actually reached the container.
 
 Whoever picks this up next: check the Render dashboard for current deploy status before assuming any of the above is still current.
+
+### 6.8 Email OTP (SMTP via Nodemailer)
+
+`EmailOtpProvider` is used only if WhatsApp isn't configured (see §6.7) — `IdentityModule`'s factory checks `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS` all being set. Any standard SMTP provider works (SendGrid, Mailgun, Amazon SES, Postmark, or Gmail with an [app password](https://myaccount.google.com/apppasswords) for quick testing) — Nodemailer talks plain SMTP, no provider-specific SDK.
+
+**1. Pick a provider and get SMTP credentials**
+Free tiers that work fine for this volume: SendGrid (100/day), Mailgun (sandbox domain), or a Gmail app password for testing only (not recommended for real user volume — low sending limits, easily flagged as spam).
+
+**2. Set the five vars**
+| Variable | Example | Notes |
+|---|---|---|
+| `SMTP_HOST` | `smtp.sendgrid.net` | provider's SMTP endpoint |
+| `SMTP_PORT` | `587` | 587 = STARTTLS (most common); 465 = implicit TLS, handled automatically by `EmailOtpProvider` |
+| `SMTP_USER` | `apikey` (SendGrid literally uses this) | provider-specific — check their SMTP docs, not always your account email |
+| `SMTP_PASS` | (SMTP password / API key) | never logged — see `EmailOtpProvider`'s error handling |
+| `SMTP_FROM` | `otp@yourdomain.com` | should be a domain you've verified with the provider (SPF/DKIM), or most providers will silently spam-folder or reject the send |
+
+**3. The recipient problem — this is the part that's easy to miss**
+Unlike WhatsApp/console, Email can't derive a destination from `phone_e164` — there's no address to send to until one is on file. Two ways it gets there:
+- The client includes `email` on `POST /auth/otp/request` (validated as a real email address). On first-time signup, that address is what actually receives the code — and *only if it's the code that gets verified* does it get saved onto the new account (see the security note in §5's Email/Telegram OTP gap bullet).
+- A signed-in user calls `POST /auth/contact` with `{"email": "..."}` once, and every future `/auth/otp/request` for that phone number auto-resolves it — no need to resupply it each login (`AuthService.requestOtp`'s fallback lookup).
+
+If neither applies, `EmailOtpProvider` returns a 400 telling the caller to supply `email` — not a 500, so client apps can prompt for it inline.
+
+**4. Deployment**
+Same pattern as WhatsApp: set the five vars on Render (`render.yaml` reserves the slots), no restart step needed beyond that.
+
+**5. Troubleshooting**
+`EmailOtpProvider` logs only the failure reason (never the SMTP password or the OTP itself) under `OTP (Email)`:
+- **Auth failures (535, "Invalid login")** — wrong `SMTP_USER`/`SMTP_PASS`, or the provider needs an API key rather than your account password (common with SendGrid/Mailgun).
+- **Connection refused / timeout** — wrong `SMTP_HOST`/`SMTP_PORT`, or the provider blocks the sending IP (Render's IPs aren't static; some providers require IP allowlisting — check theirs).
+- **Delivers but lands in spam** — `SMTP_FROM` isn't on a domain with SPF/DKIM configured for that provider; cosmetic for testing, fix before relying on this for real users.
+- **400 "requires an email address"** — expected when neither the request nor the account's stored contact has one; not a bug.
+
+### 6.9 Telegram OTP (Bot API)
+
+`TelegramOtpProvider` is the lowest-priority real channel — used only if neither WhatsApp nor Email is configured. Free, but has a hard platform constraint: **a bot cannot cold-message a username** — it can only message a chat that has already sent it a `/start` (or any message) first.
+
+**1. Create the bot**
+Message [@BotFather](https://t.me/BotFather) on Telegram, `/newbot`, follow the prompts. It gives you a token immediately — this is `TELEGRAM_BOT_TOKEN`.
+
+**2. Getting a chat id (the part that trips people up)**
+There's no way around the user messaging the bot first:
+1. The end user opens the bot (`t.me/<your_bot_username>`) and sends any message, e.g. `/start`.
+2. Call `https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getUpdates` — the response's `message.chat.id` (a signed integer, e.g. `123456789`) is the `telegramChatId` this app needs.
+3. That numeric id — not the `@username` — is what goes into `POST /auth/otp/request`'s `telegramChatId` field or `POST /auth/contact`.
+
+A real product would wrap step 2 with a deep-link (`t.me/<bot>?start=<token>`) that ties the chat id back to a specific signup attempt server-side; that flow doesn't exist yet — right now the client is trusted to pass the correct chat id, same trust level the app already places in a client-supplied `email`.
+
+**3. Deployment**
+One var: `TELEGRAM_BOT_TOKEN`, set on Render (`render.yaml` reserves the slot).
+
+**4. Troubleshooting**
+`TelegramOtpProvider` logs only Telegram's own error description (never the bot token) under `OTP (Telegram)`:
+- **400 "chat not found"** — the user never messaged the bot first (see step 2 above), or the chat id is wrong. Surfaced to the caller as a 400, not a 500 — the client should tell the user to message the bot.
+- **401/403** — bad bot token, or the user blocked the bot after initially starting a chat with it.
+- **429** — Telegram's own rate limit on the bot; `OtpService`'s per-phone-number limiter runs first and independently, same relationship as WhatsApp's 429 handling in §6.7.
 
 ## Known environment note (not a setup step, just FYI)
 

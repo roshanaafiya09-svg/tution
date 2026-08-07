@@ -30,6 +30,7 @@ interface WhatsappErrorResponse {
  */
 @Injectable()
 export class WhatsAppCloudApiOtpProvider implements OtpProvider {
+  readonly channel = 'whatsapp' as const;
   private readonly logger = new Logger('OTP (WhatsApp)');
 
   constructor(private readonly config: ConfigService) {}

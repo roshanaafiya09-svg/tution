@@ -46,6 +46,13 @@ Full column-level detail for these is in [`BLUEPRINT 2.md`](../BLUEPRINT%202.md)
 | 0021 | `0021_bookings.ts` | `bookings` (1:1 session: tutor/student/subject, snapshotted hourly_rate/amount/platform_fee, status `pending_payment`→`confirmed`→`completed`/`cancelled`/`no_show`, reschedule tracking, `refund_percent`); widens `payments` XOR check to four-way, adding `booking_id` |
 | 0022 | `0022_booking_waitlists.ts` | `booking_waitlists` (tutor_subject_id + student_id, status `waiting`/`notified`/`converted`/`expired`/`cancelled`, partial unique index limiting one active row per pair, `converted_booking_id`) |
 | 0023 | `0023_reviews.ts` | `reviews` (tutor_id, student_id, rating 1–5, comment, unique per tutor/student pair — a repeat review updates in place rather than duplicating) |
+| 0024 | `0024_marketplace_discovery_indexes.ts` | Indexes on `tutor_subjects.subject_id`/`curriculum_id`, `profiles_tutor.verification_status` (partial, verified only), `reviews.student_id` — the public marketplace search had none, a sequential scan on the highest-traffic query |
+
+## Post-launch — auth channels
+
+| # | Migration | Adds |
+|---|---|---|
+| 0025 | `0025_otp_contact_channels.ts` | `users.telegram_chat_id` (nullable) — Email OTP already had `users.email` (0002) to send to; Telegram needed its own per-user destination the same way |
 
 ## `payments` XOR settlement target
 

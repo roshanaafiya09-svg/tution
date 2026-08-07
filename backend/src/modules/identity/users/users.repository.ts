@@ -35,11 +35,20 @@ export class UsersRepository {
       .executeTakeFirst();
   }
 
-  async createWithRole(phoneE164: string, role: UserRole) {
+  async createWithRole(
+    phoneE164: string,
+    role: UserRole,
+    contact?: { email?: string; telegramChatId?: string },
+  ) {
     return this.db.transaction().execute(async (trx) => {
       const user = await trx
         .insertInto('users')
-        .values({ id: newId(), phone_e164: phoneE164 })
+        .values({
+          id: newId(),
+          phone_e164: phoneE164,
+          email: contact?.email ?? null,
+          telegram_chat_id: contact?.telegramChatId ?? null,
+        })
         .returningAll()
         .executeTakeFirstOrThrow();
 
@@ -50,6 +59,28 @@ export class UsersRepository {
 
       return user;
     });
+  }
+
+  /** Self-service contact update for an already-authenticated user (see
+   *  POST /auth/contact) — distinct from the contact captured at signup
+   *  in createWithRole, which is only ever the field an OTP delivery
+   *  itself proved control of. Only supplied fields are touched. */
+  updateContact(
+    userId: string,
+    contact: { email?: string; telegramChatId?: string },
+  ) {
+    const updates: { email?: string; telegram_chat_id?: string } = {};
+    if (contact.email !== undefined) updates.email = contact.email;
+    if (contact.telegramChatId !== undefined) {
+      updates.telegram_chat_id = contact.telegramChatId;
+    }
+    if (Object.keys(updates).length === 0) return Promise.resolve();
+
+    return this.db
+      .updateTable('users')
+      .set(updates)
+      .where('id', '=', userId)
+      .execute();
   }
 
   getRoles(userId: string) {

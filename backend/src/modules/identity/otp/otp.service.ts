@@ -7,7 +7,11 @@ import {
 } from '@nestjs/common';
 import { OtpRepository } from './otp.repository';
 import { OTP_PROVIDER } from './providers/otp-provider.interface';
-import type { OtpProvider } from './providers/otp-provider.interface';
+import type {
+  OtpChannel,
+  OtpContact,
+  OtpProvider,
+} from './providers/otp-provider.interface';
 
 const CODE_TTL_SECONDS = 5 * 60;
 const MAX_REQUESTS_PER_WINDOW = 5;
@@ -25,7 +29,14 @@ export class OtpService {
     @Inject(OTP_PROVIDER) private readonly otpProvider: OtpProvider,
   ) {}
 
-  async requestOtp(phoneE164: string): Promise<void> {
+  /** Which OtpProvider is currently active — AuthService uses this to
+   *  decide which contact field (if any) a successful verification
+   *  actually proved control of. See OtpProvider.channel. */
+  get activeChannel(): OtpChannel {
+    return this.otpProvider.channel;
+  }
+
+  async requestOtp(phoneE164: string, contact?: OtpContact): Promise<void> {
     const requestCount = await this.otpRepository.incrementRequestCount(
       phoneE164,
       REQUEST_WINDOW_SECONDS,
@@ -40,7 +51,7 @@ export class OtpService {
       hashCode(code),
       CODE_TTL_SECONDS,
     );
-    await this.otpProvider.send(phoneE164, code);
+    await this.otpProvider.send(phoneE164, code, contact);
   }
 
   /**

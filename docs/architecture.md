@@ -22,7 +22,7 @@ Fastify adapter, no global route prefix (routes are `/auth`, not `/api/auth`), p
 
 | Module | Responsibility |
 |---|---|
-| `identity` | Auth (WhatsApp OTP + Google Sign-In), JWT/refresh tokens, tutor/student profiles, users |
+| `identity` | Auth (phone OTP via WhatsApp/Email/Telegram + Google Sign-In), JWT/refresh tokens, tutor/student profiles, users |
 | `catalog` | Curricula/subjects/grade levels (reference data), tutor subject offerings, tutor availability |
 | `scheduling` | Batches, enrollments, class sessions (RRULE recurrence), attendance, invite links |
 | `delivery` | Materials (Supabase Storage-backed uploads), announcements |
@@ -43,7 +43,7 @@ Async/scheduled work (OTP delivery, digest generation, reminders) runs through t
 
 Auth: access JWT (short-lived) + rotating refresh token, `jti`-based revocation, OTP challenges and refresh tokens stored in Redis (migrations 0007/0008 show this moved off Postgres). AuthZ via `@Roles()` guards at the controller layer.
 
-Every module's provider-backed integrations (payments, payouts, push, OTP delivery, storage, AI, embeddings, analytics) follow the same pattern: an interface + a real provider (Razorpay, FCM, WhatsApp Cloud API, Supabase Storage, Claude, Voyage, PostHog) + a mock/console/local provider for dev — swap via env config, never a code change.
+Every module's provider-backed integrations (payments, payouts, push, OTP delivery, storage, AI, embeddings, analytics) follow the same pattern: an interface + a real provider (Razorpay, FCM, WhatsApp Cloud API/SMTP/Telegram Bot API, Supabase Storage, Claude, Voyage, PostHog) + a mock/console/local provider for dev — swap via env config, never a code change. OTP specifically has three real providers ranked WhatsApp → Email → Telegram, first configured wins (`IdentityModule`'s selection factory) — see handover.md §6.7–6.9.
 
 ## Web — Next.js 14 (App Router)
 

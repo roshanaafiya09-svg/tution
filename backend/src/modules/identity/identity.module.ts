@@ -7,6 +7,8 @@ import { OtpRepository } from './otp/otp.repository';
 import { OTP_PROVIDER } from './otp/providers/otp-provider.interface';
 import { ConsoleOtpProvider } from './otp/providers/console-otp.provider';
 import { WhatsAppCloudApiOtpProvider } from './otp/providers/whatsapp-cloud-api-otp.provider';
+import { EmailOtpProvider } from './otp/providers/email-otp.provider';
+import { TelegramOtpProvider } from './otp/providers/telegram-otp.provider';
 import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
 import { TokensService } from './auth/tokens.service';
@@ -22,8 +24,9 @@ import { SubscriptionsModule } from '../billing/subscriptions/subscriptions.modu
 const otpProviderLogger = new Logger('IdentityModule');
 
 /**
- * Bounded context: users, roles/RBAC, auth (WhatsApp OTP + Google Sign-In),
- * tutor/student profiles. Verification and consent live in TrustModule.
+ * Bounded context: users, roles/RBAC, auth (phone OTP via WhatsApp/Email/
+ * Telegram + Google Sign-In), tutor/student profiles. Verification and
+ * consent live in TrustModule.
  * Owns tables: users, user_roles, profiles_tutor, profiles_student.
  */
 @Module({
@@ -35,26 +38,66 @@ const otpProviderLogger = new Logger('IdentityModule');
     OtpService,
     ConsoleOtpProvider,
     WhatsAppCloudApiOtpProvider,
+    EmailOtpProvider,
+    TelegramOtpProvider,
     {
       provide: OTP_PROVIDER,
-      inject: [ConfigService, ConsoleOtpProvider, WhatsAppCloudApiOtpProvider],
+      inject: [
+        ConfigService,
+        ConsoleOtpProvider,
+        WhatsAppCloudApiOtpProvider,
+        EmailOtpProvider,
+        TelegramOtpProvider,
+      ],
+      // Priority: WhatsApp (blueprint §4 primary) > Email > Telegram >
+      // console. Email/Telegram were added later as cheaper channels
+      // that don't need a Meta Business account, so they rank below the
+      // already-established WhatsApp path rather than displacing it —
+      // whichever is configured highest wins, first one found stops the
+      // fallback chain.
       useFactory: (
         config: ConfigService,
         consoleProvider: ConsoleOtpProvider,
         whatsappProvider: WhatsAppCloudApiOtpProvider,
+        emailProvider: EmailOtpProvider,
+        telegramProvider: TelegramOtpProvider,
       ) => {
-        const configured = Boolean(
+        const whatsappConfigured = Boolean(
           config.get<string>('whatsapp.accessToken') &&
           config.get<string>('whatsapp.phoneNumberId'),
         );
-        if (configured) {
+        if (whatsappConfigured) {
           otpProviderLogger.log(
             'WhatsApp Cloud API configured — using it for OTP delivery',
           );
           return whatsappProvider;
         }
+
+        const emailConfigured = Boolean(
+          config.get<string>('email.smtpHost') &&
+          config.get<number>('email.smtpPort') &&
+          config.get<string>('email.smtpUser') &&
+          config.get<string>('email.smtpPass'),
+        );
+        if (emailConfigured) {
+          otpProviderLogger.log(
+            'SMTP configured — using Email for OTP delivery',
+          );
+          return emailProvider;
+        }
+
+        const telegramConfigured = Boolean(
+          config.get<string>('telegram.botToken'),
+        );
+        if (telegramConfigured) {
+          otpProviderLogger.log(
+            'Telegram bot token configured — using Telegram for OTP delivery',
+          );
+          return telegramProvider;
+        }
+
         otpProviderLogger.warn(
-          'WHATSAPP_ACCESS_TOKEN/WHATSAPP_PHONE_NUMBER_ID not set — OTPs will be logged, not sent',
+          'No WhatsApp/SMTP/Telegram credentials set — OTPs will be logged, not sent',
         );
         return consoleProvider;
       },
