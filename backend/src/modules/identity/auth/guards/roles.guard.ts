@@ -23,6 +23,13 @@ export class RolesGuard implements CanActivate {
     }
 
     const { user } = context.switchToHttp().getRequest<AuthenticatedRequest>();
+    // superadmin sits above the per-route role lists entirely — every
+    // @Roles(...) check exists to gate specific roles in, not to gate
+    // this one out, and hardcoding it into every controller's allow-list
+    // individually would silently miss future routes.
+    if (user.roles.includes('superadmin')) {
+      return true;
+    }
     const hasRole = requiredRoles.some((role) => user.roles.includes(role));
     if (!hasRole) {
       throw new ForbiddenException(

@@ -44,8 +44,34 @@ import { ProofOfTeachingModule } from './modules/marketplace/proof-of-teaching/p
 import { ReviewsModule } from './modules/marketplace/reviews/reviews.module';
 import { DiscoveryModule } from './modules/marketplace/discovery/discovery.module';
 
+/**
+ * Dev-only Super Admin auto-login (see src/dev/dev-auto-login.controller.ts).
+ * The production Docker image deletes dist/dev entirely after build
+ * (see Dockerfile) — it never ships. A static `import` here would
+ * still compile src/dev into dist/ locally (tsc compiles anything a
+ * root file imports), which is fine since the Docker stage strips it
+ * regardless, but using Node's plain `require()` avoids that local
+ * compile step too and keeps tsc from ever treating this as a real
+ * dependency of AppModule. try/catch covers the case where dist/dev
+ * genuinely isn't present (the production image, or any dist/ build
+ * run without NODE_ENV=production set) — module absent means nothing
+ * to load, not a boot crash.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const devModuleImports: any[] = [];
+if (process.env.NODE_ENV !== 'production') {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const dev = require('./dev/dev.module') as { DevModule: unknown };
+    devModuleImports.push(dev.DevModule);
+  } catch {
+    // Compiled without src/dev — nothing to load.
+  }
+}
+
 @Module({
   imports: [
+    ...devModuleImports,
     ConfigModule.forRoot({
       isGlobal: true,
       validate: validateEnv,

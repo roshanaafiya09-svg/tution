@@ -74,9 +74,14 @@ export function LoginForm() {
     // `signupRole` choice — a returning user never passes that through.
     // Students have no web dashboard — the mobile app is their surface,
     // so send them somewhere that makes sense on web. Tutors and parents
-    // each get their own portal.
+    // each get their own portal; Super Admin has no dedicated portal
+    // (see handover.md) so it lands on the same dashboard shell tutors
+    // use — RolesGuard's superadmin bypass makes every API call there
+    // succeed regardless of the account having no tutor role.
     const me = await api.get<Me>('/auth/me').catch(() => null);
-    if (me?.roles.includes('parent')) {
+    if (me?.roles.includes('superadmin')) {
+      router.replace('/dashboard');
+    } else if (me?.roles.includes('parent')) {
       router.replace('/parent');
     } else if (me?.roles.includes('tutor')) {
       router.replace('/dashboard');
@@ -84,6 +89,29 @@ export function LoginForm() {
       router.replace('/');
     }
   }
+
+  // Dev-only Super Admin auto-login: skips the manual phone/Telegram OTP
+  // flow entirely when running `next dev` locally. Next.js's production
+  // build replaces process.env.NODE_ENV with a literal and dead-code-
+  // eliminates this whole branch, so none of it — including the request
+  // itself — ships in a production bundle. Only fires when no session
+  // exists yet, so it never clobbers a manually-completed login (e.g.
+  // while testing another account's flow locally).
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return;
+    if (tokenStore.access) return;
+
+    void (async () => {
+      try {
+        const tokens = await apiPost<AuthTokens>('/dev/auto-login', {});
+        await onAuthenticated(tokens);
+      } catch {
+        // Dev backend route unavailable (e.g. migrations not run yet on
+        // this machine) — fall back to the normal manual login form.
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** Shared by the initial submit and the post-linking retry. Returns
    *  true once a code is actually on its way. */
