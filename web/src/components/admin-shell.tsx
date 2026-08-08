@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import posthog from 'posthog-js';
-import { ShieldCheck, Users, GraduationCap, Heart, LogOut } from 'lucide-react';
+import { ShieldCheck, Users, GraduationCap, Heart, LogOut, LayoutDashboard } from 'lucide-react';
 import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
 import type { Me } from '@/lib/types';
 import {
@@ -118,27 +118,37 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               })}
             </nav>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline-none focus-visible:shadow-focus-ring"
-                aria-label="Account menu"
-              >
-                {me.phoneE164.slice(-2)}
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="min-w-[14rem]">
-              <div className="px-2.5 py-1.5 text-xs text-neutral-400 dark:text-neutral-500">Signed in as</div>
-              <div className="px-2.5 pb-2 text-sm font-medium text-neutral-800 dark:text-neutral-100">
-                {me.email ?? me.phoneE164}
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={signOut} className="text-error dark:text-error-dark">
-                <LogOut className="h-4 w-4" aria-hidden />
-                Sign out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/dashboard"
+              title="Open the main tutor dashboard as yourself — not impersonating anyone"
+              className="flex items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            >
+              <LayoutDashboard className="h-4 w-4" aria-hidden />
+              Main Dashboard
+            </Link>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline-none focus-visible:shadow-focus-ring"
+                  aria-label="Account menu"
+                >
+                  {me.phoneE164.slice(-2)}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="min-w-[14rem]">
+                <div className="px-2.5 py-1.5 text-xs text-neutral-400 dark:text-neutral-500">Signed in as</div>
+                <div className="px-2.5 pb-2 text-sm font-medium text-neutral-800 dark:text-neutral-100">
+                  {me.email ?? me.phoneE164}
+                </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={signOut} className="text-error dark:text-error-dark">
+                  <LogOut className="h-4 w-4" aria-hidden />
+                  Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
         <nav className="flex items-center gap-1 overflow-x-auto border-t border-neutral-100 px-6 py-1.5 md:hidden dark:border-neutral-800">
           {NAV.map((item) => {
@@ -157,6 +167,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
+          <Link
+            href="/dashboard"
+            className="shrink-0 rounded-md px-3 py-1.5 text-sm font-medium text-neutral-600 dark:text-neutral-400"
+          >
+            Main Dashboard
+          </Link>
         </nav>
       </header>
 
