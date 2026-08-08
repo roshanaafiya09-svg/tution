@@ -1,6 +1,7 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -27,9 +28,18 @@ export class JwtAuthGuard implements CanActivate {
 
     try {
       request.user = this.tokensService.verifyAccessToken(token);
-      return true;
     } catch {
       throw new UnauthorizedException('Invalid or expired access token');
     }
+
+    // Super Admin "view as user" sessions (see AdminService.impersonate) can
+    // only read data — every mutating verb is rejected here, in the one
+    // guard almost every protected route already goes through, rather than
+    // requiring each controller to opt in individually.
+    if (request.user.impersonation && request.method !== 'GET') {
+      throw new ForbiddenException('Impersonated sessions are read-only');
+    }
+
+    return true;
   }
 }

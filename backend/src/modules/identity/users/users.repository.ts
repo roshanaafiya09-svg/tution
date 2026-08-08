@@ -167,6 +167,23 @@ export class UsersRepository {
       .where('id', '=', userId)
       .execute();
   }
+
+  /**
+   * Super Admin test-data cleanup only (AdminService.deleteUser) — every
+   * other deletion path in the app uses softDelete() above. Unlike that
+   * tombstone, this is a genuine `DELETE FROM users`, which the schema's
+   * near-universal `ON DELETE CASCADE` FK graph turns into a full wipe of
+   * everything the user owns (batches, materials, assignments,
+   * enrollments, messages, fee records, etc.). Appropriate for removing a
+   * synthetic test account cleanly; wrong for a real user's own deletion
+   * request, which is exactly why AccountService keeps using softDelete.
+   * Callers are responsible for verifying the target isn't the caller and
+   * isn't a superadmin before calling this — this method itself performs
+   * no such check.
+   */
+  hardDelete(userId: string) {
+    return this.db.deleteFrom('users').where('id', '=', userId).execute();
+  }
 }
 
 /** Postgres SQLSTATE 23505 = unique_violation. `pg` attaches `code` and

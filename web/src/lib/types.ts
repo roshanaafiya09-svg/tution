@@ -6,6 +6,49 @@ export interface Me {
   locale: string;
 }
 
+export interface AdminTeacherSummary {
+  id: string;
+  displayName: string | null;
+  email: string | null;
+  phoneE164: string;
+  status: 'active' | 'suspended' | 'deleted';
+  verificationStatus: 'pending' | 'verified' | 'rejected' | null;
+  createdAt: string;
+}
+
+export interface AdminStudentSummary {
+  id: string;
+  displayName: string | null;
+  email: string | null;
+  phoneE164: string;
+  status: 'active' | 'suspended' | 'deleted';
+  gradeLevel: string | null;
+  createdAt: string;
+}
+
+export interface AdminParentSummary {
+  id: string;
+  email: string | null;
+  phoneE164: string;
+  status: 'active' | 'suspended' | 'deleted';
+  linkedChildren: number;
+  createdAt: string;
+}
+
+export type ImpersonatedRole = 'tutor' | 'student' | 'parent';
+
+export interface ImpersonationResponse {
+  accessToken: string;
+  expiresIn: number;
+  target: {
+    id: string;
+    role: ImpersonatedRole;
+    displayName: string | null;
+    email: string | null;
+    phoneE164: string;
+  };
+}
+
 export interface TutorProfile {
   user_id: string;
   display_name: string;

@@ -45,6 +45,14 @@ export const tokenStore = {
     localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
     localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
   },
+  /** Impersonation tokens (see lib/impersonation.ts) have no matching
+   *  refresh token by design — this makes that the active session while
+   *  guaranteeing there's no stale refresh token left behind that could
+   *  get silently exchanged for a fresh one on a 401. */
+  setAccessOnly(accessToken: string) {
+    localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
+  },
   clear() {
     localStorage.removeItem(ACCESS_TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);

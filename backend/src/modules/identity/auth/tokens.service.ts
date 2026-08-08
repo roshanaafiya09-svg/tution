@@ -6,11 +6,18 @@ import type { UserRole } from '../../../database/types';
 import { RefreshTokenRepository } from './refresh-token.repository';
 
 const ACCESS_TOKEN_TTL = '15m';
+export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 const REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 
 export interface AccessTokenPayload {
   sub: string;
   roles: UserRole[];
+  /** Set only on Super Admin "view as user" tokens (see AdminService.impersonate).
+   *  JwtAuthGuard rejects any non-GET request carrying this flag. */
+  impersonation?: boolean;
+  /** The Super Admin's own user id, carried alongside an impersonation
+   *  token for traceability — who is really behind this session. */
+  actorId?: string;
 }
 
 @Injectable()
@@ -23,6 +30,29 @@ export class TokensService {
 
   signAccessToken(userId: string, roles: UserRole[]): string {
     const payload: AccessTokenPayload = { sub: userId, roles };
+    return this.jwtService.sign(payload, {
+      secret: this.config.getOrThrow<string>('auth.jwtAccessSecret'),
+      expiresIn: ACCESS_TOKEN_TTL,
+    });
+  }
+
+  /** Super Admin "view as user" (AdminService.impersonate): an access
+   *  token scoped to the target user's own sub/roles so every existing
+   *  "whose data is this" endpoint works unmodified, but flagged
+   *  `impersonation: true` so JwtAuthGuard rejects any write with it.
+   *  Deliberately has no matching refresh token — the session is meant
+   *  to end when this 15-minute token expires, not be renewed forever. */
+  signImpersonationToken(
+    targetUserId: string,
+    roles: UserRole[],
+    actorId: string,
+  ): string {
+    const payload: AccessTokenPayload = {
+      sub: targetUserId,
+      roles,
+      impersonation: true,
+      actorId,
+    };
     return this.jwtService.sign(payload, {
       secret: this.config.getOrThrow<string>('auth.jwtAccessSecret'),
       expiresIn: ACCESS_TOKEN_TTL,

@@ -24,6 +24,7 @@ import { DatabaseModule } from './database/database.module';
 import { RedisModule } from './database/redis.module';
 import { HealthModule } from './modules/health/health.module';
 import { IdentityModule } from './modules/identity/identity.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { SchedulingModule } from './modules/scheduling/scheduling.module';
 import { DeliveryModule } from './modules/delivery/delivery.module';
@@ -108,6 +109,7 @@ if (process.env.NODE_ENV !== 'production') {
     AnalyticsModule,
     HealthModule,
     IdentityModule,
+    AdminModule,
     CatalogModule,
     SchedulingModule,
     DeliveryModule,

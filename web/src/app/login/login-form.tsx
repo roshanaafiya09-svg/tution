@@ -71,13 +71,11 @@ export function LoginForm() {
     // Students have no web dashboard — the mobile app is their surface,
     // so send them to a page saying so rather than the marketing
     // homepage. Tutors and parents each get their own portal; Super
-    // Admin has no dedicated portal (see handover.md) so it lands on
-    // the same dashboard shell tutors use — RolesGuard's superadmin
-    // bypass makes every API call there succeed regardless of the
-    // account having no tutor role.
+    // Admin has its own /admin portal (teacher/student/parent management,
+    // "view as user").
     const me = await api.get<Me>('/auth/me').catch(() => null);
     if (me?.roles.includes('superadmin')) {
-      router.replace('/dashboard');
+      router.replace('/admin');
     } else if (me?.roles.includes('parent')) {
       router.replace('/parent');
     } else if (me?.roles.includes('tutor')) {

@@ -17,6 +17,9 @@ import {
 } from 'lucide-react';
 import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
 import type { Me } from '@/lib/types';
+import { impersonationStore } from '@/lib/impersonation';
+import type { ImpersonationTarget } from '@/lib/impersonation';
+import { ImpersonationBanner } from '@/components/impersonation-banner';
 import { NotificationsBell } from '@/components/notifications-bell';
 import {
   PageLoading,
@@ -49,6 +52,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [impersonating, setImpersonating] = useState<ImpersonationTarget | null>(null);
 
   useEffect(() => {
     if (!tokenStore.access) {
@@ -56,12 +60,23 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    setImpersonating(impersonationStore.target);
+
     api
       .get<Me>('/auth/me')
       .then(setMe)
       .catch((err: unknown) => {
         if (err instanceof ApiError && err.status === 401) {
-          router.replace('/login');
+          // A 401 while viewing as another user means the (deliberately
+          // short-lived, non-refreshable) impersonation token expired —
+          // that's "session ended", not "signed out", so send the admin
+          // back to /admin rather than bouncing them to /login.
+          if (impersonationStore.active) {
+            impersonationStore.stop();
+            router.replace('/admin');
+          } else {
+            router.replace('/login');
+          }
         } else {
           setError('Could not load your account.');
         }
@@ -102,6 +117,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background">
+      {impersonating && <ImpersonationBanner target={impersonating} />}
       <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/85 backdrop-blur supports-[backdrop-filter]:bg-white/70 dark:border-neutral-800 dark:bg-neutral-950/80">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
           <div className="flex items-center gap-8">
