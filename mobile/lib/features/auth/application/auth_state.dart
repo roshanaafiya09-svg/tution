@@ -5,7 +5,7 @@ enum AuthStatus {
   unknown,
   signedOut,
 
-  /// OTP requested for [phoneE164] — awaiting the 6-digit code.
+  /// OTP requested for [identifier] — awaiting the 6-digit code.
   otpRequested,
   signedIn,
 }
@@ -13,21 +13,29 @@ enum AuthStatus {
 class AuthState {
   const AuthState({
     this.status = AuthStatus.unknown,
-    this.phoneE164,
+    this.identifier,
+    this.needsSignup = false,
     this.user,
     this.error,
     this.isSubmitting = false,
   });
 
   final AuthStatus status;
-  final String? phoneE164;
+  final String? identifier;
+
+  /// Set once a bare verify (no signupRole) comes back 400 — the
+  /// backend's signal that this identifier has no account yet. The OTP
+  /// screen reveals the role + phone picker only then, so a returning
+  /// user is never asked for a phone number just to sign back in.
+  final bool needsSignup;
   final CurrentUser? user;
   final String? error;
   final bool isSubmitting;
 
   AuthState copyWith({
     AuthStatus? status,
-    String? phoneE164,
+    String? identifier,
+    bool? needsSignup,
     CurrentUser? user,
     String? error,
     bool? isSubmitting,
@@ -35,7 +43,8 @@ class AuthState {
   }) {
     return AuthState(
       status: status ?? this.status,
-      phoneE164: phoneE164 ?? this.phoneE164,
+      identifier: identifier ?? this.identifier,
+      needsSignup: needsSignup ?? this.needsSignup,
       user: user ?? this.user,
       error: clearError ? null : (error ?? this.error),
       isSubmitting: isSubmitting ?? this.isSubmitting,

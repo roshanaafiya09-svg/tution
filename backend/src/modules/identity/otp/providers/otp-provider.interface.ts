@@ -9,9 +9,10 @@ export const OTP_PROVIDER = 'OTP_PROVIDER';
  */
 export interface OtpContact {
   telegramChatId?: string;
+  email?: string;
 }
 
-export type OtpChannel = 'console' | 'telegram';
+export type OtpChannel = 'console' | 'telegram' | 'email';
 
 /**
  * Telegram is the only real delivery channel; ConsoleOtpProvider is the

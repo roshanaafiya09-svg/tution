@@ -2,6 +2,7 @@ export interface Me {
   id: string;
   roles: string[];
   phoneE164: string;
+  email: string | null;
   locale: string;
 }
 

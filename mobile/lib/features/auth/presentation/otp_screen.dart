@@ -6,9 +6,12 @@ import '../../../widgets/widgets.dart';
 import '../application/auth_controller.dart';
 import '../data/auth_models.dart';
 
-/// 6-digit OTP entry. [SignupRole] is only consumed by the backend the
-/// first time a phone number verifies (it creates the account then) —
-/// harmless to send on every verify, so the picker just stays simple.
+/// 6-digit OTP entry. The role picker and phone field only appear once
+/// a bare verify comes back signalling there's no account yet
+/// ([AuthState.needsSignup]) — a returning user is never asked to
+/// re-enter a phone number just to sign back in. `phone_e164` is still
+/// NOT NULL on the backend, so a phone is required exactly once, at
+/// account creation, same as the web app's signup step.
 class OtpScreen extends ConsumerStatefulWidget {
   const OtpScreen({super.key});
 
@@ -19,19 +22,26 @@ class OtpScreen extends ConsumerStatefulWidget {
 class _OtpScreenState extends ConsumerState<OtpScreen> {
   final _formKey = GlobalKey<FormState>();
   final _codeController = TextEditingController();
+  final _phoneController = TextEditingController();
   SignupRole _signupRole = SignupRole.student;
 
   @override
   void dispose() {
     _codeController.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
+    final needsSignup = ref.read(authControllerProvider).needsSignup;
     ref
         .read(authControllerProvider.notifier)
-        .verifyOtp(_codeController.text.trim(), signupRole: _signupRole);
+        .verifyOtp(
+          _codeController.text.trim(),
+          signupRole: needsSignup ? _signupRole : null,
+          phoneForSignup: needsSignup ? '+91${_phoneController.text.trim()}' : null,
+        );
   }
 
   @override
@@ -61,7 +71,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                   Text(l10n.enterCodeTitle, style: theme.textTheme.headlineMedium),
                   const SizedBox(height: 8),
                   Text(
-                    l10n.codeSentTo(authState.phoneE164?.substring(3) ?? ''),
+                    l10n.codeSentTo(authState.identifier ?? ''),
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurface.withValues(
                         alpha: 0.7,
@@ -77,52 +87,82 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                     ),
                     child: Form(
                       key: _formKey,
-                      child: TextFormField(
-                        controller: _codeController,
-                        keyboardType: TextInputType.number,
-                        autofillHints: const [AutofillHints.oneTimeCode],
-                        maxLength: 6,
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          letterSpacing: 8,
-                        ),
-                        decoration: const InputDecoration(
-                          counterText: '',
-                          border: InputBorder.none,
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().length != 6) {
-                            return l10n.otpCodeError;
-                          }
-                          return null;
-                        },
-                        onFieldSubmitted: (_) => _submit(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          TextFormField(
+                            controller: _codeController,
+                            keyboardType: TextInputType.number,
+                            autofillHints: const [AutofillHints.oneTimeCode],
+                            maxLength: 6,
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              letterSpacing: 8,
+                            ),
+                            decoration: const InputDecoration(
+                              counterText: '',
+                              border: InputBorder.none,
+                            ),
+                            validator: (value) {
+                              if (value == null || value.trim().length != 6) {
+                                return l10n.otpCodeError;
+                              }
+                              return null;
+                            },
+                            onFieldSubmitted: (_) => _submit(),
+                          ),
+                          if (authState.needsSignup) ...[
+                            const SizedBox(height: 8),
+                            TextFormField(
+                              controller: _phoneController,
+                              keyboardType: TextInputType.phone,
+                              autofillHints: const [
+                                AutofillHints.telephoneNumber,
+                              ],
+                              decoration: InputDecoration(
+                                labelText: l10n.signupPhoneLabel,
+                                prefixText: '+91  ',
+                                hintText: '98765 43210',
+                              ),
+                              validator: (value) {
+                                final digits = value?.trim() ?? '';
+                                if (digits.length != 10 ||
+                                    int.tryParse(digits) == null) {
+                                  return l10n.signupPhoneError;
+                                }
+                                return null;
+                              },
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 20),
-                  Text(
-                    l10n.newHerePrompt,
-                    style: theme.textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 8),
-                  SegmentedButton<SignupRole>(
-                    segments: [
-                      ButtonSegment(
-                        value: SignupRole.student,
-                        label: Text(l10n.roleStudent),
-                        icon: const Icon(Icons.school_outlined),
-                      ),
-                      ButtonSegment(
-                        value: SignupRole.tutor,
-                        label: Text(l10n.roleTutor),
-                        icon: const Icon(Icons.person_outline),
-                      ),
-                    ],
-                    selected: {_signupRole},
-                    onSelectionChanged: (selection) =>
-                        setState(() => _signupRole = selection.first),
-                  ),
+                  if (authState.needsSignup) ...[
+                    const SizedBox(height: 20),
+                    Text(
+                      l10n.newHerePrompt,
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 8),
+                    SegmentedButton<SignupRole>(
+                      segments: [
+                        ButtonSegment(
+                          value: SignupRole.student,
+                          label: Text(l10n.roleStudent),
+                          icon: const Icon(Icons.school_outlined),
+                        ),
+                        ButtonSegment(
+                          value: SignupRole.tutor,
+                          label: Text(l10n.roleTutor),
+                          icon: const Icon(Icons.person_outline),
+                        ),
+                      ],
+                      selected: {_signupRole},
+                      onSelectionChanged: (selection) =>
+                          setState(() => _signupRole = selection.first),
+                    ),
+                  ],
                   if (authState.error != null) ...[
                     const SizedBox(height: 16),
                     FormErrorBanner(message: authState.error!),

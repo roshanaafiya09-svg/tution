@@ -4,7 +4,6 @@ import {
   Controller,
   Get,
   HttpCode,
-  Param,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -14,13 +13,11 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { GoogleSignInDto } from './dto/google-signin.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
-import { StartTelegramLinkDto } from './dto/start-telegram-link.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import type { AccessTokenPayload } from './tokens.service';
 import { UsersRepository } from '../users/users.repository';
 import { GoogleAuthService } from './google-auth.service';
-import { TelegramLinkService } from '../telegram/telegram-link.service';
 
 /** `identifier` is the current field; `phoneE164` is the deprecated
  *  alias the shipped mobile app still sends. Exactly one is required. */
@@ -43,7 +40,6 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly usersRepository: UsersRepository,
     private readonly googleAuthService: GoogleAuthService,
-    private readonly telegramLinkService: TelegramLinkService,
   ) {}
 
   @Post('otp/request')
@@ -63,23 +59,6 @@ export class AuthController {
       dto.deviceLabel,
       dto.phoneForSignup,
     );
-  }
-
-  /** Starts Telegram linking for an identifier that has no account yet.
-   *  Public by design — it runs before any account exists, so there's no
-   *  session to authenticate. See TelegramLinkService.startLink for why
-   *  an *existing* account can't be linked this way. */
-  @Post('telegram/link/start')
-  @HttpCode(200)
-  startTelegramLink(@Body() dto: StartTelegramLinkDto) {
-    return this.telegramLinkService.startLink(dto.identifier);
-  }
-
-  /** Polled by the client while the user is off pressing Start in
-   *  Telegram. Returns only a boolean — never the chat id. */
-  @Get('telegram/link/:token/status')
-  telegramLinkStatus(@Param('token') token: string) {
-    return this.telegramLinkService.linkStatus(token);
   }
 
   @Post('refresh')

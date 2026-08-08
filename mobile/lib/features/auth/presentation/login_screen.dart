@@ -5,8 +5,8 @@ import '../../../l10n/gen/app_localizations.dart';
 import '../../../widgets/widgets.dart';
 import '../application/auth_controller.dart';
 
-/// Phone entry — India-only at launch (blueprint §0/§1: Chennai/Tamil
-/// Nadu), so the +91 prefix is fixed rather than a generic country picker.
+/// Email entry — the login identifier for all three roles (backend/web
+/// share this same email-OTP flow; see email-otp-migration-plan.md).
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -16,18 +16,19 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _phoneController = TextEditingController();
+  final _emailController = TextEditingController();
 
   @override
   void dispose() {
-    _phoneController.dispose();
+    _emailController.dispose();
     super.dispose();
   }
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
-    final phoneE164 = '+91${_phoneController.text.trim()}';
-    ref.read(authControllerProvider.notifier).requestOtp(phoneE164);
+    ref
+        .read(authControllerProvider.notifier)
+        .requestOtp(_emailController.text.trim());
   }
 
   @override
@@ -88,20 +89,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       Form(
                         key: _formKey,
                         child: TextFormField(
-                          controller: _phoneController,
-                          keyboardType: TextInputType.phone,
-                          autofillHints: const [AutofillHints.telephoneNumber],
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          autofillHints: const [AutofillHints.email],
                           style: theme.textTheme.bodyLarge,
                           decoration: InputDecoration(
-                            labelText: l10n.mobileNumberLabel,
-                            prefixText: '+91  ',
-                            hintText: '98765 43210',
+                            labelText: l10n.emailLabel,
+                            hintText: 'you@example.com',
                           ),
                           validator: (value) {
-                            final digits = value?.trim() ?? '';
-                            if (digits.length != 10 ||
-                                int.tryParse(digits) == null) {
-                              return l10n.mobileNumberError;
+                            final email = value?.trim() ?? '';
+                            if (!email.contains('@')) {
+                              return l10n.emailError;
                             }
                             return null;
                           },

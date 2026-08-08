@@ -48,23 +48,24 @@ export class UsersRepository {
    * Creates an account from whichever identifier signup was driven by.
    * phone_e164 is NOT NULL, so an email-identified signup still needs a
    * phone — callers pass `phoneE164` explicitly for that case rather
-   * than this method inventing a placeholder.
+   * than this method inventing a placeholder. `telegramChatId` is
+   * vestigial (Telegram OTP delivery is unregistered — see
+   * email-otp-migration-plan.md) and stays optional/unused by every
+   * current caller; kept only because the column and its unique index
+   * still exist.
    *
-   * The checks earlier in the signup flow (AuthService, TelegramLinkService)
-   * can't see everything Postgres's own unique constraints catch here —
-   * concurrent duplicate requests, or the same already-linked Telegram
-   * account being reused for a brand-new phone number (its own account
-   * has no conflicting phone, so nothing upstream flags it; only the
-   * insert itself, against `telegram_chat_id`, does). Left uncaught,
-   * that's a raw driver error with no HTTP status, which the app's
-   * global exception filter turns into an opaque 500 — translating it
-   * here gives the caller something they can actually act on.
+   * The checks earlier in the signup flow (AuthService) can't see
+   * everything Postgres's own unique constraints catch here —
+   * concurrent duplicate requests, for instance. Left uncaught, that's
+   * a raw driver error with no HTTP status, which the app's global
+   * exception filter turns into an opaque 500 — translating it here
+   * gives the caller something they can actually act on.
    */
   async createWithRole(
     identifier: string,
     role: UserRole,
-    telegramChatId: string,
     phoneE164?: string,
+    telegramChatId?: string | null,
   ) {
     const isEmail = identifierType(identifier) === 'email';
     const phone = isEmail ? phoneE164 : identifier;
@@ -80,7 +81,7 @@ export class UsersRepository {
             id: newId(),
             phone_e164: phone,
             email: isEmail ? identifier : null,
-            telegram_chat_id: telegramChatId,
+            telegram_chat_id: telegramChatId ?? null,
           })
           .returningAll()
           .executeTakeFirstOrThrow();

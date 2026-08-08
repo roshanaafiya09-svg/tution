@@ -104,17 +104,17 @@ abstract class AppLocalizations {
   /// **'Your classes, materials and homework — in one place.'**
   String get appTagline;
 
-  /// No description provided for @mobileNumberLabel.
+  /// No description provided for @emailLabel.
   ///
   /// In en, this message translates to:
-  /// **'Mobile number'**
-  String get mobileNumberLabel;
+  /// **'Email address'**
+  String get emailLabel;
 
-  /// No description provided for @mobileNumberError.
+  /// No description provided for @emailError.
   ///
   /// In en, this message translates to:
-  /// **'Enter a valid 10-digit mobile number'**
-  String get mobileNumberError;
+  /// **'Enter a valid email address'**
+  String get emailError;
 
   /// No description provided for @sendOtp.
   ///
@@ -125,7 +125,7 @@ abstract class AppLocalizations {
   /// No description provided for @otpDeliveryNote.
   ///
   /// In en, this message translates to:
-  /// **'We\'ll send a one-time code over WhatsApp.'**
+  /// **'We\'ll send a one-time code by email.'**
   String get otpDeliveryNote;
 
   /// No description provided for @enterCodeTitle.
@@ -137,8 +137,8 @@ abstract class AppLocalizations {
   /// No description provided for @codeSentTo.
   ///
   /// In en, this message translates to:
-  /// **'Sent via WhatsApp to +91 {phone}'**
-  String codeSentTo(String phone);
+  /// **'Code sent to {identifier}'**
+  String codeSentTo(String identifier);
 
   /// No description provided for @otpCodeError.
   ///
@@ -163,6 +163,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Tutor'**
   String get roleTutor;
+
+  /// No description provided for @signupPhoneLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone number'**
+  String get signupPhoneLabel;
+
+  /// No description provided for @signupPhoneError.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid 10-digit mobile number'**
+  String get signupPhoneError;
 
   /// No description provided for @verifyAndContinue.
   ///

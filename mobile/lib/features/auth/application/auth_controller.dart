@@ -47,13 +47,13 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
-  Future<void> requestOtp(String phoneE164) async {
+  Future<void> requestOtp(String identifier) async {
     state = state.copyWith(isSubmitting: true, clearError: true);
     try {
-      await _api.requestOtp(phoneE164);
+      await _api.requestOtp(identifier);
       state = state.copyWith(
         status: AuthStatus.otpRequested,
-        phoneE164: phoneE164,
+        identifier: identifier,
         isSubmitting: false,
       );
     } on ApiException catch (e) {
@@ -61,16 +61,21 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
-  Future<void> verifyOtp(String code, {SignupRole? signupRole}) async {
-    final phone = state.phoneE164;
-    if (phone == null) return;
+  Future<void> verifyOtp(
+    String code, {
+    SignupRole? signupRole,
+    String? phoneForSignup,
+  }) async {
+    final identifier = state.identifier;
+    if (identifier == null) return;
 
     state = state.copyWith(isSubmitting: true, clearError: true);
     try {
       final tokens = await _api.verifyOtp(
-        phoneE164: phone,
+        identifier: identifier,
         code: code,
         signupRole: signupRole,
+        phoneForSignup: phoneForSignup,
       );
       await ref
           .read(tokenStorageProvider)
@@ -88,11 +93,22 @@ class AuthController extends Notifier<AuthState> {
       unawaited(Analytics.identify(user.id));
       unawaited(Analytics.capture('login'));
     } on ApiException catch (e) {
+      if (e.statusCode == 400 && signupRole == null) {
+        // No account for this identifier yet — reveal the role/phone
+        // picker so the caller can retry with them, mirroring the web
+        // app's identical two-step verify flow.
+        state = state.copyWith(
+          needsSignup: true,
+          isSubmitting: false,
+          clearError: true,
+        );
+        return;
+      }
       state = state.copyWith(error: e.message, isSubmitting: false);
     }
   }
 
-  /// Back to phone entry — e.g. the user mistyped their number.
+  /// Back to identifier entry — e.g. the user mistyped their email.
   void cancelOtp() {
     state = state.copyWith(status: AuthStatus.signedOut, clearError: true);
   }

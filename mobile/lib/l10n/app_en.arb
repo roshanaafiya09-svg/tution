@@ -4,20 +4,20 @@
   "appTagline": "Your classes, materials and homework — in one place.",
   "@appTagline": {},
 
-  "mobileNumberLabel": "Mobile number",
-  "@mobileNumberLabel": {},
-  "mobileNumberError": "Enter a valid 10-digit mobile number",
-  "@mobileNumberError": {},
+  "emailLabel": "Email address",
+  "@emailLabel": {},
+  "emailError": "Enter a valid email address",
+  "@emailError": {},
   "sendOtp": "Send OTP",
   "@sendOtp": {},
-  "otpDeliveryNote": "We'll send a one-time code over WhatsApp.",
+  "otpDeliveryNote": "We'll send a one-time code by email.",
   "@otpDeliveryNote": {},
 
   "enterCodeTitle": "Enter the code",
   "@enterCodeTitle": {},
-  "codeSentTo": "Sent via WhatsApp to +91 {phone}",
+  "codeSentTo": "Code sent to {identifier}",
   "@codeSentTo": {
-    "placeholders": { "phone": {"type": "String"} }
+    "placeholders": { "identifier": {"type": "String"} }
   },
   "otpCodeError": "Enter the 6-digit code",
   "@otpCodeError": {},
@@ -27,6 +27,10 @@
   "@roleStudent": {},
   "roleTutor": "Tutor",
   "@roleTutor": {},
+  "signupPhoneLabel": "Phone number",
+  "@signupPhoneLabel": {},
+  "signupPhoneError": "Enter a valid 10-digit mobile number",
+  "@signupPhoneError": {},
   "verifyAndContinue": "Verify & continue",
   "@verifyAndContinue": {},
 

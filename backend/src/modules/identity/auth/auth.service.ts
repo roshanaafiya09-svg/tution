@@ -1,11 +1,6 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-} from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { OtpService } from '../otp/otp.service';
 import { UsersRepository } from '../users/users.repository';
-import { TelegramLinkService } from '../telegram/telegram-link.service';
 import { identifierType, normalizeIdentifier } from '../identifier.util';
 import { TokensService } from './tokens.service';
 
@@ -14,52 +9,36 @@ export interface AuthTokens {
   refreshToken: string;
 }
 
-/** Signals that the caller must complete Telegram linking before a code
- *  can be delivered. Carries `telegramLinkRequired` so clients can
- *  branch on it rather than string-matching the message. */
-export class TelegramLinkRequiredException extends ForbiddenException {
-  constructor(message: string) {
-    super({
-      statusCode: 403,
-      error: 'Forbidden',
-      message,
-      telegramLinkRequired: true,
-    });
-  }
-}
-
 @Injectable()
 export class AuthService {
   constructor(
     private readonly otpService: OtpService,
     private readonly usersRepository: UsersRepository,
     private readonly tokensService: TokensService,
-    private readonly telegramLinkService: TelegramLinkService,
   ) {}
 
   /**
-   * Codes go out over Telegram only, and a bot can't message a chat that
-   * hasn't messaged it — so delivery is gated on a linked chat id.
-   * Existing accounts read theirs from `users`; a brand-new identifier
-   * reads it from the pending link record it just completed.
+   * Codes go out over email only. If the identifier itself is an
+   * email, that's where the code goes — new-signup or existing
+   * account, doesn't matter. If it's a phone, only an existing
+   * account's email on file can receive it; a fresh phone number has
+   * nowhere to send a code (email is required to sign up — see
+   * email-otp-migration-plan.md).
    */
   async requestOtp(rawIdentifier: string): Promise<void> {
     const identifier = normalizeIdentifier(rawIdentifier);
     const user = await this.usersRepository.findByIdentifier(identifier);
 
-    const telegramChatId = user
-      ? user.telegram_chat_id
-      : await this.telegramLinkService.linkedChatIdFor(identifier);
+    const email =
+      identifierType(identifier) === 'email' ? identifier : user?.email;
 
-    if (!telegramChatId) {
-      throw new TelegramLinkRequiredException(
-        user
-          ? 'This account needs Telegram connected before you can sign in.'
-          : 'Connect Telegram to receive your sign-in code.',
+    if (!email) {
+      throw new BadRequestException(
+        'An email address is required to receive a login code — sign up with your email, or add one to your account.',
       );
     }
 
-    await this.otpService.requestOtp(identifier, { telegramChatId });
+    await this.otpService.requestOtp(identifier, { email });
   }
 
   async verifyOtpAndIssueTokens(
@@ -80,19 +59,6 @@ export class AuthService {
         );
       }
 
-      // The chat id comes from the link record Telegram itself
-      // completed, never from the request body — a client can't claim
-      // someone else's chat. Its presence is already implied by
-      // requestOtp having succeeded; re-reading it here keeps signup
-      // honest rather than trusting that ordering.
-      const telegramChatId =
-        await this.telegramLinkService.linkedChatIdFor(identifier);
-      if (!telegramChatId) {
-        throw new TelegramLinkRequiredException(
-          'Connect Telegram to finish creating your account.',
-        );
-      }
-
       if (identifierType(identifier) === 'email' && !phoneE164) {
         // phone_e164 is NOT NULL — an email-identified signup still has
         // to supply one. Surfaced as a 400 rather than a DB constraint
@@ -105,7 +71,6 @@ export class AuthService {
       user = await this.usersRepository.createWithRole(
         identifier,
         signupRole,
-        telegramChatId,
         phoneE164,
       );
     }

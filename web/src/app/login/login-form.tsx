@@ -1,10 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Script from 'next/script';
 import posthog from 'posthog-js';
-import { api, apiPost, apiGetPublic, tokenStore, ApiError } from '@/lib/api';
+import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
 import { Button, Field, Input, InlineError, Card } from '@/components/ui';
 import type { Me } from '@/lib/types';
 
@@ -13,13 +13,12 @@ interface AuthTokens {
   refreshToken: string;
 }
 
-type Phase = 'identify' | 'connect-telegram' | 'otp' | 'choose-role';
+type Phase = 'identify' | 'otp' | 'choose-role';
 type IdentifierKind = 'phone' | 'email';
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
 const ROLES = ['tutor', 'student', 'parent'] as const;
-const TELEGRAM_POLL_MS = 2000;
 
 /** Reads the `sub` claim straight out of the access token — no server
  * round-trip needed just to identify the PostHog session. */
@@ -39,7 +38,7 @@ export function LoginForm() {
   const next = searchParams.get('next');
 
   const [phase, setPhase] = useState<Phase>('identify');
-  const [kind, setKind] = useState<IdentifierKind>('phone');
+  const [kind, setKind] = useState<IdentifierKind>('email');
   // Only the 10 local digits live in state — +91 is fixed and rendered
   // separately, so it's structurally impossible to submit a phone that's
   // missing or has mangled the country code.
@@ -50,9 +49,6 @@ export function LoginForm() {
   const [signupPhoneDigits, setSignupPhoneDigits] = useState('');
   const [code, setCode] = useState('');
   const [signupRole, setSignupRole] = useState<'tutor' | 'student' | 'parent'>('tutor');
-  const [telegramLink, setTelegramLink] = useState<{ token: string; deepLink: string } | null>(
-    null,
-  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const googleButtonRef = useRef<HTMLDivElement>(null);
@@ -73,11 +69,12 @@ export function LoginForm() {
     // Fetch the authoritative role set rather than trust the signup-only
     // `signupRole` choice — a returning user never passes that through.
     // Students have no web dashboard — the mobile app is their surface,
-    // so send them somewhere that makes sense on web. Tutors and parents
-    // each get their own portal; Super Admin has no dedicated portal
-    // (see handover.md) so it lands on the same dashboard shell tutors
-    // use — RolesGuard's superadmin bypass makes every API call there
-    // succeed regardless of the account having no tutor role.
+    // so send them to a page saying so rather than the marketing
+    // homepage. Tutors and parents each get their own portal; Super
+    // Admin has no dedicated portal (see handover.md) so it lands on
+    // the same dashboard shell tutors use — RolesGuard's superadmin
+    // bypass makes every API call there succeed regardless of the
+    // account having no tutor role.
     const me = await api.get<Me>('/auth/me').catch(() => null);
     if (me?.roles.includes('superadmin')) {
       router.replace('/dashboard');
@@ -86,11 +83,11 @@ export function LoginForm() {
     } else if (me?.roles.includes('tutor')) {
       router.replace('/dashboard');
     } else {
-      router.replace('/');
+      router.replace('/get-the-app');
     }
   }
 
-  // Dev-only Super Admin auto-login: skips the manual phone/Telegram OTP
+  // Dev-only Super Admin auto-login: skips the manual phone/email OTP
   // flow entirely when running `next dev` locally. Next.js's production
   // build replaces process.env.NODE_ENV with a literal and dead-code-
   // eliminates this whole branch, so none of it — including the request
@@ -113,72 +110,18 @@ export function LoginForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** Shared by the initial submit and the post-linking retry. Returns
-   *  true once a code is actually on its way. */
-  const sendOtp = useCallback(async (): Promise<boolean> => {
-    try {
-      await apiPost('/auth/otp/request', { identifier });
-      setPhase('otp');
-      return true;
-    } catch (err) {
-      if (err instanceof ApiError && err.telegramLinkRequired) {
-        // No Telegram chat on file. Ask the backend to start a link —
-        // it refuses (409) for an account that already exists but was
-        // created before Telegram sign-in, which can't self-link safely.
-        try {
-          const link = await apiPost<{ token: string; deepLink: string }>(
-            '/auth/telegram/link/start',
-            { identifier },
-          );
-          setTelegramLink(link);
-          setPhase('connect-telegram');
-        } catch (linkErr) {
-          setError(
-            linkErr instanceof ApiError ? linkErr.message : 'Could not start Telegram sign-in.',
-          );
-        }
-        return false;
-      }
-      setError(err instanceof ApiError ? err.message : 'Could not send the code.');
-      return false;
-    }
-  }, [identifier]);
-
   async function handleSendOtp() {
     setError(null);
     setLoading(true);
-    await sendOtp();
-    setLoading(false);
+    try {
+      await apiPost('/auth/otp/request', { identifier });
+      setPhase('otp');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not send the code.');
+    } finally {
+      setLoading(false);
+    }
   }
-
-  // While the user is off in Telegram pressing Start, poll for the link
-  // completing, then send the code automatically so they come back to a
-  // code prompt rather than having to re-submit.
-  useEffect(() => {
-    if (phase !== 'connect-telegram' || !telegramLink) return;
-
-    let cancelled = false;
-    const timer = setInterval(() => {
-      void (async () => {
-        try {
-          const { linked } = await apiGetPublic<{ linked: boolean }>(
-            `/auth/telegram/link/${telegramLink.token}/status`,
-          );
-          if (linked && !cancelled) {
-            clearInterval(timer);
-            await sendOtp();
-          }
-        } catch {
-          // Transient poll failure — the next tick retries.
-        }
-      })();
-    }, TELEGRAM_POLL_MS);
-
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [phase, telegramLink, sendOtp]);
 
   async function handleVerify(withRole?: 'tutor' | 'student' | 'parent') {
     setError(null);
@@ -278,7 +221,7 @@ export function LoginForm() {
           </div>
 
           {kind === 'phone' ? (
-            <Field label="Phone number" hint="We'll send a code on Telegram.">
+            <Field label="Phone number" hint="We'll send a code by email.">
               <div className="flex items-center gap-2">
                 <span className="flex h-10 items-center rounded-md border border-neutral-300 bg-neutral-50 px-3 text-sm text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400">
                   +91
@@ -296,7 +239,7 @@ export function LoginForm() {
               </div>
             </Field>
           ) : (
-            <Field label="Email address" hint="We'll send a code on Telegram.">
+            <Field label="Email address" hint="We'll send a code by email.">
               <Input
                 type="email"
                 inputMode="email"
@@ -318,56 +261,10 @@ export function LoginForm() {
         </div>
       )}
 
-      {phase === 'connect-telegram' && telegramLink && (
-        <div className="flex flex-col gap-4">
-          <div>
-            <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
-              Connect Telegram
-            </p>
-            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-              Open our bot and press{' '}
-              <span className="font-medium text-neutral-700 dark:text-neutral-300">Start</span>,
-              then tap the button it shows you to confirm your number — that&apos;s how we know
-              it&apos;s really you. We&apos;ll send your code here automatically once that&apos;s
-              done.
-            </p>
-          </div>
-
-          <a
-            href={telegramLink.deepLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex h-10 items-center justify-center rounded-md bg-brand-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline-none focus-visible:shadow-focus-ring"
-          >
-            Open Telegram
-          </a>
-
-          <p className="text-xs text-neutral-400 dark:text-neutral-500">
-            Waiting for you to finish connecting…
-          </p>
-
-          <button
-            type="button"
-            onClick={() => {
-              setTelegramLink(null);
-              setError(null);
-              setPhase('identify');
-            }}
-            className="text-sm text-neutral-500 underline hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
-          >
-            Back
-          </button>
-        </div>
-      )}
-
       {(phase === 'otp' || phase === 'choose-role') && (
         <div className="flex flex-col gap-4">
           <p className="text-sm text-neutral-500 dark:text-neutral-400">
-            Code sent to{' '}
-            <span className="font-medium text-neutral-800 dark:text-neutral-100">
-              {identifier}
-            </span>{' '}
-            on Telegram.
+            Code sent to your email — check spam if you don&apos;t see it within a minute.
           </p>
           <Field label="6-digit code">
             <Input

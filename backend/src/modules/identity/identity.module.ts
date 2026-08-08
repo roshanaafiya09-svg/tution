@@ -6,10 +6,7 @@ import { OtpService } from './otp/otp.service';
 import { OtpRepository } from './otp/otp.repository';
 import { OTP_PROVIDER } from './otp/providers/otp-provider.interface';
 import { ConsoleOtpProvider } from './otp/providers/console-otp.provider';
-import { TelegramOtpProvider } from './otp/providers/telegram-otp.provider';
-import { TelegramLinkRepository } from './telegram/telegram-link.repository';
-import { TelegramLinkService } from './telegram/telegram-link.service';
-import { TelegramUpdatesPoller } from './telegram/telegram-updates.poller';
+import { EmailOtpProvider } from './otp/providers/email-otp.provider';
 import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
 import { TokensService } from './auth/tokens.service';
@@ -26,9 +23,15 @@ const otpProviderLogger = new Logger('IdentityModule');
 
 /**
  * Bounded context: users, roles/RBAC, auth (phone-or-email OTP delivered
- * via Telegram + Google Sign-In), Telegram account linking, tutor/student
- * profiles. Verification and consent live in TrustModule.
- * Owns tables: users, user_roles, profiles_tutor, profiles_student.
+ * via email + Google Sign-In), tutor/student profiles. Verification and
+ * consent live in TrustModule. Owns tables: users, user_roles,
+ * profiles_tutor, profiles_student.
+ *
+ * The Telegram-linking subsystem (identity/telegram/*) and
+ * TelegramOtpProvider still exist on disk (see
+ * email-otp-migration-plan.md — deletion deferred) but are
+ * deliberately not registered here, so they're inert dead code, not
+ * part of this module's DI graph.
  */
 @Module({
   imports: [JwtModule.register({}), SubscriptionsModule],
@@ -38,36 +41,35 @@ const otpProviderLogger = new Logger('IdentityModule');
     OtpRepository,
     OtpService,
     ConsoleOtpProvider,
-    TelegramOtpProvider,
-    TelegramLinkRepository,
-    TelegramLinkService,
-    TelegramUpdatesPoller,
+    EmailOtpProvider,
     {
       provide: OTP_PROVIDER,
-      inject: [ConfigService, ConsoleOtpProvider, TelegramOtpProvider],
-      // Telegram is the only real delivery channel; console is the
+      inject: [ConfigService, ConsoleOtpProvider, EmailOtpProvider],
+      // Email is the only real delivery channel; console is the
       // zero-credential dev fallback that logs the code instead of
-      // sending it. Both vars are required together — the token sends,
-      // the username builds the linking deep link, and delivery is
-      // useless without a way for users to link in the first place.
+      // sending it. All five SMTP vars are required together — a
+      // partial config can't actually send mail.
       useFactory: (
         config: ConfigService,
         consoleProvider: ConsoleOtpProvider,
-        telegramProvider: TelegramOtpProvider,
+        emailProvider: EmailOtpProvider,
       ) => {
-        const telegramConfigured = Boolean(
-          config.get<string>('telegram.botToken') &&
-          config.get<string>('telegram.botUsername'),
+        const emailConfigured = Boolean(
+          config.get<string>('email.smtpHost') &&
+          config.get<number>('email.smtpPort') &&
+          config.get<string>('email.smtpUser') &&
+          config.get<string>('email.smtpPass') &&
+          config.get<string>('email.smtpFrom'),
         );
-        if (telegramConfigured) {
+        if (emailConfigured) {
           otpProviderLogger.log(
-            'Telegram bot configured — using Telegram for OTP delivery',
+            'SMTP configured — using email for OTP delivery',
           );
-          return telegramProvider;
+          return emailProvider;
         }
 
         otpProviderLogger.warn(
-          'TELEGRAM_BOT_TOKEN/TELEGRAM_BOT_USERNAME not set — OTPs will be logged, not sent',
+          'SMTP_HOST/PORT/USER/PASS/FROM not set — OTPs will be logged, not sent',
         );
         return consoleProvider;
       },

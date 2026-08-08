@@ -13,23 +13,23 @@ class AppLocalizationsEn extends AppLocalizations {
       'Your classes, materials and homework — in one place.';
 
   @override
-  String get mobileNumberLabel => 'Mobile number';
+  String get emailLabel => 'Email address';
 
   @override
-  String get mobileNumberError => 'Enter a valid 10-digit mobile number';
+  String get emailError => 'Enter a valid email address';
 
   @override
   String get sendOtp => 'Send OTP';
 
   @override
-  String get otpDeliveryNote => 'We\'ll send a one-time code over WhatsApp.';
+  String get otpDeliveryNote => 'We\'ll send a one-time code by email.';
 
   @override
   String get enterCodeTitle => 'Enter the code';
 
   @override
-  String codeSentTo(String phone) {
-    return 'Sent via WhatsApp to +91 $phone';
+  String codeSentTo(String identifier) {
+    return 'Code sent to $identifier';
   }
 
   @override
@@ -43,6 +43,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get roleTutor => 'Tutor';
+
+  @override
+  String get signupPhoneLabel => 'Phone number';
+
+  @override
+  String get signupPhoneError => 'Enter a valid 10-digit mobile number';
 
   @override
   String get verifyAndContinue => 'Verify & continue';

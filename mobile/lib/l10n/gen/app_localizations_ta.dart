@@ -13,24 +13,24 @@ class AppLocalizationsTa extends AppLocalizations {
       'உங்கள் வகுப்புகள், பாடக்குறிப்புகள், வீட்டுப்பாடம் — ஒரே இடத்தில்.';
 
   @override
-  String get mobileNumberLabel => 'மொபைல் எண்';
+  String get emailLabel => 'மின்னஞ்சல் முகவரி';
 
   @override
-  String get mobileNumberError => 'சரியான 10-இலக்க மொபைல் எண்ணை உள்ளிடவும்';
+  String get emailError => 'சரியான மின்னஞ்சல் முகவரியை உள்ளிடவும்';
 
   @override
   String get sendOtp => 'OTP அனுப்பவும்';
 
   @override
   String get otpDeliveryNote =>
-      'வாட்ஸ்அப் வழியாக ஒரு முறை பயன்படும் குறியீட்டை அனுப்புவோம்.';
+      'மின்னஞ்சல் வழியாக ஒரு முறை பயன்படும் குறியீட்டை அனுப்புவோம்.';
 
   @override
   String get enterCodeTitle => 'குறியீட்டை உள்ளிடவும்';
 
   @override
-  String codeSentTo(String phone) {
-    return '+91 $phone க்கு வாட்ஸ்அப் வழியாக அனுப்பப்பட்டது';
+  String codeSentTo(String identifier) {
+    return '$identifier க்கு குறியீடு அனுப்பப்பட்டது';
   }
 
   @override
@@ -44,6 +44,12 @@ class AppLocalizationsTa extends AppLocalizations {
 
   @override
   String get roleTutor => 'ஆசிரியர்';
+
+  @override
+  String get signupPhoneLabel => 'மொபைல் எண்';
+
+  @override
+  String get signupPhoneError => 'சரியான 10-இலக்க மொபைல் எண்ணை உள்ளிடவும்';
 
   @override
   String get verifyAndContinue => 'சரிபார்த்து தொடரவும்';

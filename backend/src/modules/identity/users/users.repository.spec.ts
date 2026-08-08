@@ -40,14 +40,14 @@ describe('UsersRepository.createWithRole', () => {
     return new UsersRepository(db);
   }
 
-  it('translates a telegram_chat_id collision into a clear 409 — the bug this fixes: the same Telegram account reused for a different phone number', async () => {
+  it('translates a telegram_chat_id collision into a clear 409 — legacy constraint, kept since the column/index still exist', async () => {
     const repo = build(pgUniqueViolation('users_telegram_chat_id_unique_idx'));
 
     await expect(
-      repo.createWithRole('+919876543210', 'tutor', '12345'),
+      repo.createWithRole('+919876543210', 'tutor', undefined, '12345'),
     ).rejects.toBeInstanceOf(ConflictException);
     await expect(
-      repo.createWithRole('+919876543210', 'tutor', '12345'),
+      repo.createWithRole('+919876543210', 'tutor', undefined, '12345'),
     ).rejects.toThrow(/already connected to a different account/);
   });
 
@@ -55,7 +55,7 @@ describe('UsersRepository.createWithRole', () => {
     const repo = build(pgUniqueViolation('users_phone_e164_key'));
 
     await expect(
-      repo.createWithRole('+919876543210', 'tutor', '12345'),
+      repo.createWithRole('+919876543210', 'tutor'),
     ).rejects.toThrow(/phone number already exists/);
   });
 
@@ -63,12 +63,7 @@ describe('UsersRepository.createWithRole', () => {
     const repo = build(pgUniqueViolation('users_email_unique_idx'));
 
     await expect(
-      repo.createWithRole(
-        'student@example.com',
-        'student',
-        '12345',
-        '+919876543210',
-      ),
+      repo.createWithRole('student@example.com', 'student', '+919876543210'),
     ).rejects.toThrow(/email already exists/);
   });
 
@@ -76,7 +71,7 @@ describe('UsersRepository.createWithRole', () => {
     const repo = build(new Error('connection terminated unexpectedly'));
 
     await expect(
-      repo.createWithRole('+919876543210', 'tutor', '12345'),
+      repo.createWithRole('+919876543210', 'tutor'),
     ).rejects.toThrow('connection terminated unexpectedly');
   });
 
@@ -84,7 +79,7 @@ describe('UsersRepository.createWithRole', () => {
     const repo = build(new Error('should never be reached'));
 
     await expect(
-      repo.createWithRole('student@example.com', 'student', '12345'),
+      repo.createWithRole('student@example.com', 'student'),
     ).rejects.toThrow('createWithRole needs a phone number');
   });
 });

@@ -33,6 +33,15 @@ export const envSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_BOT_USERNAME: z.string().optional(),
 
+  // --- Email OTP (Gmail SMTP via Nodemailer) — the real OTP delivery
+  // channel. All five optional together: unset falls back to the same
+  // console-logging dev provider (no code changes). ---
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_FROM: z.string().optional(),
+
   // --- Google Sign-In (web) — optional; endpoint 400s until set. ---
   GOOGLE_CLIENT_ID: z.string().optional(),
 
