@@ -45,31 +45,29 @@ const otpProviderLogger = new Logger('IdentityModule');
     {
       provide: OTP_PROVIDER,
       inject: [ConfigService, ConsoleOtpProvider, EmailOtpProvider],
-      // Email is the only real delivery channel; console is the
-      // zero-credential dev fallback that logs the code instead of
-      // sending it. All five SMTP vars are required together — a
-      // partial config can't actually send mail.
+      // Email (via Brevo's HTTPS API) is the only real delivery
+      // channel; console is the zero-credential dev fallback that logs
+      // the code instead of sending it. BREVO_API_KEY plus SMTP_USER
+      // (reused as the sender identity, not for SMTP) are what's
+      // actually required — see EmailOtpProvider.
       useFactory: (
         config: ConfigService,
         consoleProvider: ConsoleOtpProvider,
         emailProvider: EmailOtpProvider,
       ) => {
         const emailConfigured = Boolean(
-          config.get<string>('email.smtpHost') &&
-          config.get<number>('email.smtpPort') &&
-          config.get<string>('email.smtpUser') &&
-          config.get<string>('email.smtpPass') &&
-          config.get<string>('email.smtpFrom'),
+          config.get<string>('email.brevoApiKey') &&
+          config.get<string>('email.smtpUser'),
         );
         if (emailConfigured) {
           otpProviderLogger.log(
-            'SMTP configured — using email for OTP delivery',
+            'Brevo configured — using email for OTP delivery',
           );
           return emailProvider;
         }
 
         otpProviderLogger.warn(
-          'SMTP_HOST/PORT/USER/PASS/FROM not set — OTPs will be logged, not sent',
+          'BREVO_API_KEY/SMTP_USER not set — OTPs will be logged, not sent',
         );
         return consoleProvider;
       },

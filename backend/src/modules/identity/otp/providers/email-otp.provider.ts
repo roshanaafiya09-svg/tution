@@ -5,43 +5,35 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createTransport, Transporter } from 'nodemailer';
 import { OtpContact, OtpProvider } from './otp-provider.interface';
 
+const BREVO_SEND_URL = 'https://api.brevo.com/v3/smtp/email';
+
+interface BrevoErrorBody {
+  message?: string;
+  code?: string;
+}
+
 /**
- * Sends OTPs over SMTP via Nodemailer — the sole real delivery channel
- * (ConsoleOtpProvider is the no-credentials dev fallback). Needs
- * contact.email; callers without one on file get a clear 400 rather
- * than a silent failure.
+ * Sends OTPs over Brevo's transactional email HTTPS API — the sole
+ * real delivery channel (ConsoleOtpProvider is the no-credentials dev
+ * fallback). Needs contact.email; callers without one on file get a
+ * clear 400 rather than a silent failure.
+ *
+ * HTTPS, not SMTP, deliberately: Render's free tier blocks outbound
+ * traffic to SMTP ports (25/465/587) entirely, which is what this
+ * provider replaced Nodemailer/Gmail SMTP for — see
+ * email-otp-migration-plan.md. The sender identity is SMTP_USER's
+ * value (the address already verified as this app's Brevo sender),
+ * not a new env var — SMTP_HOST/PORT/PASS/FROM are unused here but
+ * deliberately left in place; see env.validation.ts.
  */
 @Injectable()
 export class EmailOtpProvider implements OtpProvider {
   readonly channel = 'email' as const;
   private readonly logger = new Logger('OTP (Email)');
-  private transporter: Transporter | undefined;
 
   constructor(private readonly config: ConfigService) {}
-
-  private getTransporter(): Transporter {
-    if (this.transporter) return this.transporter;
-
-    const host = this.config.getOrThrow<string>('email.smtpHost');
-    const port = this.config.getOrThrow<number>('email.smtpPort');
-    const user = this.config.getOrThrow<string>('email.smtpUser');
-    const pass = this.config.getOrThrow<string>('email.smtpPass');
-
-    this.transporter = createTransport({
-      host,
-      port,
-      // 465 is SMTPS (implicit TLS); everything else (587, 25) uses
-      // STARTTLS, which nodemailer negotiates automatically when
-      // `secure: false` — hardcoding secure=true for any other port
-      // would break the common 587 case.
-      secure: port === 465,
-      auth: { user, pass },
-    });
-    return this.transporter;
-  }
 
   async send(
     identifier: string,
@@ -55,29 +47,52 @@ export class EmailOtpProvider implements OtpProvider {
       );
     }
 
-    const from = this.config.getOrThrow<string>('email.smtpFrom');
-    const transporter = this.getTransporter();
+    const apiKey = this.config.getOrThrow<string>('email.brevoApiKey');
+    const senderEmail = this.config.getOrThrow<string>('email.smtpUser');
 
+    let response: Response;
     try {
-      await transporter.sendMail({
-        from,
-        to,
-        subject: `Your Scholar login code: ${code}`,
-        // Plain text only, no HTML — better Gmail deliverability and
-        // the code stays readable straight from the notification.
-        // "5 minutes" matches the real TTL, OtpService.CODE_TTL_SECONDS
-        // — corrected from an earlier "10 minutes" that didn't.
-        text: `Your verification code is ${code}.\n\nThis code expires in 5 minutes. If you didn't request this, you can ignore this email.`,
+      response = await fetch(BREVO_SEND_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'api-key': apiKey,
+        },
+        body: JSON.stringify({
+          sender: { email: senderEmail, name: 'Scholar' },
+          to: [{ email: to }],
+          subject: `Your Scholar login code: ${code}`,
+          // Plain text only, no HTML — better deliverability and the
+          // code stays readable straight from the notification.
+          textContent: `Your verification code is ${code}.\n\nThis code expires in 5 minutes. If you didn't request this, you can ignore this email.`,
+        }),
       });
     } catch (err) {
-      // Never log the OTP itself or SMTP credentials — only the
-      // failure reason, same discipline as TelegramOtpProvider.
+      // fetch() itself throws for DNS/connection/timeout failures —
+      // never include the API key (only ever in a header we sent,
+      // never in what we caught here), just the failure reason.
       this.logger.error(
-        `Email send failed: ${err instanceof Error ? err.message : 'unknown SMTP error'}`,
+        `Email send failed: could not reach Brevo (${err instanceof Error ? err.message : 'unknown network error'})`,
       );
       throw new ServiceUnavailableException(
         'Could not send the code by email — try again shortly.',
       );
     }
+
+    if (response.ok) return;
+
+    const body = (await response
+      .json()
+      .catch(() => ({}) as BrevoErrorBody)) as BrevoErrorBody;
+
+    // Server-side diagnostics only ever include Brevo's own error
+    // description — never the API key, headers, or request body.
+    this.logger.error(
+      `Email send failed (HTTP ${response.status}): ${body.message ?? 'unknown error'}`,
+    );
+    throw new ServiceUnavailableException(
+      'Could not send the code by email — try again shortly.',
+    );
   }
 }

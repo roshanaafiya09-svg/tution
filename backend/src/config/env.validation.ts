@@ -33,9 +33,17 @@ export const envSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_BOT_USERNAME: z.string().optional(),
 
-  // --- Email OTP (Gmail SMTP via Nodemailer) — the real OTP delivery
-  // channel. All five optional together: unset falls back to the same
-  // console-logging dev provider (no code changes). ---
+  // --- Email OTP (Brevo HTTPS API) — the active real OTP delivery
+  // channel. Unset falls back to the console-logging dev provider (no
+  // code changes). Render's free tier blocks outbound SMTP ports
+  // entirely, so this replaced the SMTP_* mechanism below as the thing
+  // that actually sends — see email-otp-migration-plan.md. ---
+  BREVO_API_KEY: z.string().optional(),
+
+  // --- SMTP_* — kept for now (deliberately not read for sending
+  // anymore; EmailOtpProvider uses Brevo). SMTP_USER's value is still
+  // read, as the sender identity for Brevo sends, not for SMTP itself.
+  // Removal deferred — the owner's call, not this change's. ---
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().positive().optional(),
   SMTP_USER: z.string().optional(),

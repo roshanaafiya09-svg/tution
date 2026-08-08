@@ -30,6 +30,14 @@ export const telegramConfig = registerAs('telegram', () => ({
 }));
 
 export const emailConfig = registerAs('email', () => ({
+  // Brevo (HTTPS email API) — the active OTP delivery mechanism.
+  // Render's free tier blocks outbound SMTP ports entirely (25/465/587),
+  // which is why this exists alongside the SMTP_* vars below rather than
+  // replacing them outright — see email-otp-migration-plan.md's Brevo
+  // follow-up. Sender identity is deliberately reused from SMTP_USER
+  // (see EmailOtpProvider) rather than a new env var, since that's the
+  // address already verified as this app's sender.
+  brevoApiKey: process.env.BREVO_API_KEY,
   smtpHost: process.env.SMTP_HOST,
   smtpPort: process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined,
   smtpUser: process.env.SMTP_USER,
