@@ -604,3 +604,38 @@ export interface StudentQuizAttemptSummary {
   quiz_title: string;
   batch_title: string;
 }
+
+/** Shape returned by GET /attendance/me/summary, /attendance/summary/batch/:id
+ *  is a distinct (older) per-batch shape and keeps its own `attendanceRate` field. */
+export interface AttendanceSummary {
+  total: number;
+  present: number;
+  late: number;
+  absent: number;
+  rate: number | null;
+}
+
+/** Student/parent attendance history row — GET /attendance/me/history,
+ *  /attendance/student/:id/history. batch_title isn't included server-side
+ *  (listForStudent is shared with ProgressService); resolve it client-side
+ *  from the caller's own batch list. */
+export interface AttendanceHistoryEntry {
+  id: string;
+  session_id: string;
+  status: 'present' | 'absent' | 'late';
+  joined_at: string | null;
+  method: 'join_tap' | 'manual';
+  batch_id: string;
+  scheduled_start_utc: string;
+}
+
+/** Tutor's batch-level attendance history row — GET /attendance/batch/:id/history. */
+export interface AttendanceBatchHistoryEntry {
+  id: string;
+  session_id: string;
+  scheduled_start_utc: string;
+  student_id: string;
+  display_name: string | null;
+  status: 'present' | 'absent' | 'late';
+  method: 'join_tap' | 'manual';
+}

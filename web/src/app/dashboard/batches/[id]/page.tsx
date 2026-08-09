@@ -15,10 +15,14 @@ import {
   Sparkles,
   Database,
   Send,
+  ClipboardCheck,
+  MousePointerClick,
+  PenLine,
 } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
 import type {
   Announcement,
+  AttendanceBatchHistoryEntry,
   Assignment,
   Batch,
   Enrollment,
@@ -40,11 +44,12 @@ import {
   PageLoading,
 } from '@/components/ui';
 
-type Tab = 'students' | 'sessions' | 'materials' | 'homework' | 'announcements';
+type Tab = 'students' | 'sessions' | 'materials' | 'homework' | 'announcements' | 'attendance';
 
 const TABS: { id: Tab; label: string; icon: typeof Users }[] = [
   { id: 'students', label: 'Students', icon: Users },
   { id: 'sessions', label: 'Sessions', icon: CalendarDays },
+  { id: 'attendance', label: 'Attendance', icon: ClipboardCheck },
   { id: 'materials', label: 'Materials', icon: FileText },
   { id: 'homework', label: 'Homework', icon: ClipboardList },
   { id: 'announcements', label: 'Announcements', icon: Megaphone },
@@ -94,6 +99,7 @@ export default function BatchDetailPage() {
 
       {tab === 'students' && <StudentsTab batchId={id} />}
       {tab === 'sessions' && <SessionsTab batchId={id} />}
+      {tab === 'attendance' && <AttendanceTab batchId={id} />}
       {tab === 'materials' && <MaterialsTab batchId={id} />}
       {tab === 'homework' && <HomeworkTab batchId={id} />}
       {tab === 'announcements' && <AnnouncementsTab batchId={id} />}
@@ -344,6 +350,60 @@ function SessionsTab({ batchId }: { batchId: string }) {
         </Card>
       )}
     </div>
+  );
+}
+
+function AttendanceTab({ batchId }: { batchId: string }) {
+  const [rows, setRows] = useState<AttendanceBatchHistoryEntry[] | null>(null);
+
+  useEffect(() => {
+    void api
+      .get<AttendanceBatchHistoryEntry[]>(`/attendance/batch/${batchId}/history`)
+      .then(setRows);
+  }, [batchId]);
+
+  if (rows === null) return <PageLoading />;
+
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        icon={ClipboardCheck}
+        title="No attendance marked yet"
+        description="Mark attendance from a session to see history here."
+      />
+    );
+  }
+
+  return (
+    <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
+      {rows.map((row) => (
+        <div key={row.id} className="flex items-center justify-between gap-3 px-6 py-3">
+          <div className="flex items-center gap-2">
+            {row.method === 'join_tap' ? (
+              <MousePointerClick className="h-4 w-4 text-neutral-400" aria-hidden />
+            ) : (
+              <PenLine className="h-4 w-4 text-neutral-400" aria-hidden />
+            )}
+            <div>
+              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                {row.display_name ?? row.student_id.slice(0, 8)}
+              </p>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                {new Date(row.scheduled_start_utc).toLocaleString('en-IN', {
+                  day: 'numeric',
+                  month: 'short',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
+                {' · '}
+                {row.method === 'join_tap' ? 'Tapped Join' : 'Marked by you'}
+              </p>
+            </div>
+          </div>
+          <StatusBadge status={row.status} />
+        </div>
+      ))}
+    </Card>
   );
 }
 

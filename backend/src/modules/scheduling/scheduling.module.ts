@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { IdentityModule } from '../identity/identity.module';
 import { SubscriptionsModule } from '../billing/subscriptions/subscriptions.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { BatchesController } from './batches/batches.controller';
 import { BatchesService } from './batches/batches.service';
 import { BatchesRepository } from './batches/batches.repository';
@@ -18,9 +19,17 @@ import { AttendanceRepository } from './attendance/attendance.repository';
  * Bounded context: batches, enrollments, invite links, class sessions
  * (RRULE recurrence, UTC + IANA timezone), attendance.
  * Owns tables: batches, enrollments, invites, class_sessions, attendance.
+ * NotificationsModule is imported for the attendance module's repeated-
+ * absence alert (NotificationsService.notify()). ParentsModule is
+ * deliberately NOT imported here — ParentsModule -> TrustModule ->
+ * DeliveryModule -> SchedulingModule would close a circular import, so
+ * the parent-facing attendance routes live in their own small sink
+ * module (AttendanceParentModule) instead, the same shape ProgressModule
+ * already uses to safely compose SchedulingModule + ParentsModule as
+ * siblings.
  */
 @Module({
-  imports: [IdentityModule, SubscriptionsModule],
+  imports: [IdentityModule, SubscriptionsModule, NotificationsModule],
   controllers: [
     BatchesController,
     InvitesController,

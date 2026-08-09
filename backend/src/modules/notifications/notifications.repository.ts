@@ -31,6 +31,20 @@ export class NotificationsRepository {
       .then(() => undefined);
   }
 
+  /** Bounded lookback used by callers (e.g. the attendance module's
+   *  repeated-absence alert) that need to check "have I already notified
+   *  this user about this pattern recently" before calling notify()
+   *  again — read-only, doesn't affect the normal notify()/list path. */
+  listRecentForUserByType(userId: string, type: string, since: Date) {
+    return this.db
+      .selectFrom('notifications')
+      .selectAll()
+      .where('user_id', '=', userId)
+      .where('type', '=', type)
+      .where('created_at', '>=', since)
+      .execute();
+  }
+
   listForUser(userId: string, limit = 50) {
     return this.db
       .selectFrom('notifications')

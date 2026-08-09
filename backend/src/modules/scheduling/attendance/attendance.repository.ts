@@ -206,6 +206,87 @@ export class AttendanceRepository {
     };
   }
 
+  /** Attendance across every session in a batch, newest first — feeds
+   *  the tutor's batch-level attendance history view. */
+  listForBatch(batchId: string) {
+    return this.db
+      .selectFrom('attendance')
+      .innerJoin('class_sessions', 'class_sessions.id', 'attendance.session_id')
+      .leftJoin(
+        'profiles_student',
+        'profiles_student.user_id',
+        'attendance.student_id',
+      )
+      .select([
+        'attendance.id',
+        'attendance.session_id',
+        'class_sessions.scheduled_start_utc',
+        'attendance.student_id',
+        'profiles_student.display_name',
+        'attendance.status',
+        'attendance.method',
+      ])
+      .where('class_sessions.batch_id', '=', batchId)
+      .orderBy('class_sessions.scheduled_start_utc', 'desc')
+      .execute();
+  }
+
+  /** Absences for one student in one batch since a given date — feeds
+   *  the repeated-absence alert check (AttendanceService). */
+  async countAbsencesForStudentInBatch(
+    studentId: string,
+    batchId: string,
+    since: Date,
+  ): Promise<number> {
+    const row = await this.db
+      .selectFrom('attendance')
+      .innerJoin('class_sessions', 'class_sessions.id', 'attendance.session_id')
+      .select((eb) => eb.fn.countAll().as('count'))
+      .where('attendance.student_id', '=', studentId)
+      .where('class_sessions.batch_id', '=', batchId)
+      .where('attendance.status', '=', 'absent')
+      .where('class_sessions.scheduled_start_utc', '>=', since)
+      .executeTakeFirstOrThrow();
+    return Number(row.count);
+  }
+
+  /**
+   * Whether `parentId` has an active consent link to `studentId` — the
+   * same gate ProgressService's parent-facing route uses (there via
+   * ParentLinksRepository). Queried directly here instead of injecting
+   * ParentsModule: ParentsModule -> TrustModule -> DeliveryModule ->
+   * SchedulingModule would close a circular module import, and this
+   * repository already reaches across table boundaries the same way
+   * (e.g. the profiles_student join above) rather than pulling in
+   * another module's repository class just for one WHERE clause.
+   */
+  async hasActiveParentLink(
+    parentId: string,
+    studentId: string,
+  ): Promise<boolean> {
+    const row = await this.db
+      .selectFrom('parent_child_links')
+      .select('id')
+      .where('parent_id', '=', parentId)
+      .where('student_id', '=', studentId)
+      .where('status', '=', 'active')
+      .executeTakeFirst();
+    return row !== undefined;
+  }
+
+  /** Active parents linked to a student — feeds the repeated-absence
+   *  alert's recipient list. Same rationale as hasActiveParentLink
+   *  above for querying parent_child_links directly. */
+  async listActiveParentIdsForStudent(studentId: string): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom('parent_child_links')
+      .select('parent_id')
+      .where('student_id', '=', studentId)
+      .where('status', '=', 'active')
+      .execute();
+    return rows.map((r) => r.parent_id);
+  }
+
   /** Attendance % and counts for a student in one batch — feeds the student progress view. */
   async summaryForStudent(studentId: string, batchId: string) {
     const row = await this.db

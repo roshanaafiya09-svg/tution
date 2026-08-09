@@ -56,6 +56,11 @@ export class NotificationsService {
     return this.repository.listForUser(userId);
   }
 
+  /** See NotificationsRepository.listRecentForUserByType. */
+  listRecentForUserByType(userId: string, type: string, since: Date) {
+    return this.repository.listRecentForUserByType(userId, type, since);
+  }
+
   countUnread(userId: string) {
     return this.repository.countUnread(userId);
   }

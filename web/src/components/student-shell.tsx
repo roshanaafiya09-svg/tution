@@ -9,6 +9,7 @@ import {
   Megaphone,
   HelpCircle,
   ListChecks,
+  CalendarCheck,
   ChevronDown,
   User,
   LogOut,
@@ -35,6 +36,7 @@ const NAV = [
 
 const MORE_NAV = [
   { href: '/student/batches', label: 'My Batches', icon: BookMarked },
+  { href: '/student/attendance', label: 'Attendance', icon: CalendarCheck },
   { href: '/student/announcements', label: 'Announcements', icon: Megaphone },
   { href: '/student/doubts', label: 'Doubts / Help', icon: HelpCircle },
   { href: '/student/quizzes', label: 'Quizzes', icon: ListChecks },

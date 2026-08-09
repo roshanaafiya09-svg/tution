@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { CalendarCheck, ClipboardCheck, Award, TrendingUp, TrendingDown, Minus, MessageSquareText, Wallet } from 'lucide-react';
+import Link from 'next/link';
+import { CalendarCheck, ClipboardCheck, Award, TrendingUp, TrendingDown, Minus, MessageSquareText, Wallet, ArrowRight } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
 import type { Digest, ParentLink, ProgressSummary, StudentFeeEntry } from '@/lib/types';
 import { Card, PageHeader, EmptyState, StatusBadge, InlineError, PageLoading } from '@/components/ui';
@@ -65,6 +66,13 @@ export default function ChildDetailPage() {
                 <TrendIcon trend={progress.summary.attendanceTrend} />
                 Trend: {progress.summary.attendanceTrend}
               </p>
+              <Link
+                href={`/parent/child/${studentId}/attendance`}
+                className="mt-2 flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline dark:text-brand-300"
+              >
+                View details
+                <ArrowRight className="h-3 w-3" aria-hidden />
+              </Link>
             </div>
           </Card>
           <Card className="flex items-start gap-3">

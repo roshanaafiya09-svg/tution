@@ -54,4 +54,48 @@ export class AttendanceController {
   ) {
     return this.attendanceService.summaryForStudent(user.sub, batchId);
   }
+
+  /** Tutor's attendance history across every session in a batch they own. */
+  @Get('batch/:batchId/history')
+  @Roles('tutor')
+  batchHistory(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('batchId') batchId: string,
+  ) {
+    return this.attendanceService.historyForBatch(user.sub, batchId);
+  }
+
+  /** Student's own all-time attendance summary, across every batch. */
+  @Get('me/summary')
+  @Roles('student')
+  mySummary(@CurrentUser() user: AccessTokenPayload) {
+    return this.attendanceService.mySummary(user.sub);
+  }
+
+  /** Student's own attendance history, across every batch. */
+  @Get('me/history')
+  @Roles('student')
+  myHistory(@CurrentUser() user: AccessTokenPayload) {
+    return this.attendanceService.myHistory(user.sub);
+  }
+
+  /** Parent's view of a linked child's attendance summary — mirrors
+   *  GET /progress/student/:studentId's naming and consent-check pattern. */
+  @Get('student/:studentId/summary')
+  @Roles('parent')
+  summaryForChild(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('studentId') studentId: string,
+  ) {
+    return this.attendanceService.summaryForParent(user.sub, studentId);
+  }
+
+  @Get('student/:studentId/history')
+  @Roles('parent')
+  historyForChild(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('studentId') studentId: string,
+  ) {
+    return this.attendanceService.historyForParent(user.sub, studentId);
+  }
 }
