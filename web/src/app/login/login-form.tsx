@@ -68,11 +68,10 @@ export function LoginForm() {
     }
     // Fetch the authoritative role set rather than trust the signup-only
     // `signupRole` choice — a returning user never passes that through.
-    // Students have no web dashboard — the mobile app is their surface,
-    // so send them to a page saying so rather than the marketing
-    // homepage. Tutors and parents each get their own portal; Super
-    // Admin has its own /admin portal (teacher/student/parent management,
-    // "view as user").
+    // Every role now has its own web portal; /get-the-app is the
+    // fallback only for an account with none of these roles yet (kept
+    // live as a standalone route for the mobile download cards, just no
+    // longer the automatic post-login destination for students).
     const me = await api.get<Me>('/auth/me').catch(() => null);
     if (me?.roles.includes('superadmin')) {
       router.replace('/admin');
@@ -80,6 +79,8 @@ export function LoginForm() {
       router.replace('/parent');
     } else if (me?.roles.includes('tutor')) {
       router.replace('/dashboard');
+    } else if (me?.roles.includes('student')) {
+      router.replace('/student');
     } else {
       router.replace('/get-the-app');
     }

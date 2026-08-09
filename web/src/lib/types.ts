@@ -70,6 +70,9 @@ export interface Batch {
   fee_period: 'monthly' | 'quarterly' | 'one_time';
   status: 'active' | 'archived';
   created_at: string;
+  /** Only present on GET /batches/enrolled (the student's own list) — the
+   *  tutor's profiles_tutor.display_name, null if they never set one. */
+  tutor_display_name?: string | null;
 }
 
 export interface Session {
@@ -488,4 +491,116 @@ export interface QuizAttemptSummary {
   total: number;
   submitted_at: string;
   display_name: string | null;
+}
+
+/** Shape returned by GET /assignments/me — distinct from Assignment
+ *  (the tutor's create/manage shape): carries the batch title and this
+ *  student's own submission status inline. */
+export interface StudentAssignmentSummary {
+  id: string;
+  batch_id: string;
+  title: string;
+  instructions: string | null;
+  due_at_utc: string;
+  timezone: string;
+  batch_title: string;
+  submission_id: string | null;
+  submitted_at: string | null;
+  grade: number | null;
+}
+
+export interface StudentSubmission {
+  id: string;
+  assignment_id: string;
+  student_id: string;
+  object_keys: string[];
+  submitted_at: string;
+  grade: number | null;
+  feedback: string | null;
+  graded_at: string | null;
+  updated_at: string;
+}
+
+export interface AssignmentBatchSummary {
+  totalAssignments: number;
+  submitted: number;
+  graded: number;
+  completionRate: number;
+}
+
+export interface StudentProfile {
+  user_id: string;
+  display_name: string;
+  grade_level: string | null;
+  curriculum_id: string | null;
+  school_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type DoubtTurnKind = 'hint' | 'full_answer';
+
+export interface DoubtTurn {
+  id: string;
+  kind: DoubtTurnKind;
+  questionText: string;
+  answerText: string;
+  citations: unknown[];
+  flagged: boolean;
+  awaitingAttempt: boolean;
+  createdAt: string;
+}
+
+export interface StudentQuizSummary {
+  id: string;
+  title: string;
+  createdAt: string;
+  questionCount: number;
+  attempted: boolean;
+  score: number | null;
+  total: number | null;
+  attemptedAt: string | null;
+}
+
+export interface QuizTakeQuestion {
+  id: string;
+  orderIndex: number;
+  questionText: string;
+  choices: string[];
+  /** Only present once the student has already attempted this quiz
+   *  (review mode) — absent while the quiz is still unanswered. */
+  correctChoiceIndex?: number;
+  chosenChoiceIndex?: number;
+}
+
+export interface QuizTakeResponse {
+  quiz: { id: string; title: string };
+  attempted: boolean;
+  score?: number;
+  total?: number;
+  submittedAt?: string;
+  questions: QuizTakeQuestion[];
+}
+
+export interface QuizSubmitResult {
+  id: string;
+  score: number;
+  total: number;
+  submittedAt: string;
+  results: {
+    questionId: string;
+    chosenChoiceIndex: number;
+    correctChoiceIndex: number;
+    isCorrect: boolean;
+  }[];
+}
+
+export interface StudentQuizAttemptSummary {
+  id: string;
+  quiz_id: string;
+  score: number;
+  total: number;
+  submitted_at: string;
+  quiz_title: string;
+  batch_title: string;
 }

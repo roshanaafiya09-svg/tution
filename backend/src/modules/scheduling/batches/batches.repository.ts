@@ -52,12 +52,17 @@ export class BatchesRepository {
       .executeTakeFirstOrThrow();
   }
 
-  /** Batches a student is actively enrolled in. */
+  /** Batches a student is actively enrolled in. Left-joins the tutor's
+   *  profile purely to surface their display name — additive to the
+   *  existing `batches` row shape, doesn't affect listForTutor or any
+   *  other caller. */
   listForStudent(studentId: string) {
     return this.db
       .selectFrom('batches')
       .innerJoin('enrollments', 'enrollments.batch_id', 'batches.id')
+      .leftJoin('profiles_tutor', 'profiles_tutor.user_id', 'batches.tutor_id')
       .selectAll('batches')
+      .select('profiles_tutor.display_name as tutor_display_name')
       .where('enrollments.student_id', '=', studentId)
       .where('enrollments.status', '=', 'active')
       .orderBy('batches.created_at', 'desc')
