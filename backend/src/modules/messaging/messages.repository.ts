@@ -114,4 +114,38 @@ export class MessagesRepository {
       .orderBy('last_message_at', 'desc')
       .execute();
   }
+
+  /** Same shape as listThreadsForStudent, for a parent viewing one
+   *  child's threads — unlike the student's own inbox, the parent needs
+   *  the child's name (they may have more than one), so this adds the
+   *  same profiles_student join listThreadsForTutor already uses. Kept
+   *  as its own method rather than a param on listThreadsForStudent so
+   *  the student's own /messages/mine query is untouched. */
+  listThreadsForParentChild(studentId: string) {
+    return this.db
+      .selectFrom('messages')
+      .innerJoin('batches', 'batches.id', 'messages.batch_id')
+      .leftJoin(
+        'profiles_student',
+        'profiles_student.user_id',
+        'messages.student_id',
+      )
+      .select((eb) => [
+        'messages.batch_id',
+        'messages.student_id',
+        'batches.title as batch_title',
+        'profiles_student.display_name as student_display_name',
+        eb.fn.max('messages.created_at').as('last_message_at'),
+        eb.fn.countAll().as('message_count'),
+      ])
+      .where('messages.student_id', '=', studentId)
+      .groupBy([
+        'messages.batch_id',
+        'messages.student_id',
+        'batches.title',
+        'profiles_student.display_name',
+      ])
+      .orderBy('last_message_at', 'desc')
+      .execute();
+  }
 }

@@ -109,7 +109,7 @@ export class MessagesService {
       .map((link) => link.student_id);
 
     const perChild = await Promise.all(
-      activeChildIds.map((studentId) => this.repository.listThreadsForStudent(studentId)),
+      activeChildIds.map((studentId) => this.repository.listThreadsForParentChild(studentId)),
     );
 
     return perChild
