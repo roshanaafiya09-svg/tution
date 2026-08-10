@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   Users,
@@ -42,7 +42,9 @@ import {
   Select,
   Textarea,
   InlineError,
-  PageLoading,
+  CardSkeleton,
+  ErrorState,
+  useToast,
 } from '@/components/ui';
 
 type Tab = 'students' | 'sessions' | 'materials' | 'homework' | 'announcements' | 'attendance';
@@ -56,16 +58,48 @@ const TABS: { id: Tab; label: string; icon: typeof Users }[] = [
   { id: 'announcements', label: 'Announcements', icon: Megaphone },
 ];
 
+function isTab(value: string | null): value is Tab {
+  return !!value && TABS.some((t) => t.id === value);
+}
+
 export default function BatchDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get('tab');
+  const [tab, setTab] = useState<Tab>(isTab(initialTab) ? initialTab : 'students');
   const [batch, setBatch] = useState<Batch | null>(null);
-  const [tab, setTab] = useState<Tab>('students');
+  const [loadError, setLoadError] = useState(false);
 
-  useEffect(() => {
-    void api.get<Batch>(`/batches/${id}`).then(setBatch);
+  const load = useCallback(() => {
+    setLoadError(false);
+    setBatch(null);
+    api.get<Batch>(`/batches/${id}`).then(setBatch).catch(() => setLoadError(true));
   }, [id]);
 
-  if (!batch) return <PageLoading />;
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  function selectTab(next: Tab) {
+    setTab(next);
+    router.replace(`/dashboard/batches/${id}?tab=${next}`, { scroll: false });
+  }
+
+  if (loadError) {
+    return (
+      <ErrorState description="Could not load this batch. Check your connection and try again." onRetry={load} />
+    );
+  }
+
+  if (!batch) {
+    return (
+      <div className="space-y-6">
+        <CardSkeleton />
+        <CardSkeleton />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -85,7 +119,7 @@ export default function BatchDetailPage() {
         {TABS.map((t) => (
           <button
             key={t.id}
-            onClick={() => setTab(t.id)}
+            onClick={() => selectTab(t.id)}
             className={`-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
               tab === t.id
                 ? 'border-brand-600 text-brand-700 dark:border-brand-400 dark:text-brand-200'
@@ -109,13 +143,24 @@ export default function BatchDetailPage() {
 }
 
 function StudentsTab({ batchId }: { batchId: string }) {
+  const toast = useToast();
   const [students, setStudents] = useState<Enrollment[] | null>(null);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [copied, setCopied] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
-    setStudents(await api.get<Enrollment[]>(`/batches/${batchId}/students`));
-    setInvites(await api.get<Invite[]>(`/invites/batch/${batchId}`));
+    setLoadError(false);
+    try {
+      const [s, inv] = await Promise.all([
+        api.get<Enrollment[]>(`/batches/${batchId}/students`),
+        api.get<Invite[]>(`/invites/batch/${batchId}`),
+      ]);
+      setStudents(s);
+      setInvites(inv);
+    } catch {
+      setLoadError(true);
+    }
   }, [batchId]);
 
   useEffect(() => {
@@ -123,8 +168,17 @@ function StudentsTab({ batchId }: { batchId: string }) {
   }, [load]);
 
   async function createInvite() {
-    await api.post(`/invites/batch/${batchId}`, { maxUses: 50 });
-    await load();
+    try {
+      await api.post(`/invites/batch/${batchId}`, { maxUses: 50 });
+      await load();
+      toast({ title: 'Invite link created', variant: 'success' });
+    } catch {
+      toast({ title: 'Could not create an invite link', variant: 'error' });
+    }
+  }
+
+  if (loadError) {
+    return <ErrorState description="Could not load students for this batch." onRetry={() => void load()} />;
   }
 
   const activeInvite = invites.find(
@@ -165,7 +219,7 @@ function StudentsTab({ batchId }: { batchId: string }) {
       </Card>
 
       {students === null ? (
-        <PageLoading />
+        <CardSkeleton />
       ) : students.length === 0 ? (
         <EmptyState
           icon={Users}
@@ -200,7 +254,9 @@ function StudentsTab({ batchId }: { batchId: string }) {
 }
 
 function SessionsTab({ batchId }: { batchId: string }) {
+  const toast = useToast();
   const [sessions, setSessions] = useState<Session[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -213,7 +269,12 @@ function SessionsTab({ batchId }: { batchId: string }) {
   });
 
   const load = useCallback(async () => {
-    setSessions(await api.get<Session[]>(`/sessions/batch/${batchId}`));
+    setLoadError(false);
+    try {
+      setSessions(await api.get<Session[]>(`/sessions/batch/${batchId}`));
+    } catch {
+      setLoadError(true);
+    }
   }, [batchId]);
 
   useEffect(() => {
@@ -238,11 +299,16 @@ function SessionsTab({ batchId }: { batchId: string }) {
       });
       await load();
       setShowForm(false);
+      toast({ title: 'Session scheduled', variant: 'success' });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not schedule the session.');
     } finally {
       setCreating(false);
     }
+  }
+
+  if (loadError) {
+    return <ErrorState description="Could not load sessions for this batch." onRetry={() => void load()} />;
   }
 
   return (
@@ -318,7 +384,7 @@ function SessionsTab({ batchId }: { batchId: string }) {
       )}
 
       {sessions === null ? (
-        <PageLoading />
+        <CardSkeleton />
       ) : sessions.length === 0 ? (
         <EmptyState
           icon={CalendarDays}
@@ -360,14 +426,26 @@ function SessionsTab({ batchId }: { batchId: string }) {
 
 function AttendanceTab({ batchId }: { batchId: string }) {
   const [rows, setRows] = useState<AttendanceBatchHistoryEntry[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
-  useEffect(() => {
-    void api
+  const load = useCallback(() => {
+    setLoadError(false);
+    setRows(null);
+    api
       .get<AttendanceBatchHistoryEntry[]>(`/attendance/batch/${batchId}/history`)
-      .then(setRows);
+      .then(setRows)
+      .catch(() => setLoadError(true));
   }, [batchId]);
 
-  if (rows === null) return <PageLoading />;
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  if (loadError) {
+    return <ErrorState description="Could not load attendance history for this batch." onRetry={load} />;
+  }
+
+  if (rows === null) return <CardSkeleton />;
 
   if (rows.length === 0) {
     return (
@@ -414,7 +492,9 @@ function AttendanceTab({ batchId }: { batchId: string }) {
 
 function MaterialsTab({ batchId }: { batchId: string }) {
   const router = useRouter();
+  const toast = useToast();
   const [materials, setMaterials] = useState<Material[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
@@ -422,7 +502,12 @@ function MaterialsTab({ batchId }: { batchId: string }) {
   const [indexedId, setIndexedId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setMaterials(await api.get<Material[]>(`/materials/batch/${batchId}`));
+    setLoadError(false);
+    try {
+      setMaterials(await api.get<Material[]>(`/materials/batch/${batchId}`));
+    } catch {
+      setLoadError(true);
+    }
   }, [batchId]);
 
   useEffect(() => {
@@ -446,6 +531,7 @@ function MaterialsTab({ batchId }: { batchId: string }) {
       if (!res.ok) throw new Error('Upload failed');
 
       await load();
+      toast({ title: 'Material uploaded', variant: 'success' });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not upload the file.');
     } finally {
@@ -485,6 +571,10 @@ function MaterialsTab({ batchId }: { batchId: string }) {
     }
   }
 
+  if (loadError) {
+    return <ErrorState description="Could not load materials for this batch." onRetry={() => void load()} />;
+  }
+
   return (
     <div className="space-y-4">
       <Card>
@@ -511,7 +601,7 @@ function MaterialsTab({ batchId }: { batchId: string }) {
       </Card>
 
       {materials === null ? (
-        <PageLoading />
+        <CardSkeleton />
       ) : materials.length === 0 ? (
         <EmptyState
           icon={FileText}
@@ -575,14 +665,21 @@ function MaterialsTab({ batchId }: { batchId: string }) {
 }
 
 function HomeworkTab({ batchId }: { batchId: string }) {
+  const toast = useToast();
   const [assignments, setAssignments] = useState<Assignment[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ title: '', instructions: '', dueAtLocal: '' });
 
   const load = useCallback(async () => {
-    setAssignments(await api.get<Assignment[]>(`/assignments/batch/${batchId}`));
+    setLoadError(false);
+    try {
+      setAssignments(await api.get<Assignment[]>(`/assignments/batch/${batchId}`));
+    } catch {
+      setLoadError(true);
+    }
   }, [batchId]);
 
   useEffect(() => {
@@ -602,11 +699,16 @@ function HomeworkTab({ batchId }: { batchId: string }) {
       await load();
       setShowForm(false);
       setForm({ title: '', instructions: '', dueAtLocal: '' });
+      toast({ title: 'Homework set', variant: 'success' });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not set this homework.');
     } finally {
       setCreating(false);
     }
+  }
+
+  if (loadError) {
+    return <ErrorState description="Could not load homework for this batch." onRetry={() => void load()} />;
   }
 
   return (
@@ -656,7 +758,7 @@ function HomeworkTab({ batchId }: { batchId: string }) {
       )}
 
       {assignments === null ? (
-        <PageLoading />
+        <CardSkeleton />
       ) : assignments.length === 0 ? (
         <EmptyState
           icon={ClipboardList}
@@ -694,12 +796,19 @@ function HomeworkTab({ batchId }: { batchId: string }) {
 }
 
 function AnnouncementsTab({ batchId }: { batchId: string }) {
+  const toast = useToast();
   const [announcements, setAnnouncements] = useState<Announcement[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [body, setBody] = useState('');
   const [posting, setPosting] = useState(false);
 
   const load = useCallback(async () => {
-    setAnnouncements(await api.get<Announcement[]>(`/announcements/batch/${batchId}`));
+    setLoadError(false);
+    try {
+      setAnnouncements(await api.get<Announcement[]>(`/announcements/batch/${batchId}`));
+    } catch {
+      setLoadError(true);
+    }
   }, [batchId]);
 
   useEffect(() => {
@@ -712,9 +821,16 @@ function AnnouncementsTab({ batchId }: { batchId: string }) {
       await api.post(`/announcements/batch/${batchId}`, { body });
       setBody('');
       await load();
+      toast({ title: 'Announcement sent', variant: 'success' });
+    } catch {
+      toast({ title: 'Could not send the announcement', variant: 'error' });
     } finally {
       setPosting(false);
     }
+  }
+
+  if (loadError) {
+    return <ErrorState description="Could not load announcements for this batch." onRetry={() => void load()} />;
   }
 
   return (
@@ -737,7 +853,7 @@ function AnnouncementsTab({ batchId }: { batchId: string }) {
       </Card>
 
       {announcements === null ? (
-        <PageLoading />
+        <CardSkeleton />
       ) : announcements.length === 0 ? (
         <EmptyState
           icon={Megaphone}

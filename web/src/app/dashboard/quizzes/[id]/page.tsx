@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { Check, Users2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import type {
+  Batch,
   PublishedQuiz,
   QuizAttemptSummary,
   QuizDifficulty,
@@ -20,12 +21,17 @@ import {
   Input,
   Select,
   InlineError,
-  PageLoading,
+  CardSkeleton,
+  ErrorState,
+  useToast,
 } from '@/components/ui';
 
 export default function QuizDraftPage() {
   const { id } = useParams<{ id: string }>();
+  const toast = useToast();
   const [draft, setDraft] = useState<QuizDraftDetail | null>(null);
+  const [batch, setBatch] = useState<Batch | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState(false);
   const [publishedQuiz, setPublishedQuiz] = useState<PublishedQuiz | null>(null);
@@ -33,7 +39,17 @@ export default function QuizDraftPage() {
   const [attempts, setAttempts] = useState<QuizAttemptSummary[] | null>(null);
 
   const load = useCallback(async () => {
-    setDraft(await api.get<QuizDraftDetail>(`/quizzes/${id}`));
+    setLoadError(false);
+    try {
+      const d = await api.get<QuizDraftDetail>(`/quizzes/${id}`);
+      setDraft(d);
+      api
+        .get<Batch>(`/batches/${d.batch_id}`)
+        .then(setBatch)
+        .catch(() => {});
+    } catch {
+      setLoadError(true);
+    }
   }, [id]);
 
   useEffect(() => {
@@ -46,6 +62,7 @@ export default function QuizDraftPage() {
     try {
       await api.post(`/quizzes/${id}/${action}`);
       await load();
+      toast({ title: action === 'approve' ? 'Quiz approved' : 'Quiz rejected', variant: 'success' });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save your review.');
     } finally {
@@ -60,6 +77,7 @@ export default function QuizDraftPage() {
       const quiz = await api.post<PublishedQuiz>(`/quizzes/${id}/publish`);
       setPublishedQuiz(quiz);
       setAttempts(await api.get<QuizAttemptSummary[]>(`/quizzes/${quiz.id}/attempts`));
+      toast({ title: 'Quiz published to batch', variant: 'success' });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not publish this quiz.');
     } finally {
@@ -67,13 +85,25 @@ export default function QuizDraftPage() {
     }
   }
 
-  if (!draft) return <PageLoading />;
+  if (loadError) {
+    return <ErrorState description="Could not load this quiz draft. Check your connection and try again." onRetry={() => void load()} />;
+  }
+
+  if (!draft) {
+    return (
+      <div className="space-y-4">
+        <CardSkeleton />
+        <CardSkeleton />
+      </div>
+    );
+  }
 
   return (
     <div>
       <PageHeader
+        eyebrow={batch ? batch.title : undefined}
         title="Quiz draft"
-        description="Review each question before approving — nothing reaches students until you publish."
+        description={`${draft.questions.length} question${draft.questions.length === 1 ? '' : 's'} · review each one before approving — nothing reaches students until you publish.`}
         action={<StatusBadge status={draft.status} />}
       />
 
@@ -124,7 +154,7 @@ export default function QuizDraftPage() {
             Attempts
           </h3>
           {attempts === null ? (
-            <PageLoading />
+            <CardSkeleton />
           ) : attempts.length === 0 ? (
             <p className="text-sm text-neutral-500 dark:text-neutral-400">No attempts yet.</p>
           ) : (
@@ -158,6 +188,7 @@ function QuestionCard({
   editable: boolean;
   onSaved: () => void;
 }) {
+  const toast = useToast();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -173,6 +204,9 @@ function QuestionCard({
       await api.patch(`/quizzes/${draftId}/questions/${question.id}`, form);
       setEditing(false);
       onSaved();
+      toast({ title: 'Question updated', variant: 'success' });
+    } catch {
+      toast({ title: 'Could not save this question', variant: 'error' });
     } finally {
       setSaving(false);
     }

@@ -21,6 +21,7 @@ import { impersonationStore } from '@/lib/impersonation';
 import type { ImpersonationTarget } from '@/lib/impersonation';
 import { ImpersonationBanner } from '@/components/impersonation-banner';
 import { NotificationsBell } from '@/components/notifications-bell';
+import { cn } from '@/lib/cn';
 import {
   PageLoading,
   ErrorState,
@@ -29,6 +30,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuLabel,
 } from '@/components/ui';
 
 const NAV = [
@@ -38,14 +40,32 @@ const NAV = [
   { href: '/dashboard/messages', label: 'Messages' },
 ];
 
-const BUSINESS_NAV = [
-  { href: '/dashboard/availability', label: 'Availability', icon: CalendarClock },
-  { href: '/dashboard/subjects', label: 'Subjects & rates', icon: BookMarked },
-  { href: '/dashboard/verification', label: 'Verification', icon: ShieldCheck },
-  { href: '/dashboard/billing', label: 'Billing & payouts', icon: CreditCard },
-  { href: '/dashboard/marketplace', label: 'Marketplace', icon: Store },
-  { href: '/dashboard/quizzes', label: 'Quizzes', icon: ListChecks },
+const BUSINESS_GROUPS = [
+  {
+    label: 'Teaching profile',
+    items: [
+      { href: '/dashboard/subjects', label: 'Subjects & rates', icon: BookMarked },
+      { href: '/dashboard/availability', label: 'Availability', icon: CalendarClock },
+    ],
+  },
+  {
+    label: 'Growth',
+    items: [
+      { href: '/dashboard/marketplace', label: 'Marketplace', icon: Store },
+      { href: '/dashboard/quizzes', label: 'Quizzes', icon: ListChecks },
+    ],
+  },
+  {
+    label: 'Trust',
+    items: [{ href: '/dashboard/verification', label: 'Verification', icon: ShieldCheck }],
+  },
+  {
+    label: 'Account',
+    items: [{ href: '/dashboard/billing', label: 'Subscription & billing', icon: CreditCard }],
+  },
 ];
+
+const BUSINESS_NAV = BUSINESS_GROUPS.flatMap((group) => group.items);
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -160,14 +180,34 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                     <ChevronDown className="h-3.5 w-3.5" aria-hidden />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="min-w-[13rem]">
-                  {BUSINESS_NAV.map((item) => (
-                    <DropdownMenuItem key={item.href} asChild>
-                      <Link href={item.href}>
-                        <item.icon className="h-4 w-4 text-neutral-400" aria-hidden />
-                        {item.label}
-                      </Link>
-                    </DropdownMenuItem>
+                <DropdownMenuContent align="start" className="min-w-[14rem]">
+                  {BUSINESS_GROUPS.map((group, i) => (
+                    <div key={group.label}>
+                      {i > 0 && <DropdownMenuSeparator />}
+                      <DropdownMenuLabel>{group.label}</DropdownMenuLabel>
+                      {group.items.map((item) => {
+                        const active = pathname.startsWith(item.href);
+                        return (
+                          <DropdownMenuItem key={item.href} asChild>
+                            <Link
+                              href={item.href}
+                              className={cn(
+                                active && 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200',
+                              )}
+                            >
+                              <item.icon
+                                className={cn(
+                                  'h-4 w-4',
+                                  active ? 'text-brand-600 dark:text-brand-300' : 'text-neutral-400',
+                                )}
+                                aria-hidden
+                              />
+                              {item.label}
+                            </Link>
+                          </DropdownMenuItem>
+                        );
+                      })}
+                    </div>
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>

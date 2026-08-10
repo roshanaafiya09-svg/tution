@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Download, Trash2, Check, AlertTriangle } from 'lucide-react';
 import { api, tokenStore } from '@/lib/api';
@@ -14,16 +14,20 @@ import {
   Textarea,
   StatusBadge,
   InlineError,
-  PageLoading,
+  CardSkeleton,
+  ErrorState,
   Dialog,
   DialogTrigger,
   DialogContent,
   DialogFooter,
+  useToast,
 } from '@/components/ui';
 
 export default function ProfilePage() {
   const router = useRouter();
+  const toast = useToast();
   const [profile, setProfile] = useState<TutorProfile | null | undefined>(undefined);
+  const [loadError, setLoadError] = useState(false);
   const [form, setForm] = useState({ displayName: '', headline: '', bio: '', yearsExperience: '' });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -35,19 +39,27 @@ export default function ProfilePage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  useEffect(() => {
-    void api.get<TutorProfile | null>('/profiles/tutor/me').then((row) => {
-      setProfile(row);
-      if (row) {
-        setForm({
-          displayName: row.display_name,
-          headline: row.headline ?? '',
-          bio: row.bio ?? '',
-          yearsExperience: row.years_experience?.toString() ?? '',
-        });
-      }
-    });
+  const load = useCallback(() => {
+    setLoadError(false);
+    api
+      .get<TutorProfile | null>('/profiles/tutor/me')
+      .then((row) => {
+        setProfile(row);
+        if (row) {
+          setForm({
+            displayName: row.display_name,
+            headline: row.headline ?? '',
+            bio: row.bio ?? '',
+            yearsExperience: row.years_experience?.toString() ?? '',
+          });
+        }
+      })
+      .catch(() => setLoadError(true));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   async function save() {
     setError(null);
@@ -62,6 +74,7 @@ export default function ProfilePage() {
       setProfile(updated);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
+      toast({ title: 'Profile saved', variant: 'success' });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save your profile.');
     } finally {
@@ -106,8 +119,12 @@ export default function ProfilePage() {
     <div>
       <PageHeader title="Profile" description="This is what parents and students see." />
 
-      {profile === undefined ? (
-        <PageLoading />
+      {loadError ? (
+        <ErrorState description="Could not load your profile. Check your connection and try again." onRetry={load} />
+      ) : profile === undefined ? (
+        <div className="max-w-2xl">
+          <CardSkeleton />
+        </div>
       ) : (
         <>
           <Card className="max-w-2xl">

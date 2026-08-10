@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { BookMarked, Bell, X, Check } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
 import type { Curriculum, GradeLevel, Subject, TutorSubject } from '@/lib/types';
@@ -13,15 +13,19 @@ import {
   Input,
   Select,
   InlineError,
-  PageLoading,
+  CardSkeleton,
+  ErrorState,
   ConfirmDialog,
+  useToast,
 } from '@/components/ui';
 
 export default function SubjectsPage() {
+  const toast = useToast();
   const [offerings, setOfferings] = useState<TutorSubject[] | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [curricula, setCurricula] = useState<Curriculum[]>([]);
   const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>([]);
+  const [loadError, setLoadError] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -37,11 +41,24 @@ export default function SubjectsPage() {
     hourlyRateRupees: '500',
   });
 
-  useEffect(() => {
-    void api.get<TutorSubject[]>('/tutor-subjects/me').then(setOfferings);
-    void api.get<Subject[]>('/catalog/subjects').then(setSubjects);
-    void api.get<Curriculum[]>('/catalog/curricula').then(setCurricula);
+  const load = useCallback(() => {
+    setLoadError(false);
+    Promise.all([
+      api.get<TutorSubject[]>('/tutor-subjects/me'),
+      api.get<Subject[]>('/catalog/subjects'),
+      api.get<Curriculum[]>('/catalog/curricula'),
+    ])
+      .then(([o, subs, curr]) => {
+        setOfferings(o);
+        setSubjects(subs);
+        setCurricula(curr);
+      })
+      .catch(() => setLoadError(true));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   useEffect(() => {
     if (!form.curriculumId) {
@@ -74,6 +91,7 @@ export default function SubjectsPage() {
       });
       setOfferings(await api.get<TutorSubject[]>('/tutor-subjects/me'));
       setShowForm(false);
+      toast({ title: 'Subject added', variant: 'success' });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add that subject.');
     } finally {
@@ -84,6 +102,7 @@ export default function SubjectsPage() {
   async function deleteOffering(id: string) {
     await api.delete(`/tutor-subjects/${id}`);
     setOfferings(await api.get<TutorSubject[]>('/tutor-subjects/me'));
+    toast({ title: 'Subject removed', variant: 'success' });
   }
 
   async function notifyWaitlist(tutorSubjectId: string) {
@@ -92,6 +111,8 @@ export default function SubjectsPage() {
       await api.post(`/marketplace/waitlists/tutor/${tutorSubjectId}/notify`);
       setNotifiedId(tutorSubjectId);
       setTimeout(() => setNotifiedId(null), 2000);
+    } catch {
+      toast({ title: 'Could not notify the waitlist', variant: 'error' });
     } finally {
       setNotifyingId(null);
     }
@@ -106,6 +127,11 @@ export default function SubjectsPage() {
         description="What you teach, which curricula, and your hourly rate for each — feeds the marketplace and 1:1 bookings."
         action={<Button onClick={() => setShowForm((s) => !s)}>{showForm ? 'Cancel' : 'Add subject'}</Button>}
       />
+
+      <p className="-mt-4 mb-6 max-w-2xl text-sm text-neutral-500 dark:text-neutral-400">
+        Students search and filter by subject, curriculum, and rate — the more complete this list, the easier you
+        are to find and book.
+      </p>
 
       {showForm && (
         <Card className="mb-6">
@@ -185,28 +211,48 @@ export default function SubjectsPage() {
         </Card>
       )}
 
-      {offerings === null ? (
-        <PageLoading />
+      {loadError ? (
+        <ErrorState description="Could not load your subjects. Check your connection and try again." onRetry={load} />
+      ) : offerings === null ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
       ) : offerings.length === 0 ? (
         <EmptyState
           icon={BookMarked}
           title="No subjects added yet"
-          description="Add what you teach so students can find and book you in the marketplace."
+          description="Add what you teach so students can discover and book you."
         />
       ) : (
-        <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
+        <div className="grid gap-4 sm:grid-cols-2">
           {offerings.map((offering) => (
-            <div key={offering.id} className="flex flex-wrap items-center justify-between gap-2 px-6 py-3">
-              <div>
-                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
-                  {subjectName(offering.subject_id)} · {curriculumName(offering.curriculum_id)}
-                </p>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                  Grades {offering.grade_min}–{offering.grade_max} ·{' '}
-                  {formatMinor(offering.hourly_rate_minor, offering.currency)}/hr
-                </p>
+            <Card key={offering.id}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-medium text-neutral-900 dark:text-neutral-50">
+                    {subjectName(offering.subject_id)}
+                  </p>
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                    {curriculumName(offering.curriculum_id)} · Grades {offering.grade_min}–{offering.grade_max}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setOfferingToDelete(offering)}
+                  aria-label="Remove subject"
+                >
+                  <X className="h-4 w-4" aria-hidden />
+                </Button>
               </div>
-              <div className="flex items-center gap-2">
+              <p className="mt-3 font-display text-xl font-semibold text-neutral-900 dark:text-neutral-50">
+                {formatMinor(offering.hourly_rate_minor, offering.currency)}/hr
+              </p>
+              <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
+                Listed for marketplace search & 1:1 bookings
+              </p>
+              <div className="mt-4">
                 {notifiedId === offering.id ? (
                   <span className="flex items-center gap-1 text-sm text-success dark:text-success-dark">
                     <Check className="h-3.5 w-3.5" aria-hidden />
@@ -224,18 +270,10 @@ export default function SubjectsPage() {
                     {notifyingId === offering.id ? 'Notifying…' : 'Notify waitlist'}
                   </Button>
                 )}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setOfferingToDelete(offering)}
-                  aria-label="Remove subject"
-                >
-                  <X className="h-4 w-4" aria-hidden />
-                </Button>
               </div>
-            </div>
+            </Card>
           ))}
-        </Card>
+        </div>
       )}
 
       <ConfirmDialog

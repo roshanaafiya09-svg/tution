@@ -5,25 +5,32 @@ import { useParams } from 'next/navigation';
 import { UserCheck, MousePointerClick, PenLine } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AttendanceRow } from '@/lib/types';
-import { Card, PageHeader, EmptyState, StatusBadge, Button, PageLoading } from '@/components/ui';
+import { Card, PageHeader, EmptyState, StatusBadge, Button, CardSkeleton, ErrorState, useToast } from '@/components/ui';
 
 const STATUSES = ['present', 'late', 'absent'] as const;
 
 export default function SessionAttendancePage() {
   const { id } = useParams<{ id: string }>();
+  const toast = useToast();
   const [rows, setRows] = useState<AttendanceRow[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
-  const load = useCallback(async () => {
-    setRows(await api.get<AttendanceRow[]>(`/attendance/session/${id}`));
+  const load = useCallback(() => {
+    setLoadError(false);
+    return api.get<AttendanceRow[]>(`/attendance/session/${id}`).then(setRows).catch(() => setLoadError(true));
   }, [id]);
 
   useEffect(() => {
-    void load();
+    load();
   }, [load]);
 
   async function mark(studentId: string, status: (typeof STATUSES)[number]) {
-    await api.post(`/attendance/session/${id}/mark`, { studentId, status });
-    await load();
+    try {
+      await api.post(`/attendance/session/${id}/mark`, { studentId, status });
+      await load();
+    } catch {
+      toast({ title: 'Could not update attendance', variant: 'error' });
+    }
   }
 
   return (
@@ -34,8 +41,10 @@ export default function SessionAttendancePage() {
         back={{ href: '/dashboard/batches', label: 'Batches' }}
       />
 
-      {rows === null ? (
-        <PageLoading />
+      {loadError ? (
+        <ErrorState description="Could not load attendance for this session. Check your connection and try again." onRetry={load} />
+      ) : rows === null ? (
+        <CardSkeleton />
       ) : rows.length === 0 ? (
         <EmptyState
           icon={UserCheck}

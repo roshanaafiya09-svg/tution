@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Users } from 'lucide-react';
+import { Users, Search, MoreVertical, UserPlus, CalendarClock, ClipboardCheck, Archive } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
-import type { Batch, Curriculum, GradeLevel, Subject } from '@/lib/types';
+import type { Batch, Curriculum, GradeLevel, Subject, Session, FeeEntry, Enrollment } from '@/lib/types';
 import {
   Card,
   PageHeader,
@@ -15,17 +15,50 @@ import {
   Input,
   Select,
   InlineError,
-  PageLoading,
+  CardSkeleton,
+  ErrorState,
+  ConfirmDialog,
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  useToast,
 } from '@/components/ui';
 
+function currentPeriod(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function formatNextClass(session: Session): string {
+  return new Date(session.scheduled_start_utc).toLocaleString('en-IN', {
+    timeZone: session.timezone,
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 export default function BatchesPage() {
+  const toast = useToast();
   const [batches, setBatches] = useState<Batch[] | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [curricula, setCurricula] = useState<Curriculum[]>([]);
   const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [feeEntries, setFeeEntries] = useState<FeeEntry[]>([]);
+  const [studentCounts, setStudentCounts] = useState<Record<string, number>>({});
+  const [loadError, setLoadError] = useState(false);
+
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<Batch | null>(null);
+
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'archived'>('all');
 
   const [form, setForm] = useState({
     title: '',
@@ -36,11 +69,47 @@ export default function BatchesPage() {
     feeRupees: '1500',
   });
 
-  useEffect(() => {
-    void api.get<Batch[]>('/batches/me').then(setBatches);
-    void api.get<Subject[]>('/catalog/subjects').then(setSubjects);
-    void api.get<Curriculum[]>('/catalog/curricula').then(setCurricula);
+  const load = useCallback(() => {
+    setLoadError(false);
+    setBatches(null);
+    Promise.all([
+      api.get<Batch[]>('/batches/me'),
+      api.get<Subject[]>('/catalog/subjects'),
+      api.get<Curriculum[]>('/catalog/curricula'),
+      api.get<Session[]>('/sessions/me'),
+      api.get<FeeEntry[]>(`/fees/period?period=${currentPeriod()}`),
+    ])
+      .then(([b, subs, curr, sess, fees]) => {
+        setBatches(b);
+        setSubjects(subs);
+        setCurricula(curr);
+        setSessions(sess);
+        setFeeEntries(fees);
+      })
+      .catch(() => setLoadError(true));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    if (!batches || batches.length === 0) return;
+    let cancelled = false;
+    Promise.all(
+      batches.map((b) =>
+        api
+          .get<Enrollment[]>(`/batches/${b.id}/students`)
+          .then((rows) => [b.id, rows.filter((r) => r.status === 'active').length] as const)
+          .catch(() => [b.id, 0] as const),
+      ),
+    ).then((pairs) => {
+      if (!cancelled) setStudentCounts(Object.fromEntries(pairs));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [batches]);
 
   useEffect(() => {
     if (!form.curriculumId) {
@@ -63,9 +132,10 @@ export default function BatchesPage() {
         capacity: Number(form.capacity),
         feeMinor: Math.round(Number(form.feeRupees) * 100),
       });
-      setBatches(await api.get<Batch[]>('/batches/me'));
+      load();
       setShowForm(false);
       setForm({ ...form, title: '' });
+      toast({ title: 'Batch created', variant: 'success' });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create the batch.');
     } finally {
@@ -73,7 +143,49 @@ export default function BatchesPage() {
     }
   }
 
+  async function archiveBatch(batch: Batch) {
+    await api.post(`/batches/${batch.id}/archive`);
+    load();
+    toast({ title: `${batch.title} archived`, variant: 'success' });
+  }
+
   const canSubmit = form.title && form.subjectId && form.gradeLevelId;
+
+  function subjectName(subjectId: string): string {
+    return subjects.find((s) => s.id === subjectId)?.name_i18n.en ?? 'Subject';
+  }
+
+  const nextSessionByBatch = useMemo(() => {
+    const now = new Date();
+    const map = new Map<string, Session>();
+    for (const s of sessions) {
+      if (s.status !== 'scheduled') continue;
+      if (new Date(s.scheduled_start_utc) < now) continue;
+      const existing = map.get(s.batch_id);
+      if (!existing || new Date(s.scheduled_start_utc) < new Date(existing.scheduled_start_utc)) {
+        map.set(s.batch_id, s);
+      }
+    }
+    return map;
+  }, [sessions]);
+
+  const feeStatusByBatch = useMemo(() => {
+    const map = new Map<string, { paid: number; total: number }>();
+    for (const e of feeEntries) {
+      const cur = map.get(e.batch_id) ?? { paid: 0, total: 0 };
+      cur.total += 1;
+      if (e.status === 'paid' || e.status === 'waived') cur.paid += 1;
+      map.set(e.batch_id, cur);
+    }
+    return map;
+  }, [feeEntries]);
+
+  const filteredBatches = (batches ?? []).filter((batch) => {
+    if (statusFilter !== 'all' && batch.status !== statusFilter) return false;
+    if (!query.trim()) return true;
+    const q = query.toLowerCase();
+    return batch.title.toLowerCase().includes(q) || subjectName(batch.subject_id).toLowerCase().includes(q);
+  });
 
   return (
     <div>
@@ -164,30 +276,163 @@ export default function BatchesPage() {
       )}
 
       {batches === null ? (
-        <PageLoading />
+        loadError ? (
+          <ErrorState description="Could not load your batches. Check your connection and try again." onRetry={load} />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <CardSkeleton />
+            <CardSkeleton />
+          </div>
+        )
       ) : batches.length === 0 ? (
-        <EmptyState
-          icon={Users}
-          title="No batches yet"
-          description="Create your first batch, then share the invite link on WhatsApp to bring your students in."
-        />
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {batches.map((batch) => (
-            <Link key={batch.id} href={`/dashboard/batches/${batch.id}`}>
-              <Card interactive className="h-full">
-                <div className="flex items-start justify-between">
-                  <p className="font-medium text-neutral-900 dark:text-neutral-50">{batch.title}</p>
-                  <StatusBadge status={batch.status} />
-                </div>
-                <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">
-                  Up to {batch.capacity} students · {formatMinor(batch.fee_minor, batch.currency)}/
-                  {batch.fee_period === 'monthly' ? 'month' : batch.fee_period}
-                </p>
-              </Card>
-            </Link>
-          ))}
+        <div className="space-y-6">
+          <EmptyState
+            icon={Users}
+            title="No batches yet"
+            description="Create your first batch to organise students, schedules, materials, attendance, and fees in one place."
+            action={
+              <Button size="sm" onClick={() => setShowForm(true)}>
+                + Create your first batch
+              </Button>
+            }
+          />
+          <Card>
+            <p className="text-sm font-semibold text-neutral-700 dark:text-neutral-200">What happens next?</p>
+            <ol className="mt-3 space-y-2 text-sm text-neutral-500 dark:text-neutral-400">
+              <li>1. Create a batch</li>
+              <li>2. Add students — share the invite link that appears on the batch page</li>
+              <li>3. Set the schedule from the batch&apos;s Sessions tab</li>
+              <li>4. Share the invite link on WhatsApp to bring your students in</li>
+            </ol>
+          </Card>
         </div>
+      ) : (
+        <>
+          {batches.length > 1 && (
+            <div className="mb-6 flex flex-wrap items-center gap-3">
+              <div className="relative flex-1 sm:max-w-xs">
+                <Search
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"
+                  aria-hidden
+                />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search batches"
+                  className="pl-9"
+                />
+              </div>
+              <div className="flex gap-1.5">
+                {(['all', 'active', 'archived'] as const).map((option) => (
+                  <Button
+                    key={option}
+                    variant={statusFilter === option ? 'primary' : 'secondary'}
+                    size="sm"
+                    onClick={() => setStatusFilter(option)}
+                    className="capitalize"
+                  >
+                    {option}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {filteredBatches.length === 0 ? (
+            <p className="py-10 text-center text-sm text-neutral-400 dark:text-neutral-500">
+              No batches match your search.
+            </p>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {filteredBatches.map((batch) => {
+                const nextSession = nextSessionByBatch.get(batch.id);
+                const feeStatus = feeStatusByBatch.get(batch.id);
+                const enrolled = studentCounts[batch.id];
+
+                return (
+                  <Card key={batch.id} className="flex h-full flex-col">
+                    <div className="flex items-start justify-between gap-2">
+                      <Link href={`/dashboard/batches/${batch.id}`} className="min-w-0 flex-1">
+                        <p className="truncate font-medium text-neutral-900 dark:text-neutral-50">
+                          {batch.title}
+                        </p>
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                          {subjectName(batch.subject_id)}
+                        </p>
+                      </Link>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <StatusBadge status={batch.status} />
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label="More actions"
+                              className="rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+                            >
+                              <MoreVertical className="h-4 w-4" aria-hidden />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent>
+                            <DropdownMenuItem asChild>
+                              <Link href={`/dashboard/batches/${batch.id}?tab=students`}>
+                                <UserPlus className="h-4 w-4" aria-hidden />
+                                Add student
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem asChild>
+                              <Link href={`/dashboard/batches/${batch.id}?tab=sessions`}>
+                                <CalendarClock className="h-4 w-4" aria-hidden />
+                                Schedule class
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem asChild>
+                              <Link href={`/dashboard/batches/${batch.id}?tab=sessions`}>
+                                <ClipboardCheck className="h-4 w-4" aria-hidden />
+                                Mark attendance
+                              </Link>
+                            </DropdownMenuItem>
+                            {batch.status === 'active' && (
+                              <DropdownMenuItem onSelect={() => setArchiveTarget(batch)}>
+                                <Archive className="h-4 w-4" aria-hidden />
+                                Archive batch
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+
+                    <Link href={`/dashboard/batches/${batch.id}`} className="mt-3 flex-1 space-y-1">
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                        {enrolled !== undefined ? `${enrolled}/${batch.capacity}` : `Up to ${batch.capacity}`} students
+                        {' · '}
+                        {formatMinor(batch.fee_minor, batch.currency)}/
+                        {batch.fee_period === 'monthly' ? 'month' : batch.fee_period}
+                      </p>
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                        {nextSession ? `Next class ${formatNextClass(nextSession)}` : 'No upcoming class scheduled'}
+                      </p>
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                        {feeStatus ? `${feeStatus.paid}/${feeStatus.total} paid this period` : 'Fees not generated this period'}
+                      </p>
+                    </Link>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {archiveTarget && (
+        <ConfirmDialog
+          open={!!archiveTarget}
+          onOpenChange={(open) => !open && setArchiveTarget(null)}
+          onConfirm={() => archiveBatch(archiveTarget)}
+          title="Archive this batch?"
+          description={`${archiveTarget.title} will move to Archived. Students keep their history, but the batch stops accepting new sessions or fee records.`}
+          confirmLabel="Archive"
+        />
       )}
     </div>
   );
