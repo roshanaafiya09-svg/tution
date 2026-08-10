@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Layers, CalendarCheck, CalendarDays, Video, CheckCircle2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { Batch, Session } from '@/lib/types';
-import { Card, PageHeader, EmptyState, StatusBadge, Button, PageLoading, buttonVariants } from '@/components/ui';
+import { Card, PageHeader, EmptyState, StatusBadge, Button, PageLoading, StatCard, buttonVariants } from '@/components/ui';
 
 function formatSessionTime(session: Session): string {
   return new Date(session.scheduled_start_utc).toLocaleString('en-IN', {
@@ -73,15 +73,7 @@ export default function TodayPage() {
         <>
           <div className="mb-8 grid gap-4 sm:grid-cols-3">
             {STATS.map((stat) => (
-              <Card key={stat.key} className="flex items-start gap-3">
-                <stat.icon className="mt-0.5 h-5 w-5 text-brand-500 dark:text-brand-300" aria-hidden />
-                <div>
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400">{stat.label}</p>
-                  <p className="mt-0.5 font-display text-3xl font-semibold text-neutral-900 dark:text-neutral-50">
-                    {statValues[stat.key]}
-                  </p>
-                </div>
-              </Card>
+              <StatCard key={stat.key} icon={stat.icon} label={stat.label} value={statValues[stat.key]} />
             ))}
           </div>
 

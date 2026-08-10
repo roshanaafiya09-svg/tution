@@ -5,7 +5,7 @@ import { GraduationCap, ClipboardCheck, Wallet, Landmark } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
 import { payForOrder } from '@/lib/razorpay';
 import type { PaymentOrder, Payout, SubscriptionPlan, SubscriptionRecap } from '@/lib/types';
-import { Card, PageHeader, EmptyState, StatusBadge, Button, InlineError, PageLoading } from '@/components/ui';
+import { Card, PageHeader, EmptyState, StatusBadge, Button, InlineError, PageLoading, StatCard } from '@/components/ui';
 
 export default function BillingPage() {
   const [recap, setRecap] = useState<SubscriptionRecap | null>(null);
@@ -66,7 +66,7 @@ export default function BillingPage() {
         <PageLoading />
       ) : (
         <>
-          <Card className="mb-8">
+          <Card className="mb-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-neutral-500 dark:text-neutral-400">Subscription status</p>
@@ -80,37 +80,17 @@ export default function BillingPage() {
                 </p>
               )}
             </div>
-
-            <div className="mt-6 grid gap-4 sm:grid-cols-3">
-              <div className="flex items-start gap-2">
-                <GraduationCap className="mt-0.5 h-4 w-4 text-brand-500 dark:text-brand-300" aria-hidden />
-                <div>
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400">Classes run</p>
-                  <p className="mt-1 text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
-                    {recap.classesRun}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-2">
-                <ClipboardCheck className="mt-0.5 h-4 w-4 text-brand-500 dark:text-brand-300" aria-hidden />
-                <div>
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400">Attendances marked</p>
-                  <p className="mt-1 text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
-                    {recap.attendancesMarked}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-2">
-                <Wallet className="mt-0.5 h-4 w-4 text-brand-500 dark:text-brand-300" aria-hidden />
-                <div>
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400">Fees tracked</p>
-                  <p className="mt-1 text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
-                    {formatMinor(recap.feesTrackedMinor, recap.currency)}
-                  </p>
-                </div>
-              </div>
-            </div>
           </Card>
+
+          <div className="mb-8 grid gap-4 sm:grid-cols-3">
+            <StatCard icon={GraduationCap} label="Classes run" value={recap.classesRun} />
+            <StatCard icon={ClipboardCheck} label="Attendances marked" value={recap.attendancesMarked} />
+            <StatCard
+              icon={Wallet}
+              label="Fees tracked"
+              value={formatMinor(recap.feesTrackedMinor, recap.currency)}
+            />
+          </div>
 
           {!isPaid && plans && (
             <>

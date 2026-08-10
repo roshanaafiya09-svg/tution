@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { BookMarked, CalendarClock } from 'lucide-react';
+import { BookMarked, CalendarClock, Award, ClipboardCheck, CalendarCheck } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { impersonationStore } from '@/lib/impersonation';
 import type { ImpersonationTarget } from '@/lib/impersonation';
@@ -10,12 +10,11 @@ import type { Me, ProgressSummary, Session, Batch } from '@/lib/types';
 import { ImpersonationBanner } from '@/components/impersonation-banner';
 import {
   PageHeader,
-  Card,
-  CardTitle,
   PageLoading,
   ErrorState,
   EmptyState,
   StatusBadge,
+  StatCard,
   TableContainer,
   Table,
   THead,
@@ -99,30 +98,33 @@ export default function AdminStudentDashboardPage() {
         ) : (
           <>
             <div className="grid gap-4 sm:grid-cols-3">
-              <Card>
-                <CardTitle>Attendance</CardTitle>
-                <p className="mt-2 text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
-                  {progress?.summary.overallAttendanceRate != null
+              <StatCard
+                icon={CalendarCheck}
+                label="Attendance"
+                value={
+                  progress?.summary.overallAttendanceRate != null
                     ? `${progress.summary.overallAttendanceRate}%`
-                    : '—'}
-                </p>
-              </Card>
-              <Card>
-                <CardTitle>Assignments completed</CardTitle>
-                <p className="mt-2 text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
-                  {progress?.summary.overallAssignmentCompletionRate != null
+                    : '—'
+                }
+              />
+              <StatCard
+                icon={ClipboardCheck}
+                label="Assignments completed"
+                value={
+                  progress?.summary.overallAssignmentCompletionRate != null
                     ? `${progress.summary.overallAssignmentCompletionRate}%`
-                    : '—'}
-                </p>
-              </Card>
-              <Card>
-                <CardTitle>Quiz average</CardTitle>
-                <p className="mt-2 text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
-                  {progress?.summary.overallQuizAverageScorePercent != null
+                    : '—'
+                }
+              />
+              <StatCard
+                icon={Award}
+                label="Quiz average"
+                value={
+                  progress?.summary.overallQuizAverageScorePercent != null
                     ? `${progress.summary.overallQuizAverageScorePercent}%`
-                    : '—'}
-                </p>
-              </Card>
+                    : '—'
+                }
+              />
             </div>
 
             <h2 className="mb-3 mt-8 flex items-center gap-2 text-lg font-semibold text-neutral-900 dark:text-neutral-50">

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { CalendarDays, ClipboardList, Megaphone, Video, ArrowRight } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { Announcement, Batch, Me, Session, StudentAssignmentSummary } from '@/lib/types';
-import { Card, PageHeader, EmptyState, PageLoading, StatusBadge, buttonVariants } from '@/components/ui';
+import { Card, PageHeader, EmptyState, PageLoading, StatusBadge, StatCard, buttonVariants } from '@/components/ui';
 
 function formatSessionTime(session: Session): string {
   return new Date(session.scheduled_start_utc).toLocaleString('en-IN', {
@@ -66,33 +66,9 @@ export default function StudentOverviewPage() {
       ) : (
         <div className="space-y-8">
           <div className="grid gap-4 sm:grid-cols-3">
-            <Card className="flex items-start gap-3">
-              <CalendarDays className="mt-0.5 h-5 w-5 text-brand-500 dark:text-brand-300" aria-hidden />
-              <div>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400">Upcoming (14 days)</p>
-                <p className="mt-0.5 font-display text-3xl font-semibold text-neutral-900 dark:text-neutral-50">
-                  {sessions?.length ?? 0}
-                </p>
-              </div>
-            </Card>
-            <Card className="flex items-start gap-3">
-              <ClipboardList className="mt-0.5 h-5 w-5 text-brand-500 dark:text-brand-300" aria-hidden />
-              <div>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400">Pending assignments</p>
-                <p className="mt-0.5 font-display text-3xl font-semibold text-neutral-900 dark:text-neutral-50">
-                  {pendingAssignments.length}
-                </p>
-              </div>
-            </Card>
-            <Card className="flex items-start gap-3">
-              <Megaphone className="mt-0.5 h-5 w-5 text-brand-500 dark:text-brand-300" aria-hidden />
-              <div>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400">Recent announcements</p>
-                <p className="mt-0.5 font-display text-3xl font-semibold text-neutral-900 dark:text-neutral-50">
-                  {announcements?.length ?? 0}
-                </p>
-              </div>
-            </Card>
+            <StatCard icon={CalendarDays} label="Upcoming (14 days)" value={sessions?.length ?? 0} />
+            <StatCard icon={ClipboardList} label="Pending assignments" value={pendingAssignments.length} />
+            <StatCard icon={Megaphone} label="Recent announcements" value={announcements?.length ?? 0} />
           </div>
 
           <section>

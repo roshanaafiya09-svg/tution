@@ -4,7 +4,19 @@ import { useCallback, useEffect, useState } from 'react';
 import { CircleDollarSign, CheckCircle2, AlertCircle, Wallet } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
 import type { Batch, FeeEntry, FeeTotals } from '@/lib/types';
-import { Card, PageHeader, EmptyState, StatusBadge, Button, Field, Input, Select, PageLoading } from '@/components/ui';
+import {
+  Card,
+  PageHeader,
+  EmptyState,
+  StatusBadge,
+  Button,
+  Field,
+  Input,
+  Select,
+  PageLoading,
+  StatCard,
+  InlineError,
+} from '@/components/ui';
 
 function currentPeriod(): string {
   const now = new Date();
@@ -18,6 +30,8 @@ export default function FeesPage() {
   const [batches, setBatches] = useState<Batch[]>([]);
   const [selectedBatch, setSelectedBatch] = useState('');
   const [recordingId, setRecordingId] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setEntries(await api.get<FeeEntry[]>(`/fees/period?period=${period}`));
@@ -36,8 +50,16 @@ export default function FeesPage() {
 
   async function generate() {
     if (!selectedBatch) return;
-    await api.post(`/fees/batch/${selectedBatch}/generate`, { periodLabel: period });
-    await load();
+    setGenerateError(null);
+    setGenerating(true);
+    try {
+      await api.post(`/fees/batch/${selectedBatch}/generate`, { periodLabel: period });
+      await load();
+    } catch (err) {
+      setGenerateError(err instanceof Error ? err.message : 'Could not generate fees for this batch.');
+    } finally {
+      setGenerating(false);
+    }
   }
 
   async function recordPayment(entry: FeeEntry) {
@@ -81,40 +103,42 @@ export default function FeesPage() {
             ))}
           </Select>
         </Field>
-        <Button onClick={() => void generate()} disabled={!selectedBatch}>
-          Generate
+        <Button onClick={() => void generate()} disabled={!selectedBatch || generating} loading={generating}>
+          {generating ? 'Generating…' : 'Generate'}
         </Button>
       </div>
 
+      {generateError && (
+        <div className="mb-6">
+          <InlineError>{generateError}</InlineError>
+        </div>
+      )}
+
       {totals && totals.entries > 0 && (
         <div className="mb-8 grid gap-4 sm:grid-cols-3">
-          <Card className="flex items-start gap-3">
-            <CircleDollarSign className="mt-0.5 h-5 w-5 text-brand-500 dark:text-brand-300" aria-hidden />
-            <div>
-              <p className="text-sm text-neutral-500 dark:text-neutral-400">Expected</p>
-              <p className="mt-0.5 font-display text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
-                {formatMinor(totals.expectedMinor, totals.currency)}
-              </p>
-            </div>
-          </Card>
-          <Card className="flex items-start gap-3">
-            <CheckCircle2 className="mt-0.5 h-5 w-5 text-success dark:text-success-dark" aria-hidden />
-            <div>
-              <p className="text-sm text-neutral-500 dark:text-neutral-400">Collected</p>
-              <p className="mt-0.5 font-display text-2xl font-semibold text-success dark:text-success-dark">
+          <StatCard
+            icon={CircleDollarSign}
+            label="Expected"
+            value={formatMinor(totals.expectedMinor, totals.currency)}
+          />
+          <StatCard
+            icon={CheckCircle2}
+            label="Collected"
+            value={
+              <span className="text-success dark:text-success-dark">
                 {formatMinor(totals.collectedMinor, totals.currency)}
-              </p>
-            </div>
-          </Card>
-          <Card className="flex items-start gap-3">
-            <AlertCircle className="mt-0.5 h-5 w-5 text-warning dark:text-warning-dark" aria-hidden />
-            <div>
-              <p className="text-sm text-neutral-500 dark:text-neutral-400">Outstanding</p>
-              <p className="mt-0.5 font-display text-2xl font-semibold text-warning dark:text-warning-dark">
+              </span>
+            }
+          />
+          <StatCard
+            icon={AlertCircle}
+            label="Outstanding"
+            value={
+              <span className="text-warning dark:text-warning-dark">
                 {formatMinor(totals.outstandingMinor, totals.currency)}
-              </p>
-            </div>
-          </Card>
+              </span>
+            }
+          />
         </div>
       )}
 

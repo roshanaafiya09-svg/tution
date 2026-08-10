@@ -31,6 +31,7 @@ export default function SessionAttendancePage() {
       <PageHeader
         title="Attendance"
         description="Students who tapped Join are marked automatically — override anything that's wrong."
+        back={{ href: '/dashboard/batches', label: 'Batches' }}
       />
 
       {rows === null ? (

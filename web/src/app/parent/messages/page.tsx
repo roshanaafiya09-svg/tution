@@ -39,7 +39,7 @@ export default function ParentMessagesPage() {
                   {thread.batch_title}
                 </p>
                 <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                  Student {thread.student_id.slice(0, 8)}
+                  {thread.student_display_name ?? `Student ${thread.student_id.slice(0, 8)}`}
                 </p>
               </div>
               <p className="text-xs text-neutral-400 dark:text-neutral-500">

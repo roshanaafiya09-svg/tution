@@ -4,7 +4,18 @@ import { useEffect, useState } from 'react';
 import { BookMarked, Bell, X, Check } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
 import type { Curriculum, GradeLevel, Subject, TutorSubject } from '@/lib/types';
-import { Card, PageHeader, EmptyState, Button, Field, Input, Select, InlineError, PageLoading } from '@/components/ui';
+import {
+  Card,
+  PageHeader,
+  EmptyState,
+  Button,
+  Field,
+  Input,
+  Select,
+  InlineError,
+  PageLoading,
+  ConfirmDialog,
+} from '@/components/ui';
 
 export default function SubjectsPage() {
   const [offerings, setOfferings] = useState<TutorSubject[] | null>(null);
@@ -16,6 +27,7 @@ export default function SubjectsPage() {
   const [saving, setSaving] = useState(false);
   const [notifiedId, setNotifiedId] = useState<string | null>(null);
   const [notifyingId, setNotifyingId] = useState<string | null>(null);
+  const [offeringToDelete, setOfferingToDelete] = useState<TutorSubject | null>(null);
 
   const [form, setForm] = useState({
     subjectId: '',
@@ -215,7 +227,7 @@ export default function SubjectsPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => void deleteOffering(offering.id)}
+                  onClick={() => setOfferingToDelete(offering)}
                   aria-label="Remove subject"
                 >
                   <X className="h-4 w-4" aria-hidden />
@@ -225,6 +237,19 @@ export default function SubjectsPage() {
           ))}
         </Card>
       )}
+
+      <ConfirmDialog
+        open={offeringToDelete !== null}
+        onOpenChange={(open) => !open && setOfferingToDelete(null)}
+        onConfirm={() => (offeringToDelete ? deleteOffering(offeringToDelete.id) : Promise.resolve())}
+        title="Remove this subject offering?"
+        description={
+          offeringToDelete
+            ? `You'll stop appearing in marketplace search for ${subjectName(offeringToDelete.subject_id)} (${curriculumName(offeringToDelete.curriculum_id)}). Existing bookings aren't affected.`
+            : ''
+        }
+        confirmLabel="Remove"
+      />
     </div>
   );
 }

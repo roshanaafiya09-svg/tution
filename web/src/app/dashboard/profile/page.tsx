@@ -14,6 +14,7 @@ import {
   Textarea,
   StatusBadge,
   InlineError,
+  PageLoading,
   Dialog,
   DialogTrigger,
   DialogContent,
@@ -22,7 +23,7 @@ import {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const [profile, setProfile] = useState<TutorProfile | null>(null);
+  const [profile, setProfile] = useState<TutorProfile | null | undefined>(undefined);
   const [form, setForm] = useState({ displayName: '', headline: '', bio: '', yearsExperience: '' });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -105,128 +106,137 @@ export default function ProfilePage() {
     <div>
       <PageHeader title="Profile" description="This is what parents and students see." />
 
-      <Card className="max-w-2xl">
-        {profile && (
-          <div className="mb-6 flex items-center gap-3 border-b border-neutral-100 pb-4 dark:border-neutral-800">
-            <StatusBadge status={profile.verification_status} />
-            <p className="text-sm text-neutral-500 dark:text-neutral-400">
-              {profile.verification_status === 'verified'
-                ? 'Your profile is verified.'
-                : 'Verification is reviewed within 24 hours.'}
-            </p>
-          </div>
-        )}
-
-        <div className="grid gap-4">
-          <Field label="Display name">
-            <Input
-              value={form.displayName}
-              onChange={(e) => setForm({ ...form, displayName: e.target.value })}
-              placeholder="Priya Sharma"
-            />
-          </Field>
-          <Field label="Headline">
-            <Input
-              value={form.headline}
-              onChange={(e) => setForm({ ...form, headline: e.target.value })}
-              placeholder="Physics & Maths, Grades 9–12"
-            />
-          </Field>
-          <Field label="About you">
-            <Textarea
-              rows={4}
-              value={form.bio}
-              onChange={(e) => setForm({ ...form, bio: e.target.value })}
-            />
-          </Field>
-          <Field label="Years of experience">
-            <Input
-              type="number"
-              value={form.yearsExperience}
-              onChange={(e) => setForm({ ...form, yearsExperience: e.target.value })}
-            />
-          </Field>
-        </div>
-
-        {error && (
-          <div className="mt-3">
-            <InlineError>{error}</InlineError>
-          </div>
-        )}
-
-        <div className="mt-6 flex items-center gap-3">
-          <Button onClick={() => void save()} disabled={!form.displayName || saving} loading={saving}>
-            {saving ? 'Saving…' : 'Save profile'}
-          </Button>
-          {saved && (
-            <span className="flex items-center gap-1 text-sm text-success dark:text-success-dark">
-              <Check className="h-3.5 w-3.5" aria-hidden />
-              Saved
-            </span>
-          )}
-        </div>
-      </Card>
-
-      <Card className="mt-6 max-w-2xl border-error/20 dark:border-error/25">
-        <h2 className="font-display text-lg font-semibold text-neutral-900 dark:text-neutral-50">
-          Your data
-        </h2>
-        <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-          Export everything the app has on you, or permanently delete your account.
-        </p>
-
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Button variant="secondary" onClick={() => void exportData()} disabled={exporting} loading={exporting}>
-            <Download className="h-4 w-4" aria-hidden />
-            {exporting ? 'Preparing export…' : 'Export my data'}
-          </Button>
-
-          <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-            <DialogTrigger asChild>
-              <Button variant="danger">
-                <Trash2 className="h-4 w-4" aria-hidden />
-                Delete my account
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-error-bg dark:bg-error/15">
-                  <AlertTriangle className="h-5 w-5 text-error dark:text-error-dark" aria-hidden />
-                </div>
-                <div>
-                  <h3 className="font-display text-lg font-semibold text-neutral-900 dark:text-neutral-50">
-                    Delete your account?
-                  </h3>
-                  <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-                    This permanently deletes your account and signs you out everywhere. Your
-                    batches, attendance and fee records are kept for other people they belong to,
-                    but your contact details are removed and you can never sign back in with this
-                    number.
-                  </p>
-                </div>
+      {profile === undefined ? (
+        <PageLoading />
+      ) : (
+        <>
+          <Card className="max-w-2xl">
+            {profile && (
+              <div className="mb-6 flex items-center gap-3 border-b border-neutral-100 pb-4 dark:border-neutral-800">
+                <StatusBadge status={profile.verification_status} />
+                <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                  {profile.verification_status === 'verified'
+                    ? 'Your profile is verified.'
+                    : 'Verification is reviewed within 24 hours.'}
+                </p>
               </div>
-              {deleteError && (
-                <div className="mt-3">
-                  <InlineError>{deleteError}</InlineError>
-                </div>
+            )}
+
+            <div className="grid gap-4">
+              <Field label="Display name">
+                <Input
+                  value={form.displayName}
+                  onChange={(e) => setForm({ ...form, displayName: e.target.value })}
+                  placeholder="Priya Sharma"
+                />
+              </Field>
+              <Field label="Headline">
+                <Input
+                  value={form.headline}
+                  onChange={(e) => setForm({ ...form, headline: e.target.value })}
+                  placeholder="Physics & Maths, Grades 9–12"
+                />
+              </Field>
+              <Field label="About you">
+                <Textarea
+                  rows={4}
+                  value={form.bio}
+                  onChange={(e) => setForm({ ...form, bio: e.target.value })}
+                />
+              </Field>
+              <Field label="Years of experience">
+                <Input
+                  type="number"
+                  value={form.yearsExperience}
+                  onChange={(e) => setForm({ ...form, yearsExperience: e.target.value })}
+                />
+              </Field>
+            </div>
+
+            {error && (
+              <div className="mt-3">
+                <InlineError>{error}</InlineError>
+              </div>
+            )}
+
+            <div className="mt-6 flex items-center gap-3">
+              <Button onClick={() => void save()} disabled={!form.displayName || saving} loading={saving}>
+                {saving ? 'Saving…' : 'Save profile'}
+              </Button>
+              {saved && (
+                <span className="flex items-center gap-1 text-sm text-success dark:text-success-dark">
+                  <Check className="h-3.5 w-3.5" aria-hidden />
+                  Saved
+                </span>
               )}
-              <DialogFooter className="mt-5">
-                <Button variant="secondary" onClick={() => setConfirmOpen(false)} disabled={deleting}>
-                  Cancel
-                </Button>
-                <Button variant="danger" onClick={() => void deleteAccount()} disabled={deleting} loading={deleting}>
-                  {deleting ? 'Deleting…' : 'Yes, permanently delete my account'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
-        {exportError && (
-          <div className="mt-3">
-            <InlineError>{exportError}</InlineError>
-          </div>
-        )}
-      </Card>
+            </div>
+          </Card>
+
+          <Card className="mt-6 max-w-2xl border-error/20 dark:border-error/25">
+            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Your data</h2>
+            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+              Export everything the app has on you, or permanently delete your account.
+            </p>
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Button variant="secondary" onClick={() => void exportData()} disabled={exporting} loading={exporting}>
+                <Download className="h-4 w-4" aria-hidden />
+                {exporting ? 'Preparing export…' : 'Export my data'}
+              </Button>
+
+              <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="danger">
+                    <Trash2 className="h-4 w-4" aria-hidden />
+                    Delete my account
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-error-bg dark:bg-error/15">
+                      <AlertTriangle className="h-5 w-5 text-error dark:text-error-dark" aria-hidden />
+                    </div>
+                    <div>
+                      <h3 className="font-display text-lg font-semibold text-neutral-900 dark:text-neutral-50">
+                        Delete your account?
+                      </h3>
+                      <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+                        This permanently deletes your account and signs you out everywhere. Your
+                        batches, attendance and fee records are kept for other people they belong to,
+                        but your contact details are removed and you can never sign back in with this
+                        number.
+                      </p>
+                    </div>
+                  </div>
+                  {deleteError && (
+                    <div className="mt-3">
+                      <InlineError>{deleteError}</InlineError>
+                    </div>
+                  )}
+                  <DialogFooter className="mt-5">
+                    <Button variant="secondary" onClick={() => setConfirmOpen(false)} disabled={deleting}>
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="danger"
+                      onClick={() => void deleteAccount()}
+                      disabled={deleting}
+                      loading={deleting}
+                    >
+                      {deleting ? 'Deleting…' : 'Yes, permanently delete my account'}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+            {exportError && (
+              <div className="mt-3">
+                <InlineError>{exportError}</InlineError>
+              </div>
+            )}
+          </Card>
+        </>
+      )}
     </div>
   );
 }

@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { CalendarCheck, ClipboardCheck, Award, TrendingUp, TrendingDown, Minus, MessageSquareText, Wallet, ArrowRight } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
 import type { Digest, ParentLink, ProgressSummary, StudentFeeEntry } from '@/lib/types';
-import { Card, PageHeader, EmptyState, StatusBadge, InlineError, PageLoading } from '@/components/ui';
+import { Card, PageHeader, EmptyState, StatusBadge, InlineError, PageLoading, StatCard } from '@/components/ui';
 
 function TrendIcon({ trend }: { trend: string }) {
   if (trend === 'up' || trend === 'improving') return <TrendingUp className="h-3 w-3" aria-hidden />;
@@ -55,48 +55,38 @@ export default function ChildDetailPage() {
 
       {progress && (
         <div className="mb-8 grid gap-4 sm:grid-cols-3">
-          <Card className="flex items-start gap-3">
-            <CalendarCheck className="mt-0.5 h-5 w-5 text-brand-500 dark:text-brand-300" aria-hidden />
-            <div>
-              <p className="text-sm text-neutral-500 dark:text-neutral-400">Attendance rate</p>
-              <p className="mt-0.5 text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
-                {progress.summary.overallAttendanceRate ?? '—'}%
-              </p>
-              <p className="mt-1 flex items-center gap-1 text-xs capitalize text-neutral-400 dark:text-neutral-500">
-                <TrendIcon trend={progress.summary.attendanceTrend} />
-                Trend: {progress.summary.attendanceTrend}
-              </p>
-              <Link
-                href={`/parent/child/${studentId}/attendance`}
-                className="mt-2 flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline dark:text-brand-300"
-              >
-                View details
-                <ArrowRight className="h-3 w-3" aria-hidden />
-              </Link>
-            </div>
-          </Card>
-          <Card className="flex items-start gap-3">
-            <ClipboardCheck className="mt-0.5 h-5 w-5 text-brand-500 dark:text-brand-300" aria-hidden />
-            <div>
-              <p className="text-sm text-neutral-500 dark:text-neutral-400">Assignment completion</p>
-              <p className="mt-0.5 text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
-                {progress.summary.overallAssignmentCompletionRate ?? '—'}%
-              </p>
-            </div>
-          </Card>
-          <Card className="flex items-start gap-3">
-            <Award className="mt-0.5 h-5 w-5 text-brand-500 dark:text-brand-300" aria-hidden />
-            <div>
-              <p className="text-sm text-neutral-500 dark:text-neutral-400">Quiz average</p>
-              <p className="mt-0.5 text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
-                {progress.summary.overallQuizAverageScorePercent ?? '—'}%
-              </p>
-              <p className="mt-1 flex items-center gap-1 text-xs capitalize text-neutral-400 dark:text-neutral-500">
-                <TrendIcon trend={progress.summary.quizTrend} />
-                Trend: {progress.summary.quizTrend}
-              </p>
-            </div>
-          </Card>
+          <StatCard
+            icon={CalendarCheck}
+            label="Attendance rate"
+            value={`${progress.summary.overallAttendanceRate ?? '—'}%`}
+          >
+            <p className="mt-1 flex items-center gap-1 text-xs capitalize text-neutral-400 dark:text-neutral-500">
+              <TrendIcon trend={progress.summary.attendanceTrend} />
+              Trend: {progress.summary.attendanceTrend}
+            </p>
+            <Link
+              href={`/parent/child/${studentId}/attendance`}
+              className="mt-2 flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline dark:text-brand-300"
+            >
+              View details
+              <ArrowRight className="h-3 w-3" aria-hidden />
+            </Link>
+          </StatCard>
+          <StatCard
+            icon={ClipboardCheck}
+            label="Assignment completion"
+            value={`${progress.summary.overallAssignmentCompletionRate ?? '—'}%`}
+          />
+          <StatCard
+            icon={Award}
+            label="Quiz average"
+            value={`${progress.summary.overallQuizAverageScorePercent ?? '—'}%`}
+          >
+            <p className="mt-1 flex items-center gap-1 text-xs capitalize text-neutral-400 dark:text-neutral-500">
+              <TrendIcon trend={progress.summary.quizTrend} />
+              Trend: {progress.summary.quizTrend}
+            </p>
+          </StatCard>
         </div>
       )}
 

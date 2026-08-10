@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { IdCard, GraduationCap, ShieldQuestion } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { VerificationDocType, VerificationUpload } from '@/lib/types';
-import { Card, PageHeader, EmptyState, StatusBadge, InlineError, PageLoading } from '@/components/ui';
+import { Card, CardTitle, PageHeader, EmptyState, StatusBadge, InlineError, PageLoading } from '@/components/ui';
 
 const DOC_LABELS: Record<VerificationDocType, string> = {
   id_proof: 'ID proof (Aadhaar, PAN, etc.)',
@@ -91,7 +91,7 @@ export default function VerificationPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3">
                     <Icon className="mt-0.5 h-5 w-5 text-brand-500 dark:text-brand-300" aria-hidden />
-                    <p className="font-medium text-neutral-900 dark:text-neutral-50">{DOC_LABELS[type]}</p>
+                    <CardTitle>{DOC_LABELS[type]}</CardTitle>
                   </div>
                   {latest && <StatusBadge status={latest.status} />}
                 </div>

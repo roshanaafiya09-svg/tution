@@ -2,10 +2,10 @@
 
 import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
 import * as ToastPrimitive from '@radix-ui/react-toast';
-import { CheckCircle2, XCircle, Info, X } from 'lucide-react';
+import { CheckCircle2, XCircle, Info, AlertTriangle, X } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
-type ToastVariant = 'success' | 'error' | 'info';
+type ToastVariant = 'success' | 'error' | 'info' | 'warning';
 
 interface ToastInput {
   title: string;
@@ -24,12 +24,14 @@ const VARIANT_ICON: Record<ToastVariant, typeof CheckCircle2> = {
   success: CheckCircle2,
   error: XCircle,
   info: Info,
+  warning: AlertTriangle,
 };
 
 const VARIANT_CLASS: Record<ToastVariant, string> = {
   success: 'border-success/25 text-success dark:border-success/30 dark:text-success-dark',
   error: 'border-error/25 text-error dark:border-error/30 dark:text-error-dark',
   info: 'border-info/25 text-info dark:border-info/30 dark:text-info-dark',
+  warning: 'border-warning/25 text-warning dark:border-warning/30 dark:text-warning-dark',
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {

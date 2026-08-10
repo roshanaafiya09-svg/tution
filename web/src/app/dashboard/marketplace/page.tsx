@@ -6,6 +6,7 @@ import { api, formatMinor } from '@/lib/api';
 import type { Booking, ProofOfTeaching, Subject, TutorLocation } from '@/lib/types';
 import {
   Card,
+  CardTitle,
   PageHeader,
   EmptyState,
   StatusBadge,
@@ -14,6 +15,7 @@ import {
   Input,
   InlineError,
   PageLoading,
+  Spinner,
 } from '@/components/ui';
 
 export default function MarketplacePage() {
@@ -114,10 +116,12 @@ export default function MarketplacePage() {
         <Card>
           <div className="mb-3 flex items-center gap-2">
             <MapPin className="h-4 w-4 text-brand-500 dark:text-brand-300" aria-hidden />
-            <p className="font-medium text-neutral-900 dark:text-neutral-50">Location</p>
+            <CardTitle>Location</CardTitle>
           </div>
           {location === undefined ? (
-            <PageLoading label="Loading…" />
+            <div className="flex min-h-[8rem] items-center justify-center">
+              <Spinner className="h-5 w-5 text-neutral-400 dark:text-neutral-500" />
+            </div>
           ) : (
             <div className="grid gap-3">
               <Field label="City">
@@ -164,10 +168,12 @@ export default function MarketplacePage() {
         <Card>
           <div className="mb-3 flex items-center gap-2">
             <Award className="h-4 w-4 text-brand-500 dark:text-brand-300" aria-hidden />
-            <p className="font-medium text-neutral-900 dark:text-neutral-50">Proof-of-Teaching score</p>
+            <CardTitle>Proof-of-Teaching score</CardTitle>
           </div>
           {proofOfTeaching === null ? (
-            <PageLoading label="Loading…" />
+            <div className="flex min-h-[8rem] items-center justify-center">
+              <Spinner className="h-5 w-5 text-neutral-400 dark:text-neutral-500" />
+            </div>
           ) : (
             <>
               <p className="font-display text-3xl font-semibold text-neutral-900 dark:text-neutral-50">

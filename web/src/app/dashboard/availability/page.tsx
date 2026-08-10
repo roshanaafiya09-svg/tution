@@ -4,7 +4,18 @@ import { useCallback, useEffect, useState } from 'react';
 import { CalendarClock, CalendarOff, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AvailabilityRule, AvailabilityException } from '@/lib/types';
-import { Card, PageHeader, EmptyState, Button, Field, Input, Select, InlineError, PageLoading } from '@/components/ui';
+import {
+  Card,
+  PageHeader,
+  EmptyState,
+  Button,
+  Field,
+  Input,
+  Select,
+  InlineError,
+  PageLoading,
+  ConfirmDialog,
+} from '@/components/ui';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -34,6 +45,9 @@ export default function AvailabilityPage() {
     endTime: '',
   });
   const [savingException, setSavingException] = useState(false);
+
+  const [ruleToDelete, setRuleToDelete] = useState<AvailabilityRule | null>(null);
+  const [exceptionToDelete, setExceptionToDelete] = useState<AvailabilityException | null>(null);
 
   const load = useCallback(async () => {
     const [r, e] = await Promise.all([
@@ -109,11 +123,9 @@ export default function AvailabilityPage() {
         </div>
       )}
 
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Weekly rules</h2>
-        <Button variant="secondary" onClick={() => setShowRuleForm((s) => !s)}>
-          {showRuleForm ? 'Cancel' : 'Add rule'}
-        </Button>
+        <Button onClick={() => setShowRuleForm((s) => !s)}>{showRuleForm ? 'Cancel' : 'Add rule'}</Button>
       </div>
 
       {showRuleForm && (
@@ -179,7 +191,7 @@ export default function AvailabilityPage() {
                   {rule.start_time.slice(0, 5)} – {rule.end_time.slice(0, 5)}
                 </p>
               </div>
-              <Button variant="ghost" size="icon" onClick={() => void deleteRule(rule.id)} aria-label="Remove rule">
+              <Button variant="ghost" size="icon" onClick={() => setRuleToDelete(rule)} aria-label="Remove rule">
                 <X className="h-4 w-4" aria-hidden />
               </Button>
             </div>
@@ -187,9 +199,9 @@ export default function AvailabilityPage() {
         </Card>
       )}
 
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Exceptions</h2>
-        <Button variant="secondary" onClick={() => setShowExceptionForm((s) => !s)}>
+        <Button onClick={() => setShowExceptionForm((s) => !s)}>
           {showExceptionForm ? 'Cancel' : 'Add exception'}
         </Button>
       </div>
@@ -274,7 +286,7 @@ export default function AvailabilityPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => void deleteException(exception.id)}
+                onClick={() => setExceptionToDelete(exception)}
                 aria-label="Remove exception"
               >
                 <X className="h-4 w-4" aria-hidden />
@@ -283,6 +295,32 @@ export default function AvailabilityPage() {
           ))}
         </Card>
       )}
+
+      <ConfirmDialog
+        open={ruleToDelete !== null}
+        onOpenChange={(open) => !open && setRuleToDelete(null)}
+        onConfirm={() => (ruleToDelete ? deleteRule(ruleToDelete.id) : Promise.resolve())}
+        title="Remove this availability rule?"
+        description={
+          ruleToDelete
+            ? `You'll no longer be marked as generally free on ${WEEKDAYS[ruleToDelete.weekday]}s ${ruleToDelete.start_time.slice(0, 5)}–${ruleToDelete.end_time.slice(0, 5)}. This won't affect batches or sessions already scheduled.`
+            : ''
+        }
+        confirmLabel="Remove"
+      />
+
+      <ConfirmDialog
+        open={exceptionToDelete !== null}
+        onOpenChange={(open) => !open && setExceptionToDelete(null)}
+        onConfirm={() => (exceptionToDelete ? deleteException(exceptionToDelete.id) : Promise.resolve())}
+        title="Remove this exception?"
+        description={
+          exceptionToDelete
+            ? `This will remove your ${exceptionToDelete.is_available ? 'extra availability' : 'day off'} for ${new Date(exceptionToDelete.date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}.`
+            : ''
+        }
+        confirmLabel="Remove"
+      />
     </div>
   );
 }

@@ -13,6 +13,8 @@ export { Skeleton, CardSkeleton, Spinner, PageLoading } from './loading';
 export { ErrorState, InlineError } from './error-state';
 export { TableContainer, Table, THead, TBody, TR, TH, TD } from './table';
 export { Dialog, DialogTrigger, DialogClose, DialogContent, DialogFooter } from './dialog';
+export { ConfirmDialog } from './confirm-dialog';
+export { StatCard } from './stat-card';
 export { ToastProvider, useToast } from './toast';
 export { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from './tooltip';
 export {

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api, apiGetPublic, ApiError } from '@/lib/api';
 import type { Curriculum, StudentProfile } from '@/lib/types';
-import { Card, PageHeader, PageLoading, Button, Field, Input, InlineError, useToast } from '@/components/ui';
+import { Card, PageHeader, PageLoading, Button, Field, Input, Select, InlineError, useToast } from '@/components/ui';
 
 export default function StudentProfilePage() {
   const [profile, setProfile] = useState<StudentProfile | null | undefined>(undefined);
@@ -70,18 +70,14 @@ export default function StudentProfilePage() {
               <Input value={gradeLevel} onChange={(e) => setGradeLevel(e.target.value)} placeholder="e.g. Grade 9" />
             </Field>
             <Field label="Curriculum">
-              <select
-                value={curriculumId}
-                onChange={(e) => setCurriculumId(e.target.value)}
-                className="h-10 rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 shadow-xs transition-colors focus:border-brand-500 focus:outline-none dark:border-neutral-700 dark:bg-surface dark:text-neutral-100"
-              >
+              <Select value={curriculumId} onChange={(e) => setCurriculumId(e.target.value)}>
                 <option value="">Not set</option>
                 {curricula.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
             <Field label="School">
               <Input value={schoolName} onChange={(e) => setSchoolName(e.target.value)} placeholder="Your school" />

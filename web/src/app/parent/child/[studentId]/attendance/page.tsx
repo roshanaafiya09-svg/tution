@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { CalendarCheck, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AttendanceHistoryEntry, AttendanceSummary, ParentLink } from '@/lib/types';
-import { Card, PageHeader, EmptyState, PageLoading, StatusBadge, InlineError } from '@/components/ui';
+import { Card, PageHeader, EmptyState, PageLoading, StatusBadge, InlineError, StatCard } from '@/components/ui';
 
 export default function ChildAttendancePage() {
   const { studentId } = useParams<{ studentId: string }>();
@@ -53,43 +53,34 @@ export default function ChildAttendancePage() {
       ) : (
         <div className="space-y-8">
           <div className="grid gap-4 sm:grid-cols-4">
-            <Card className="flex items-start gap-3">
-              <CalendarCheck className="mt-0.5 h-5 w-5 text-brand-500 dark:text-brand-300" aria-hidden />
-              <div>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400">Attendance</p>
-                <p className="mt-0.5 font-display text-3xl font-semibold text-neutral-900 dark:text-neutral-50">
+            <StatCard
+              icon={CalendarCheck}
+              label="Attendance"
+              value={
+                <>
                   {summary.rate ?? '—'}
                   {summary.rate !== null && '%'}
-                </p>
-              </div>
-            </Card>
-            <Card className="flex items-start gap-3">
-              <CheckCircle2 className="mt-0.5 h-5 w-5 text-success" aria-hidden />
-              <div>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400">Present</p>
-                <p className="mt-0.5 font-display text-3xl font-semibold text-neutral-900 dark:text-neutral-50">
-                  {summary.present}
-                </p>
-              </div>
-            </Card>
-            <Card className="flex items-start gap-3">
-              <XCircle className="mt-0.5 h-5 w-5 text-error" aria-hidden />
-              <div>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400">Absent</p>
-                <p className="mt-0.5 font-display text-3xl font-semibold text-neutral-900 dark:text-neutral-50">
-                  {summary.absent}
-                </p>
-              </div>
-            </Card>
-            <Card className="flex items-start gap-3">
-              <Clock className="mt-0.5 h-5 w-5 text-warning" aria-hidden />
-              <div>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400">Late</p>
-                <p className="mt-0.5 font-display text-3xl font-semibold text-neutral-900 dark:text-neutral-50">
-                  {summary.late}
-                </p>
-              </div>
-            </Card>
+                </>
+              }
+            />
+            <StatCard
+              icon={CheckCircle2}
+              label="Present"
+              value={summary.present}
+              iconClassName="text-success dark:text-success-dark"
+            />
+            <StatCard
+              icon={XCircle}
+              label="Absent"
+              value={summary.absent}
+              iconClassName="text-error dark:text-error-dark"
+            />
+            <StatCard
+              icon={Clock}
+              label="Late"
+              value={summary.late}
+              iconClassName="text-warning dark:text-warning-dark"
+            />
           </div>
 
           <section>

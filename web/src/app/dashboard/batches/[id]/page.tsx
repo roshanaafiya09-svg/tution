@@ -32,6 +32,7 @@ import type {
 } from '@/lib/types';
 import {
   Card,
+  CardTitle,
   PageHeader,
   EmptyState,
   StatusBadge,
@@ -136,7 +137,7 @@ function StudentsTab({ batchId }: { batchId: string }) {
       <Card>
         <div className="flex items-center gap-2">
           <Link2 className="h-4 w-4 text-brand-500 dark:text-brand-300" aria-hidden />
-          <h3 className="font-medium text-neutral-900 dark:text-neutral-50">Invite students</h3>
+          <CardTitle>Invite students</CardTitle>
         </div>
         <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
           Share this link on WhatsApp. Students who open it land pre-enrolled in this batch.
@@ -202,6 +203,7 @@ function SessionsTab({ batchId }: { batchId: string }) {
   const [sessions, setSessions] = useState<Session[] | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({
     startLocal: '',
     durationMin: '60',
@@ -220,6 +222,7 @@ function SessionsTab({ batchId }: { batchId: string }) {
 
   async function createSession() {
     setError(null);
+    setCreating(true);
     try {
       const recurrenceRule =
         form.repeat === 'none'
@@ -237,6 +240,8 @@ function SessionsTab({ batchId }: { batchId: string }) {
       setShowForm(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not schedule the session.');
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -305,8 +310,8 @@ function SessionsTab({ batchId }: { batchId: string }) {
           )}
 
           <div className="mt-4">
-            <Button onClick={() => void createSession()} disabled={!form.startLocal}>
-              Schedule
+            <Button onClick={() => void createSession()} disabled={!form.startLocal || creating} loading={creating}>
+              {creating ? 'Scheduling…' : 'Schedule'}
             </Button>
           </div>
         </Card>
@@ -572,6 +577,8 @@ function MaterialsTab({ batchId }: { batchId: string }) {
 function HomeworkTab({ batchId }: { batchId: string }) {
   const [assignments, setAssignments] = useState<Assignment[] | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ title: '', instructions: '', dueAtLocal: '' });
 
   const load = useCallback(async () => {
@@ -583,15 +590,23 @@ function HomeworkTab({ batchId }: { batchId: string }) {
   }, [load]);
 
   async function create() {
-    await api.post('/assignments', {
-      batchId,
-      title: form.title,
-      instructions: form.instructions || undefined,
-      dueAtLocal: form.dueAtLocal,
-    });
-    await load();
-    setShowForm(false);
-    setForm({ title: '', instructions: '', dueAtLocal: '' });
+    setError(null);
+    setCreating(true);
+    try {
+      await api.post('/assignments', {
+        batchId,
+        title: form.title,
+        instructions: form.instructions || undefined,
+        dueAtLocal: form.dueAtLocal,
+      });
+      await load();
+      setShowForm(false);
+      setForm({ title: '', instructions: '', dueAtLocal: '' });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not set this homework.');
+    } finally {
+      setCreating(false);
+    }
   }
 
   return (
@@ -623,9 +638,18 @@ function HomeworkTab({ batchId }: { batchId: string }) {
               />
             </Field>
           </div>
+          {error && (
+            <div className="mt-3">
+              <InlineError>{error}</InlineError>
+            </div>
+          )}
           <div className="mt-4">
-            <Button onClick={() => void create()} disabled={!form.title || !form.dueAtLocal}>
-              Set homework
+            <Button
+              onClick={() => void create()}
+              disabled={!form.title || !form.dueAtLocal || creating}
+              loading={creating}
+            >
+              {creating ? 'Setting homework…' : 'Set homework'}
             </Button>
           </div>
         </Card>

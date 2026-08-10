@@ -103,7 +103,7 @@ export function ParentShell({ children }: { children: React.ReactNode }) {
             >
               Scholar
             </Link>
-            <nav className="flex items-center gap-1 overflow-x-auto">
+            <nav className="hidden items-center gap-1 md:flex">
               {NAV.map((item) => {
                 const active =
                   item.href === '/parent' ? pathname === item.href : pathname.startsWith(item.href);
@@ -111,7 +111,8 @@ export function ParentShell({ children }: { children: React.ReactNode }) {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    aria-current={active ? 'page' : undefined}
+                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                       active
                         ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'
                         : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100'
@@ -155,6 +156,26 @@ export function ParentShell({ children }: { children: React.ReactNode }) {
             </DropdownMenu>
           </div>
         </div>
+        <nav className="flex items-center gap-1 overflow-x-auto border-t border-neutral-100 px-6 py-1.5 md:hidden dark:border-neutral-800">
+          {NAV.map((item) => {
+            const active =
+              item.href === '/parent' ? pathname === item.href : pathname.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? 'page' : undefined}
+                className={`shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  active
+                    ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'
+                    : 'text-neutral-600 dark:text-neutral-400'
+                }`}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
       </header>
 
       <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>

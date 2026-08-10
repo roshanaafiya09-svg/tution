@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { LoginForm } from './login-form';
+import { Spinner } from '@/components/ui';
 
 export const metadata: Metadata = {
   title: 'Sign in — Scholar',
@@ -33,7 +34,10 @@ export default function LoginPage() {
         </div>
         <Suspense
           fallback={
-            <p className="text-center text-sm text-neutral-400 dark:text-neutral-500">Loading…</p>
+            <div className="flex items-center justify-center gap-2 py-10 text-neutral-400 dark:text-neutral-500">
+              <Spinner className="h-4 w-4" />
+              <p className="text-sm">Loading…</p>
+            </div>
           }
         >
           <LoginForm />

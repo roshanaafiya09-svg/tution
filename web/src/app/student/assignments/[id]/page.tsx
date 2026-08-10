@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Upload, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Upload, CheckCircle2, FileQuestion } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { StudentAssignmentSummary, StudentSubmission } from '@/lib/types';
-import { Card, PageHeader, PageLoading, Button, StatusBadge, InlineError } from '@/components/ui';
+import { Card, PageHeader, PageLoading, Button, StatusBadge, InlineError, EmptyState } from '@/components/ui';
 
 interface PresignedUpload {
   uploadUrl: string;
@@ -70,23 +70,39 @@ export default function StudentAssignmentDetailPage() {
 
   return (
     <div>
-      <button
-        onClick={() => router.push('/student/assignments')}
-        className="mb-4 flex items-center gap-1.5 text-sm font-medium text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
-      >
-        <ArrowLeft className="h-4 w-4" aria-hidden />
-        Back to assignments
-      </button>
-
       {loading ? (
-        <PageLoading />
+        <>
+          <button
+            onClick={() => router.push('/student/assignments')}
+            className="mb-4 flex items-center gap-1.5 text-sm font-medium text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+            Back to assignments
+          </button>
+          <PageLoading />
+        </>
       ) : assignment === null ? (
-        <Card>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">Assignment not found.</p>
-        </Card>
+        <>
+          <button
+            onClick={() => router.push('/student/assignments')}
+            className="mb-4 flex items-center gap-1.5 text-sm font-medium text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+            Back to assignments
+          </button>
+          <EmptyState
+            icon={FileQuestion}
+            title="Assignment not found"
+            description="It may have been removed, or the link is incorrect."
+          />
+        </>
       ) : (
         <>
-          <PageHeader title={assignment.title} description={assignment.batch_title} />
+          <PageHeader
+            title={assignment.title}
+            description={assignment.batch_title}
+            back={{ href: '/student/assignments', label: 'Back to assignments' }}
+          />
 
           <Card className="mb-6">
             <p className="text-sm text-neutral-500 dark:text-neutral-400">
@@ -108,7 +124,7 @@ export default function StudentAssignmentDetailPage() {
           {submission ? (
             <Card>
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-success" aria-hidden />
+                <CheckCircle2 className="h-4 w-4 text-success dark:text-success-dark" aria-hidden />
                 <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                   Submitted{' '}
                   {new Date(submission.submitted_at).toLocaleString('en-IN', {

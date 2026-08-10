@@ -105,6 +105,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                   <Link
                     key={item.href}
                     href={item.href}
+                    aria-current={active ? 'page' : undefined}
                     className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                       active
                         ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'
@@ -157,6 +158,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={active ? 'page' : undefined}
                 className={`shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                   active
                     ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'

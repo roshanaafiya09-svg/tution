@@ -49,16 +49,17 @@ export default function StudentQuizTakePage() {
 
   return (
     <div>
-      <button
-        onClick={() => router.push('/student/quizzes')}
-        className="mb-4 flex items-center gap-1.5 text-sm font-medium text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
-      >
-        <ArrowLeft className="h-4 w-4" aria-hidden />
-        Back to quizzes
-      </button>
-
       {data === null ? (
-        <PageLoading />
+        <>
+          <button
+            onClick={() => router.push('/student/quizzes')}
+            className="mb-4 flex items-center gap-1.5 text-sm font-medium text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+            Back to quizzes
+          </button>
+          <PageLoading />
+        </>
       ) : (
         <>
           <PageHeader
@@ -68,6 +69,7 @@ export default function StudentQuizTakePage() {
                 ? `You scored ${data.score}/${data.total}`
                 : 'Answer every question, then submit. One attempt only.'
             }
+            back={{ href: '/student/quizzes', label: 'Back to quizzes' }}
           />
 
           <div className="space-y-4">
@@ -112,10 +114,13 @@ export default function StudentQuizTakePage() {
                           />
                           <span className="text-neutral-800 dark:text-neutral-200">{choice}</span>
                           {data.attempted && isCorrect && (
-                            <CheckCircle2 className="ml-auto h-4 w-4 text-success" aria-hidden />
+                            <CheckCircle2
+                              className="ml-auto h-4 w-4 text-success dark:text-success-dark"
+                              aria-hidden
+                            />
                           )}
                           {data.attempted && isWrongChosen && (
-                            <XCircle className="ml-auto h-4 w-4 text-error" aria-hidden />
+                            <XCircle className="ml-auto h-4 w-4 text-error dark:text-error-dark" aria-hidden />
                           )}
                         </label>
                       );

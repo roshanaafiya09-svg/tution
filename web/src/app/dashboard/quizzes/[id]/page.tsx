@@ -124,7 +124,7 @@ export default function QuizDraftPage() {
             Attempts
           </h3>
           {attempts === null ? (
-            <PageLoading label="Loading…" />
+            <PageLoading />
           ) : attempts.length === 0 ? (
             <p className="text-sm text-neutral-500 dark:text-neutral-400">No attempts yet.</p>
           ) : (
