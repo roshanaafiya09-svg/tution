@@ -2,15 +2,26 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Upload, CheckCircle2, FileQuestion } from 'lucide-react';
-import { api } from '@/lib/api';
-import type { StudentAssignmentSummary, StudentSubmission } from '@/lib/types';
+import { ArrowLeft, Upload, CheckCircle2, FileQuestion, User } from 'lucide-react';
+import { api, apiGetPublic } from '@/lib/api';
+import type { Batch, StudentAssignmentSummary, StudentSubmission, Subject } from '@/lib/types';
 import { Card, PageHeader, PageLoading, Button, StatusBadge, InlineError, EmptyState } from '@/components/ui';
 
 interface PresignedUpload {
   uploadUrl: string;
   objectKey: string;
   headers?: Record<string, string>;
+}
+
+type AssignmentStatus = 'overdue' | 'due_soon' | 'not_started' | 'submitted' | 'graded';
+
+function statusFor(a: StudentAssignmentSummary): AssignmentStatus {
+  if (a.grade !== null) return 'graded';
+  if (a.submission_id) return 'submitted';
+  const dueIn = new Date(a.due_at_utc).getTime() - Date.now();
+  if (dueIn < 0) return 'overdue';
+  if (dueIn <= 24 * 60 * 60 * 1000) return 'due_soon';
+  return 'not_started';
 }
 
 export default function StudentAssignmentDetailPage() {
@@ -20,13 +31,23 @@ export default function StudentAssignmentDetailPage() {
 
   const [assignment, setAssignment] = useState<StudentAssignmentSummary | null>(null);
   const [submission, setSubmission] = useState<StudentSubmission | null | undefined>(undefined);
+  const [batch, setBatch] = useState<Batch | null>(null);
+  const [subjectName, setSubjectName] = useState<string | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
-    const list = await api.get<StudentAssignmentSummary[]>('/assignments/me');
-    setAssignment(list.find((a) => a.id === assignmentId) ?? null);
+    const [list, batches, subjects] = await Promise.all([
+      api.get<StudentAssignmentSummary[]>('/assignments/me'),
+      api.get<Batch[]>('/batches/enrolled'),
+      apiGetPublic<Subject[]>('/catalog/subjects'),
+    ]);
+    const found = list.find((a) => a.id === assignmentId) ?? null;
+    setAssignment(found);
+    const foundBatch = found ? batches.find((b) => b.id === found.batch_id) ?? null : null;
+    setBatch(foundBatch);
+    setSubjectName(foundBatch ? subjects.find((s) => s.id === foundBatch.subject_id)?.name_i18n.en ?? null : null);
     const own = await api
       .get<StudentSubmission | undefined>(`/assignments/${assignmentId}/my-submission`)
       .catch(() => undefined);
@@ -100,20 +121,29 @@ export default function StudentAssignmentDetailPage() {
         <>
           <PageHeader
             title={assignment.title}
-            description={assignment.batch_title}
+            description={subjectName ? `${subjectName} · ${assignment.batch_title}` : assignment.batch_title}
             back={{ href: '/student/assignments', label: 'Back to assignments' }}
           />
 
           <Card className="mb-6">
-            <p className="text-sm text-neutral-500 dark:text-neutral-400">
-              Due{' '}
-              {new Date(assignment.due_at_utc).toLocaleString('en-IN', {
-                day: 'numeric',
-                month: 'short',
-                hour: 'numeric',
-                minute: '2-digit',
-              })}
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                Due{' '}
+                {new Date(assignment.due_at_utc).toLocaleString('en-IN', {
+                  day: 'numeric',
+                  month: 'short',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
+              </p>
+              <StatusBadge status={statusFor(assignment)} />
+            </div>
+            {batch?.tutor_display_name && (
+              <p className="mt-1.5 flex items-center gap-1.5 text-sm text-neutral-500 dark:text-neutral-400">
+                <User className="h-3.5 w-3.5" aria-hidden />
+                {batch.tutor_display_name}
+              </p>
+            )}
             {assignment.instructions && (
               <p className="mt-3 whitespace-pre-wrap text-sm text-neutral-700 dark:text-neutral-300">
                 {assignment.instructions}

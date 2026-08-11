@@ -1,10 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { HelpCircle, Send, Lock } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import type { Batch, DoubtTurn } from '@/lib/types';
-import { Card, PageHeader, EmptyState, PageLoading, Button, Textarea, InlineError, Badge } from '@/components/ui';
+import {
+  Card,
+  PageHeader,
+  EmptyState,
+  PageLoading,
+  CardSkeleton,
+  ErrorState,
+  Button,
+  Textarea,
+  InlineError,
+  Badge,
+} from '@/components/ui';
 
 export default function StudentDoubtsPage() {
   const [batches, setBatches] = useState<Batch[] | null>(null);
@@ -15,13 +26,23 @@ export default function StudentDoubtsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [premiumRequired, setPremiumRequired] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+
+  const load = useCallback(() => {
+    setLoadError(false);
+    setBatches(null);
+    api
+      .get<Batch[]>('/batches/enrolled')
+      .then((list) => {
+        setBatches(list);
+        if (list.length > 0) setBatchId((current) => current ?? list[0].id);
+      })
+      .catch(() => setLoadError(true));
+  }, []);
 
   useEffect(() => {
-    void api.get<Batch[]>('/batches/enrolled').then((list) => {
-      setBatches(list);
-      if (list.length > 0) setBatchId(list[0].id);
-    });
-  }, []);
+    load();
+  }, [load]);
 
   async function loadHistory(id: string) {
     const list = await api.get<DoubtTurn[]>(`/doubt-solver/batch/${id}/history`);
@@ -72,7 +93,12 @@ export default function StudentDoubtsPage() {
       <PageHeader title="Doubts / Help" description="Ask a question about anything from your classes." />
 
       {batches === null ? (
-        <PageLoading />
+        <div className="space-y-3">
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+      ) : loadError ? (
+        <ErrorState description="Could not load your batches. Check your connection and try again." onRetry={load} />
       ) : batches.length === 0 ? (
         <EmptyState icon={HelpCircle} title="No batches yet" description="Join a batch to start asking questions." />
       ) : (

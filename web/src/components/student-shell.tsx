@@ -15,8 +15,9 @@ import {
   LogOut,
 } from 'lucide-react';
 import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
-import type { Me } from '@/lib/types';
+import type { Me, StudentProfile } from '@/lib/types';
 import { NotificationsBell } from '@/components/notifications-bell';
+import { cn } from '@/lib/cn';
 import {
   PageLoading,
   ErrorState,
@@ -25,6 +26,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuLabel,
 } from '@/components/ui';
 
 const NAV = [
@@ -34,18 +36,38 @@ const NAV = [
   { href: '/student/materials', label: 'Materials' },
 ];
 
-const MORE_NAV = [
-  { href: '/student/batches', label: 'My Batches', icon: BookMarked },
-  { href: '/student/attendance', label: 'Attendance', icon: CalendarCheck },
-  { href: '/student/announcements', label: 'Announcements', icon: Megaphone },
-  { href: '/student/doubts', label: 'Doubts / Help', icon: HelpCircle },
-  { href: '/student/quizzes', label: 'Quizzes', icon: ListChecks },
+const MORE_GROUPS = [
+  {
+    label: 'Learning',
+    items: [
+      { href: '/student/batches', label: 'My Batches', icon: BookMarked },
+      { href: '/student/quizzes', label: 'Quizzes', icon: ListChecks },
+      { href: '/student/attendance', label: 'Attendance', icon: CalendarCheck },
+    ],
+  },
+  {
+    label: 'Communication',
+    items: [
+      { href: '/student/announcements', label: 'Announcements', icon: Megaphone },
+      { href: '/student/doubts', label: 'Doubts / Help', icon: HelpCircle },
+    ],
+  },
 ];
+
+const MORE_NAV = MORE_GROUPS.flatMap((group) => group.items);
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
 export function StudentShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [me, setMe] = useState<Me | null>(null);
+  const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -64,6 +86,11 @@ export function StudentShell({ children }: { children: React.ReactNode }) {
           setError('Could not load your account.');
         }
       });
+
+    api
+      .get<StudentProfile | undefined>('/profiles/student/me')
+      .then((p) => setProfile(p ?? null))
+      .catch(() => setProfile(null));
   }, [router]);
 
   function signOut() {
@@ -143,13 +170,33 @@ export function StudentShell({ children }: { children: React.ReactNode }) {
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="min-w-[13rem]">
-                  {MORE_NAV.map((item) => (
-                    <DropdownMenuItem key={item.href} asChild>
-                      <Link href={item.href}>
-                        <item.icon className="h-4 w-4 text-neutral-400" aria-hidden />
-                        {item.label}
-                      </Link>
-                    </DropdownMenuItem>
+                  {MORE_GROUPS.map((group, i) => (
+                    <div key={group.label}>
+                      {i > 0 && <DropdownMenuSeparator />}
+                      <DropdownMenuLabel>{group.label}</DropdownMenuLabel>
+                      {group.items.map((item) => {
+                        const active = pathname.startsWith(item.href);
+                        return (
+                          <DropdownMenuItem key={item.href} asChild>
+                            <Link
+                              href={item.href}
+                              className={cn(
+                                active && 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200',
+                              )}
+                            >
+                              <item.icon
+                                className={cn(
+                                  'h-4 w-4',
+                                  active ? 'text-brand-600 dark:text-brand-300' : 'text-neutral-400',
+                                )}
+                                aria-hidden
+                              />
+                              {item.label}
+                            </Link>
+                          </DropdownMenuItem>
+                        );
+                      })}
+                    </div>
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -167,19 +214,30 @@ export function StudentShell({ children }: { children: React.ReactNode }) {
                   }`}
                   aria-label="Account menu"
                 >
-                  {me.phoneE164.slice(-2)}
+                  {profile ? initials(profile.display_name) : me.phoneE164.slice(-2)}
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="min-w-[14rem]">
                 <div className="px-2.5 py-1.5 text-xs text-neutral-400 dark:text-neutral-500">Signed in as</div>
-                <div className="px-2.5 pb-2 text-sm font-medium text-neutral-800 dark:text-neutral-100">
-                  {me.phoneE164}
+                <div className="px-2.5 pb-2">
+                  {profile && (
+                    <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
+                      {profile.display_name}
+                    </p>
+                  )}
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400">{me.phoneE164}</p>
                 </div>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
                   <Link href="/student/profile">
                     <User className="h-4 w-4 text-neutral-400" aria-hidden />
                     Profile
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/student/batches">
+                    <BookMarked className="h-4 w-4 text-neutral-400" aria-hidden />
+                    My Batches
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
