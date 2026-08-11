@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { BookMarked, CalendarDays, User } from 'lucide-react';
 import { api, apiGetPublic, formatMinor } from '@/lib/api';
 import type { AttendanceHistoryEntry, Batch, Session, Subject } from '@/lib/types';
-import { Card, PageHeader, EmptyState, CardSkeleton, ErrorState, StatusBadge } from '@/components/ui';
+import { EmptyState, CardSkeleton, ErrorState, StatusBadge } from '@/components/ui';
+import { PageIntro, AcademicCard } from '@/components/student';
+import { cn } from '@/lib/cn';
 
 function formatSessionTime(session: Session): string {
   return new Date(session.scheduled_start_utc).toLocaleString('en-IN', {
@@ -15,6 +17,14 @@ function formatSessionTime(session: Session): string {
     hour: 'numeric',
     minute: '2-digit',
   });
+}
+
+const SPINE_TONES = ['bg-brand-500', 'bg-accent-500', 'bg-info', 'bg-success', 'bg-warning'] as const;
+
+function spineTone(key: string): string {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return SPINE_TONES[hash % SPINE_TONES.length];
 }
 
 export default function StudentBatchesPage() {
@@ -54,14 +64,14 @@ export default function StudentBatchesPage() {
   const now = new Date();
 
   return (
-    <div>
-      <PageHeader title="My Batches" description="Classes you're enrolled in." />
+    <div className="space-y-8">
+      <PageIntro eyebrow="Your learning spaces" title="My Batches" description="Classes you're enrolled in." />
 
       {loading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <CardSkeleton />
-          <CardSkeleton />
-          <CardSkeleton />
+          <CardSkeleton className="rounded-2xl" />
+          <CardSkeleton className="rounded-2xl" />
+          <CardSkeleton className="rounded-2xl" />
         </div>
       ) : loadError ? (
         <ErrorState description="Could not load your batches. Check your connection and try again." onRetry={load} />
@@ -84,37 +94,42 @@ export default function StudentBatchesPage() {
               batchHistory.length > 0 ? Math.round((present / batchHistory.length) * 100) : null;
 
             return (
-              <Card key={batch.id}>
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="font-medium text-neutral-900 dark:text-neutral-50">{batch.title}</p>
-                    {subject && <p className="text-sm text-neutral-500 dark:text-neutral-400">{subject}</p>}
+              <AcademicCard key={batch.id} className="overflow-hidden p-0">
+                <div className={cn('h-1.5', spineTone(batch.subject_id))} aria-hidden />
+                <div className="p-6">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-display text-lg font-semibold text-neutral-900 dark:text-neutral-50">
+                        {batch.title}
+                      </p>
+                      {subject && <p className="text-sm text-neutral-500 dark:text-neutral-400">{subject}</p>}
+                    </div>
+                    <StatusBadge status={batch.status} />
                   </div>
-                  <StatusBadge status={batch.status} />
+
+                  {batch.tutor_display_name && (
+                    <p className="mt-3 flex items-center gap-1.5 text-sm text-neutral-600 dark:text-neutral-400">
+                      <User className="h-3.5 w-3.5 text-neutral-400" aria-hidden />
+                      {batch.tutor_display_name}
+                    </p>
+                  )}
+
+                  <p className="mt-1.5 flex items-center gap-1.5 text-sm text-neutral-600 dark:text-neutral-400">
+                    <CalendarDays className="h-3.5 w-3.5 text-neutral-400" aria-hidden />
+                    {nextSession ? `Next: ${formatSessionTime(nextSession)}` : 'No upcoming class'}
+                  </p>
+
+                  {attendanceRate !== null && (
+                    <p className="mt-1.5 text-sm text-neutral-600 dark:text-neutral-400">
+                      Attendance: {attendanceRate}% ({present}/{batchHistory.length})
+                    </p>
+                  )}
+
+                  <p className="mt-4 border-t border-neutral-100 pt-3.5 text-sm text-neutral-600 dark:border-neutral-800 dark:text-neutral-400">
+                    {formatMinor(batch.fee_minor, batch.currency)} / {batch.fee_period.replace('_', ' ')}
+                  </p>
                 </div>
-
-                {batch.tutor_display_name && (
-                  <p className="mt-3 flex items-center gap-1.5 text-sm text-neutral-600 dark:text-neutral-400">
-                    <User className="h-3.5 w-3.5 text-neutral-400" aria-hidden />
-                    {batch.tutor_display_name}
-                  </p>
-                )}
-
-                <p className="mt-1.5 flex items-center gap-1.5 text-sm text-neutral-600 dark:text-neutral-400">
-                  <CalendarDays className="h-3.5 w-3.5 text-neutral-400" aria-hidden />
-                  {nextSession ? `Next: ${formatSessionTime(nextSession)}` : 'No upcoming class'}
-                </p>
-
-                {attendanceRate !== null && (
-                  <p className="mt-1.5 text-sm text-neutral-600 dark:text-neutral-400">
-                    Attendance: {attendanceRate}% ({present}/{batchHistory.length})
-                  </p>
-                )}
-
-                <p className="mt-3 border-t border-neutral-100 pt-3 text-sm text-neutral-600 dark:border-neutral-800 dark:text-neutral-400">
-                  {formatMinor(batch.fee_minor, batch.currency)} / {batch.fee_period.replace('_', ' ')}
-                </p>
-              </Card>
+              </AcademicCard>
             );
           })}
         </div>

@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { CalendarDays, Video } from 'lucide-react';
 import { api, apiGetPublic } from '@/lib/api';
 import type { Batch, Session, Subject } from '@/lib/types';
-import { Card, PageHeader, EmptyState, CardSkeleton, ErrorState, StatusBadge, buttonVariants } from '@/components/ui';
+import { EmptyState, CardSkeleton, ErrorState, StatusBadge, buttonVariants } from '@/components/ui';
+import { PageIntro, AcademicCard, TimelineNode, TimelineDot } from '@/components/student';
+import { cn } from '@/lib/cn';
 
 function formatTime(session: Session): string {
   return new Date(session.scheduled_start_utc).toLocaleString('en-IN', {
@@ -67,6 +69,9 @@ export default function StudentSchedulePage() {
     return batch ? subjects?.find((s) => s.id === batch.subject_id)?.name_i18n.en : undefined;
   }
 
+  const now = new Date();
+  const nextSession = (sessions ?? []).find((s) => s.status === 'scheduled' && new Date(s.scheduled_start_utc) >= now);
+
   const groups: { key: string; label: string; sessions: Session[] }[] = [];
   for (const session of sessions ?? []) {
     const key = dayKey(session);
@@ -79,14 +84,14 @@ export default function StudentSchedulePage() {
   }
 
   return (
-    <div>
-      <PageHeader title="Schedule" description="Your classes for the next two weeks." />
+    <div className="space-y-8">
+      <PageIntro eyebrow="What do I have today" title="Schedule" description="Your classes for the next two weeks." />
 
       {loading ? (
         <div className="space-y-3">
-          <CardSkeleton />
-          <CardSkeleton />
-          <CardSkeleton />
+          <CardSkeleton className="rounded-2xl" />
+          <CardSkeleton className="rounded-2xl" />
+          <CardSkeleton className="rounded-2xl" />
         </div>
       ) : loadError ? (
         <ErrorState description="Could not load your schedule. Check your connection and try again." onRetry={load} />
@@ -97,41 +102,53 @@ export default function StudentSchedulePage() {
           description="Your tutor hasn't scheduled a class yet."
         />
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-8">
           {groups.map((group) => (
             <div key={group.key}>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-400 dark:text-neutral-500">
+              <p className="mb-4 text-xs font-semibold uppercase tracking-[0.14em] text-brand-500 dark:text-brand-300">
                 {group.label}
               </p>
-              <div className="space-y-3">
-                {group.sessions.map((session) => {
+              <div>
+                {group.sessions.map((session, i) => {
                   const subject = subjectFor(session);
+                  const isNext = session.id === nextSession?.id;
                   return (
-                    <Card key={session.id} className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-neutral-900 dark:text-neutral-50">
-                          {subject ?? session.batch_title}
-                        </p>
-                        <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                          {subject ? `${session.batch_title} · ` : ''}
-                          {formatTime(session)} · {session.duration_min} min
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <StatusBadge status={session.status} />
-                        {session.meeting_url && (
-                          <a
-                            href={session.meeting_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className={buttonVariants({ variant: 'accent', size: 'sm' })}
-                          >
-                            <Video className="h-3.5 w-3.5" aria-hidden />
-                            Join class
-                          </a>
+                    <TimelineNode
+                      key={session.id}
+                      isLast={i === group.sessions.length - 1}
+                      marker={<TimelineDot active={isNext} />}
+                    >
+                      <AcademicCard
+                        className={cn(
+                          'flex flex-wrap items-center justify-between gap-3',
+                          isNext && 'border-brand-300 bg-brand-50/40 dark:border-brand-500/30 dark:bg-brand-500/5',
                         )}
-                      </div>
-                    </Card>
+                      >
+                        <div>
+                          <p className="font-display text-lg font-semibold text-neutral-900 dark:text-neutral-50">
+                            {subject ?? session.batch_title}
+                          </p>
+                          <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
+                            {subject ? `${session.batch_title} · ` : ''}
+                            {formatTime(session)} · {session.duration_min} min
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <StatusBadge status={session.status} />
+                          {session.meeting_url && (
+                            <a
+                              href={session.meeting_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={buttonVariants({ variant: 'accent', size: 'sm' })}
+                            >
+                              <Video className="h-3.5 w-3.5" aria-hidden />
+                              Join class
+                            </a>
+                          )}
+                        </div>
+                      </AcademicCard>
+                    </TimelineNode>
                   );
                 })}
               </div>

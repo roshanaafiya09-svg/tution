@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { ListChecks, ChevronRight } from 'lucide-react';
 import { api, apiGetPublic } from '@/lib/api';
 import type { Batch, StudentQuizSummary, Subject } from '@/lib/types';
-import { Card, PageHeader, EmptyState, CardSkeleton, ErrorState, Badge, buttonVariants } from '@/components/ui';
+import { EmptyState, CardSkeleton, ErrorState, buttonVariants } from '@/components/ui';
+import { PageIntro, AcademicCard, ProgressRing } from '@/components/student';
 import { cn } from '@/lib/cn';
 
 export default function StudentQuizzesPage() {
@@ -48,17 +49,17 @@ export default function StudentQuizzesPage() {
   }, [loadQuizzes]);
 
   const loading = batches === null || subjects === null;
-  const subject = batches?.find((b) => b.id === batchId);
-  const subjectName = subject ? subjects?.find((s) => s.id === subject.subject_id)?.name_i18n.en : undefined;
+  const batch = batches?.find((b) => b.id === batchId);
+  const subjectName = batch ? subjects?.find((s) => s.id === batch.subject_id)?.name_i18n.en : undefined;
 
   return (
-    <div>
-      <PageHeader title="Quizzes" description="Published quizzes from your tutors." />
+    <div className="space-y-8">
+      <PageIntro eyebrow="Test yourself" title="Quizzes" description="Published quizzes from your tutors." />
 
       {loading ? (
         <div className="space-y-3">
-          <CardSkeleton />
-          <CardSkeleton />
+          <CardSkeleton className="rounded-2xl" />
+          <CardSkeleton className="rounded-2xl" />
         </div>
       ) : loadError ? (
         <ErrorState description="Could not load your batches. Check your connection and try again." onRetry={load} />
@@ -71,11 +72,12 @@ export default function StudentQuizzesPage() {
               <button
                 key={b.id}
                 onClick={() => setBatchId(b.id)}
-                className={`rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+                className={cn(
+                  'rounded-full border px-4 py-1.5 text-sm font-medium transition-colors',
                   batchId === b.id
-                    ? 'border-brand-600 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-500/15 dark:text-brand-200'
-                    : 'border-neutral-300 text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800'
-                }`}
+                    ? 'border-brand-600 bg-brand-600 text-white shadow-sm dark:border-brand-400 dark:bg-brand-500'
+                    : 'border-neutral-300 text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800',
+                )}
               >
                 {b.title}
               </button>
@@ -83,7 +85,7 @@ export default function StudentQuizzesPage() {
           </div>
 
           {quizzes === null ? (
-            <CardSkeleton />
+            <CardSkeleton className="rounded-2xl" />
           ) : quizzesError ? (
             <ErrorState description="Could not load quizzes for this batch." onRetry={loadQuizzes} />
           ) : quizzes.length === 0 ? (
@@ -93,36 +95,45 @@ export default function StudentQuizzesPage() {
               description="Published quizzes will appear here when your tutor shares them."
             />
           ) : (
-            <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
+            <div className="space-y-3">
               {quizzes.map((q) => (
-                <Link
-                  key={q.id}
-                  href={`/student/quizzes/${q.id}`}
-                  className="flex items-center justify-between gap-3 px-6 py-4 hover:bg-neutral-50 dark:hover:bg-neutral-900"
-                >
-                  <div>
-                    <p className="font-medium text-neutral-900 dark:text-neutral-50">{q.title}</p>
-                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                      {subjectName ? `${subjectName} · ` : ''}
-                      {q.questionCount} question{q.questionCount === 1 ? '' : 's'}
-                    </p>
-                  </div>
-                  {q.attempted ? (
-                    <div className="flex items-center gap-2">
-                      <Badge variant="brand">
-                        {q.score}/{q.total}
-                      </Badge>
-                      <span className="text-sm font-medium text-neutral-500 dark:text-neutral-400">Review</span>
-                      <ChevronRight className="h-4 w-4 text-neutral-400" aria-hidden />
+                <Link key={q.id} href={`/student/quizzes/${q.id}`}>
+                  <AcademicCard interactive className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="font-display text-lg font-semibold text-neutral-900 dark:text-neutral-50">
+                        {q.title}
+                      </p>
+                      <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
+                        {subjectName ? `${subjectName} · ` : ''}
+                        {q.questionCount} question{q.questionCount === 1 ? '' : 's'}
+                      </p>
                     </div>
-                  ) : (
-                    <span className={cn(buttonVariants({ variant: 'accent', size: 'sm' }), 'pointer-events-none')}>
-                      Start quiz
-                    </span>
-                  )}
+                    {q.attempted ? (
+                      <div className="flex shrink-0 items-center gap-3">
+                        <ProgressRing
+                          value={q.total ? Math.round(((q.score ?? 0) / q.total) * 100) : 0}
+                          size={52}
+                          strokeWidth={5}
+                          tone="success"
+                        >
+                          <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">
+                            {q.score}/{q.total}
+                          </span>
+                        </ProgressRing>
+                        <span className="hidden text-sm font-medium text-neutral-500 dark:text-neutral-400 sm:inline">
+                          Review
+                        </span>
+                        <ChevronRight className="h-4 w-4 text-neutral-400" aria-hidden />
+                      </div>
+                    ) : (
+                      <span className={cn(buttonVariants({ variant: 'accent', size: 'sm' }), 'pointer-events-none shrink-0')}>
+                        Start quiz
+                      </span>
+                    )}
+                  </AcademicCard>
                 </Link>
               ))}
-            </Card>
+            </div>
           )}
         </div>
       )}

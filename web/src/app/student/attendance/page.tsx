@@ -4,17 +4,17 @@ import { useCallback, useEffect, useState } from 'react';
 import { CalendarCheck, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AttendanceHistoryEntry, AttendanceSummary, Batch } from '@/lib/types';
-import { Card, PageHeader, EmptyState, CardSkeleton, ErrorState, StatusBadge } from '@/components/ui';
-import { cn } from '@/lib/cn';
+import { EmptyState, CardSkeleton, ErrorState, StatusBadge } from '@/components/ui';
+import { PageIntro, SectionHeader, AcademicCard, ProgressRing } from '@/components/student';
 
 interface HistoryRowWithBatch extends AttendanceHistoryEntry {
   batch_title: string;
 }
 
-function barColor(rate: number): string {
-  if (rate >= 90) return 'bg-success';
-  if (rate >= 75) return 'bg-warning';
-  return 'bg-error';
+function ringTone(rate: number): 'success' | 'warning' | 'error' {
+  if (rate >= 90) return 'success';
+  if (rate >= 75) return 'warning';
+  return 'error';
 }
 
 export default function StudentAttendancePage() {
@@ -50,14 +50,22 @@ export default function StudentAttendancePage() {
 
   const loading = summary === null || history === null;
 
+  const byBatch = new Map<string, { present: number; total: number }>();
+  for (const row of history ?? []) {
+    const entry = byBatch.get(row.batch_title) ?? { present: 0, total: 0 };
+    entry.total += 1;
+    if (row.status === 'present' || row.status === 'late') entry.present += 1;
+    byBatch.set(row.batch_title, entry);
+  }
+
   return (
-    <div>
-      <PageHeader title="Attendance" description="Your attendance across all your batches." />
+    <div className="space-y-8">
+      <PageIntro eyebrow="How am I doing" title="Attendance" description="Your attendance across all your batches." />
 
       {loading ? (
         <div className="space-y-8">
-          <CardSkeleton />
-          <CardSkeleton />
+          <CardSkeleton className="h-48 rounded-2xl" />
+          <CardSkeleton className="rounded-2xl" />
         </div>
       ) : loadError ? (
         <ErrorState description="Could not load your attendance. Check your connection and try again." onRetry={load} />
@@ -69,61 +77,68 @@ export default function StudentAttendancePage() {
         />
       ) : (
         <div className="space-y-8">
-          <Card>
-            <div className="flex flex-wrap items-start justify-between gap-6">
-              <div>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400">Attendance</p>
-                <p className="mt-0.5 font-display text-4xl font-semibold text-neutral-900 dark:text-neutral-50">
-                  {summary.rate ?? '—'}
-                  {summary.rate !== null && '%'}
+          <AcademicCard>
+            <div className="flex flex-wrap items-center gap-8">
+              <ProgressRing value={summary.rate} tone={summary.rate !== null ? ringTone(summary.rate) : 'brand'}>
+                <p className="font-display text-3xl font-semibold text-neutral-900 dark:text-neutral-50">
+                  {summary.rate !== null ? `${summary.rate}%` : '—'}
                 </p>
-              </div>
-              <div className="flex gap-6">
-                <div className="flex items-center gap-2">
+                <p className="text-xs text-neutral-400 dark:text-neutral-500">overall</p>
+              </ProgressRing>
+
+              <div className="flex flex-1 flex-wrap gap-6">
+                <div className="flex items-center gap-2.5">
                   <CheckCircle2 className="h-4 w-4 text-success dark:text-success-dark" aria-hidden />
                   <div>
+                    <p className="font-display text-xl font-semibold text-neutral-900 dark:text-neutral-50">
+                      {summary.present}
+                    </p>
                     <p className="text-xs text-neutral-500 dark:text-neutral-400">Present</p>
-                    <p className="font-semibold text-neutral-900 dark:text-neutral-50">{summary.present}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <XCircle className="h-4 w-4 text-error dark:text-error-dark" aria-hidden />
-                  <div>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400">Absent</p>
-                    <p className="font-semibold text-neutral-900 dark:text-neutral-50">{summary.absent}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   <Clock className="h-4 w-4 text-warning dark:text-warning-dark" aria-hidden />
                   <div>
+                    <p className="font-display text-xl font-semibold text-neutral-900 dark:text-neutral-50">
+                      {summary.late}
+                    </p>
                     <p className="text-xs text-neutral-500 dark:text-neutral-400">Late</p>
-                    <p className="font-semibold text-neutral-900 dark:text-neutral-50">{summary.late}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <XCircle className="h-4 w-4 text-error dark:text-error-dark" aria-hidden />
+                  <div>
+                    <p className="font-display text-xl font-semibold text-neutral-900 dark:text-neutral-50">
+                      {summary.absent}
+                    </p>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400">Absent</p>
                   </div>
                 </div>
               </div>
             </div>
-            {summary.rate !== null && (
-              <div
-                className="mt-5 h-2 w-full overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800"
-                role="progressbar"
-                aria-valuenow={summary.rate}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label="Attendance rate"
-              >
-                <div
-                  className={cn('h-full rounded-full transition-all', barColor(summary.rate))}
-                  style={{ width: `${summary.rate}%` }}
-                />
-              </div>
-            )}
-          </Card>
+          </AcademicCard>
+
+          {byBatch.size > 1 && (
+            <section>
+              <SectionHeader title="By batch" />
+              <AcademicCard className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
+                {Array.from(byBatch.entries()).map(([title, stat]) => (
+                  <div key={title} className="flex items-center justify-between gap-3 px-6 py-3.5">
+                    <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{title}</p>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                      {Math.round((stat.present / stat.total) * 100)}% · {stat.present} of {stat.total}
+                    </p>
+                  </div>
+                ))}
+              </AcademicCard>
+            </section>
+          )}
 
           <section>
-            <h2 className="mb-3 text-lg font-semibold text-neutral-900 dark:text-neutral-50">History</h2>
-            <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
+            <SectionHeader title="History" />
+            <AcademicCard className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
               {history.map((row) => (
-                <div key={row.id} className="flex items-center justify-between gap-3 px-6 py-3">
+                <div key={row.id} className="flex items-center justify-between gap-3 px-6 py-3.5">
                   <div>
                     <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{row.batch_title}</p>
                     <p className="text-sm text-neutral-500 dark:text-neutral-400">
@@ -139,7 +154,7 @@ export default function StudentAttendancePage() {
                   <StatusBadge status={row.status} />
                 </div>
               ))}
-            </Card>
+            </AcademicCard>
           </section>
         </div>
       )}

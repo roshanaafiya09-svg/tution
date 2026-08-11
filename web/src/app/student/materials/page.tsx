@@ -5,7 +5,8 @@ import { FileText, Image as ImageIcon, File as FileIcon, Search, ExternalLink } 
 import type { LucideIcon } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { Batch, Material } from '@/lib/types';
-import { Card, PageHeader, EmptyState, CardSkeleton, ErrorState, Button, Input } from '@/components/ui';
+import { EmptyState, CardSkeleton, ErrorState, Button, Input } from '@/components/ui';
+import { PageIntro, SectionHeader, ResourceCard } from '@/components/student';
 
 interface MaterialWithBatch extends Material {
   batch_title: string;
@@ -42,6 +43,15 @@ function fileTypeIcon(mime: string): LucideIcon {
   if (mime.startsWith('image/')) return ImageIcon;
   if (mime === 'application/pdf' || mime.startsWith('text/')) return FileText;
   return FileIcon;
+}
+
+function fileTypeTone(mime: string): 'brand' | 'accent' | 'info' | 'success' | 'warning' {
+  if (mime === 'application/pdf') return 'brand';
+  if (mime.startsWith('image/')) return 'accent';
+  if (mime.includes('word')) return 'info';
+  if (mime.includes('sheet') || mime.includes('excel')) return 'success';
+  if (mime.includes('presentation') || mime.includes('powerpoint')) return 'warning';
+  return 'brand';
 }
 
 export default function StudentMaterialsPage() {
@@ -98,13 +108,35 @@ export default function StudentMaterialsPage() {
   }, [filtered]);
 
   return (
-    <div>
-      <PageHeader title="Study Materials" description="Files shared by your tutors, across all your batches." />
+    <div className="space-y-8">
+      <PageIntro
+        eyebrow="Your resources"
+        title="Study Materials"
+        description="Files shared by your tutors, across all your batches."
+        action={
+          materials && materials.length > 0 ? (
+            <div className="relative w-full max-w-xs">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"
+                aria-hidden
+              />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search materials…"
+                className="pl-9"
+                aria-label="Search materials"
+              />
+            </div>
+          ) : undefined
+        }
+      />
 
       {materials === null ? (
-        <div className="space-y-3">
-          <CardSkeleton />
-          <CardSkeleton />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <CardSkeleton className="rounded-2xl" />
+          <CardSkeleton className="rounded-2xl" />
+          <CardSkeleton className="rounded-2xl" />
         </div>
       ) : loadError ? (
         <ErrorState description="Could not load your materials. Check your connection and try again." onRetry={load} />
@@ -114,55 +146,32 @@ export default function StudentMaterialsPage() {
           title="No materials yet"
           description="Your tutors haven't shared any study materials yet."
         />
+      ) : groups.length === 0 ? (
+        <EmptyState icon={Search} title="No matches" description="Try a different search term." />
       ) : (
-        <div className="space-y-6">
-          <div className="relative max-w-sm">
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"
-              aria-hidden
-            />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search materials…"
-              className="pl-9"
-              aria-label="Search materials"
-            />
-          </div>
-
-          {groups.length === 0 ? (
-            <EmptyState icon={Search} title="No matches" description="Try a different search term." />
-          ) : (
-            groups.map(([batchTitle, items]) => (
-              <section key={batchTitle}>
-                <h2 className="mb-3 text-sm font-semibold text-neutral-500 dark:text-neutral-400">{batchTitle}</h2>
-                <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
-                  {items.map((m) => {
-                    const Icon = fileTypeIcon(m.mime);
-                    return (
-                      <div key={m.id} className="flex items-center justify-between gap-3 px-6 py-3">
-                        <div className="flex min-w-0 items-center gap-3">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
-                            <Icon className="h-4.5 w-4.5" aria-hidden />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="truncate font-medium text-neutral-900 dark:text-neutral-50">{m.title}</p>
-                            <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                              {fileTypeLabel(m.mime)} · {formatSize(m.size_bytes)}
-                            </p>
-                          </div>
-                        </div>
-                        <Button variant="secondary" size="sm" onClick={() => void open(m.id)}>
-                          <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                          Open
-                        </Button>
-                      </div>
-                    );
-                  })}
-                </Card>
-              </section>
-            ))
-          )}
+        <div className="space-y-8">
+          {groups.map(([batchTitle, items]) => (
+            <section key={batchTitle}>
+              <SectionHeader title={batchTitle} />
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {items.map((m) => (
+                  <ResourceCard
+                    key={m.id}
+                    icon={fileTypeIcon(m.mime)}
+                    tone={fileTypeTone(m.mime)}
+                    title={m.title}
+                    meta={`${fileTypeLabel(m.mime)} · ${formatSize(m.size_bytes)}`}
+                    action={
+                      <Button variant="secondary" size="sm" className="mt-auto self-start" onClick={() => void open(m.id)}>
+                        <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                        Open
+                      </Button>
+                    }
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
         </div>
       )}
     </div>
