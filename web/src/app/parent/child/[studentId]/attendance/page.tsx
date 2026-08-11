@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { CalendarCheck, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AttendanceHistoryEntry, AttendanceSummary, ParentLink } from '@/lib/types';
-import { Card, PageHeader, EmptyState, PageLoading, StatusBadge, InlineError, StatCard } from '@/components/ui';
+import { PageHeader, CardSkeleton, StatusBadge, InlineError } from '@/components/ui';
+import { ParentCard, ParentEmptyState, ParentSectionHeader, ProgressRing } from '@/components/parent';
 
 export default function ChildAttendancePage() {
   const { studentId } = useParams<{ studentId: string }>();
@@ -33,68 +34,76 @@ export default function ChildAttendancePage() {
   }, [studentId]);
 
   const loading = summary === null || history === null;
+  const name = displayName ?? `Student ${studentId.slice(0, 8)}`;
 
   return (
-    <div>
+    <div className="space-y-8">
       <PageHeader
-        title={displayName ? `${displayName}'s attendance` : 'Attendance'}
+        eyebrow="Attendance"
+        title={`${name}'s attendance`}
         description="Attendance across all of their batches."
         back={{ href: `/parent/child/${studentId}`, label: 'Back' }}
       />
 
-      {error && (
-        <div className="mb-4">
-          <InlineError>{error}</InlineError>
-        </div>
-      )}
+      {error && <InlineError>{error}</InlineError>}
 
       {loading ? (
-        <PageLoading />
+        <div className="space-y-4">
+          <CardSkeleton className="h-40 rounded-2xl" />
+          <CardSkeleton className="rounded-2xl" />
+        </div>
       ) : (
         <div className="space-y-8">
-          <div className="grid gap-4 sm:grid-cols-4">
-            <StatCard
-              icon={CalendarCheck}
-              label="Attendance"
-              value={
-                <>
-                  {summary.rate ?? '—'}
-                  {summary.rate !== null && '%'}
-                </>
-              }
-            />
-            <StatCard
-              icon={CheckCircle2}
-              label="Present"
-              value={summary.present}
-              iconClassName="text-success dark:text-success-dark"
-            />
-            <StatCard
-              icon={XCircle}
-              label="Absent"
-              value={summary.absent}
-              iconClassName="text-error dark:text-error-dark"
-            />
-            <StatCard
-              icon={Clock}
-              label="Late"
-              value={summary.late}
-              iconClassName="text-warning dark:text-warning-dark"
-            />
-          </div>
+          <ParentCard className="flex flex-col items-center gap-6 sm:flex-row sm:justify-center">
+            <ProgressRing value={summary.rate} tone="brand">
+              <p className="font-display text-3xl font-semibold text-neutral-900 dark:text-neutral-50">
+                {summary.rate !== null ? `${summary.rate}%` : '—'}
+              </p>
+              <p className="text-xs text-neutral-400 dark:text-neutral-500">attendance</p>
+            </ProgressRing>
+            <div className="flex gap-6">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-success dark:text-success-dark" aria-hidden />
+                <div>
+                  <p className="font-display text-xl font-semibold text-neutral-900 dark:text-neutral-50">
+                    {summary.present}
+                  </p>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">Present</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <XCircle className="h-4 w-4 text-error dark:text-error-dark" aria-hidden />
+                <div>
+                  <p className="font-display text-xl font-semibold text-neutral-900 dark:text-neutral-50">
+                    {summary.absent}
+                  </p>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">Absent</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-warning dark:text-warning-dark" aria-hidden />
+                <div>
+                  <p className="font-display text-xl font-semibold text-neutral-900 dark:text-neutral-50">
+                    {summary.late}
+                  </p>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">Late</p>
+                </div>
+              </div>
+            </div>
+          </ParentCard>
 
           <section>
-            <h2 className="mb-3 text-lg font-semibold text-neutral-900 dark:text-neutral-50">History</h2>
+            <ParentSectionHeader title="History" />
             {history.length === 0 ? (
-              <EmptyState
-                icon={CalendarCheck}
+              <ParentEmptyState
+                icon={CheckCircle2}
                 title="No attendance records yet"
                 description="Attendance will show up here once a class has been marked."
               />
             ) : (
-              <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
+              <div className="divide-y divide-neutral-100 overflow-hidden rounded-2xl border border-neutral-200/70 bg-white shadow-sm dark:divide-neutral-800/80 dark:border-neutral-800/80 dark:bg-surface">
                 {history.map((row) => (
-                  <div key={row.id} className="flex items-center justify-between gap-3 px-6 py-3">
+                  <div key={row.id} className="flex items-center justify-between gap-3 px-5 py-3.5">
                     <p className="text-sm text-neutral-500 dark:text-neutral-400">
                       {new Date(row.scheduled_start_utc).toLocaleString('en-IN', {
                         weekday: 'short',
@@ -107,7 +116,7 @@ export default function ChildAttendancePage() {
                     <StatusBadge status={row.status} />
                   </div>
                 ))}
-              </Card>
+              </div>
             )}
           </section>
         </div>

@@ -1,11 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, ShieldCheck, UserPlus, ArrowRight } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import type { ParentLink } from '@/lib/types';
-import { Card, PageHeader, Button, Field, Input, InlineError } from '@/components/ui';
+import { PageHeader, Button, Field, Input, InlineError } from '@/components/ui';
+import { ParentCard } from '@/components/parent';
 
 const POLICY_VERSION = '1.0';
 
@@ -48,54 +50,73 @@ export default function LinkChildPage() {
     }
   }
 
+  const childName = link?.student_display_name ?? (link ? `Student ${link.student_id.slice(0, 8)}` : null);
+
   return (
     <div className="mx-auto max-w-md">
       <PageHeader
+        eyebrow="Link your child"
         title="Link a child"
-        description="Your child shares an invite token from their app — paste it below."
+        description="Enter the invite token shared by your child to start following their learning."
       />
 
-      <Card>
+      <ParentCard>
         {done ? (
           <div className="text-center">
             <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-success-bg dark:bg-success/15">
               <CheckCircle2 className="h-6 w-6 text-success dark:text-success-dark" aria-hidden />
             </div>
             <p className="font-display text-xl font-semibold text-neutral-900 dark:text-neutral-50">
-              Linked
+              {childName ? `${childName} is linked` : 'Linked'}
             </p>
             <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
-              You&apos;ll now see this child&apos;s attendance, progress, and weekly digest.
+              You&apos;ll now see their attendance, progress, and weekly digest.
             </p>
-            <Button className="mt-6 w-full" onClick={() => router.push('/parent')}>
+            {link && (
+              <Link
+                href={`/parent/child/${link.student_id}`}
+                className="mt-6 flex w-full items-center justify-center gap-1.5 rounded-md bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-700 dark:bg-brand-500 dark:text-neutral-950 dark:hover:bg-brand-400"
+              >
+                View {childName ?? 'their'} learning
+                <ArrowRight className="h-4 w-4" aria-hidden />
+              </Link>
+            )}
+            <Button variant="secondary" className="mt-2.5 w-full" onClick={() => router.push('/parent')}>
               Go to my children
             </Button>
           </div>
         ) : link ? (
           <div>
-            <div className="mb-3 flex items-start gap-2">
-              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand-500 dark:text-brand-300" aria-hidden />
-              <p className="text-sm text-neutral-700 dark:text-neutral-300">
-                Under India&apos;s DPDP Act, we need your explicit consent before showing you this
-                child&apos;s attendance, materials, and progress data.
-              </p>
+            <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
+              <ShieldCheck className="h-5 w-5" aria-hidden />
             </div>
+            <p className="text-center font-display text-lg font-semibold text-neutral-900 dark:text-neutral-50">
+              {childName ?? 'This child'} found
+            </p>
+            <p className="mt-2 text-center text-sm text-neutral-600 dark:text-neutral-300">
+              Under India&apos;s DPDP Act, we need your explicit consent before showing you this
+              child&apos;s attendance, materials, and progress data.
+            </p>
             {error && (
               <div className="mt-3">
                 <InlineError>{error}</InlineError>
               </div>
             )}
-            <Button className="mt-4 w-full" onClick={() => void consent()} disabled={consenting} loading={consenting}>
+            <Button className="mt-5 w-full" onClick={() => void consent()} disabled={consenting} loading={consenting}>
               {consenting ? 'Saving…' : 'I consent — link my child'}
             </Button>
           </div>
         ) : (
           <div className="flex flex-col gap-4">
+            <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
+              <UserPlus className="h-5 w-5" aria-hidden />
+            </div>
             <Field label="Invite token" hint="Ask your child to share it from their app's settings.">
               <Input
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
                 placeholder="Paste the token here"
+                autoFocus
               />
             </Field>
             {error && <InlineError>{error}</InlineError>}
@@ -104,7 +125,7 @@ export default function LinkChildPage() {
             </Button>
           </div>
         )}
-      </Card>
+      </ParentCard>
     </div>
   );
 }

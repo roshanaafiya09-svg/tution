@@ -18,6 +18,7 @@ export default function ParentThreadPage() {
   return (
     <div>
       <PageHeader
+        eyebrow="Communication"
         title="Conversation"
         description="Visible to the tutor, your child, and you."
         back={{ href: '/parent/messages', label: 'All conversations' }}

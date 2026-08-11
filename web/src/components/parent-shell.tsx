@@ -4,13 +4,14 @@ import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import posthog from 'posthog-js';
-import { User, LogOut } from 'lucide-react';
+import { Home, UserPlus, MessagesSquare, Sparkles, User, LogOut } from 'lucide-react';
 import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
 import type { Me } from '@/lib/types';
 import { impersonationStore } from '@/lib/impersonation';
 import type { ImpersonationTarget } from '@/lib/impersonation';
 import { ImpersonationBanner } from '@/components/impersonation-banner';
 import { NotificationsBell } from '@/components/notifications-bell';
+import { cn } from '@/lib/cn';
 import {
   PageLoading,
   ErrorState,
@@ -22,10 +23,10 @@ import {
 } from '@/components/ui';
 
 const NAV = [
-  { href: '/parent', label: 'Home' },
-  { href: '/parent/link', label: 'Link a child' },
-  { href: '/parent/messages', label: 'Messages' },
-  { href: '/parent/premium', label: 'Premium' },
+  { href: '/parent', label: 'Home', icon: Home },
+  { href: '/parent/link', label: 'Link a child', icon: UserPlus },
+  { href: '/parent/messages', label: 'Messages', icon: MessagesSquare },
+  { href: '/parent/premium', label: 'Premium', icon: Sparkles },
 ];
 
 export function ParentShell({ children }: { children: React.ReactNode }) {
@@ -112,12 +113,14 @@ export function ParentShell({ children }: { children: React.ReactNode }) {
                     key={item.href}
                     href={item.href}
                     aria-current={active ? 'page' : undefined}
-                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
                       active
                         ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'
-                        : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100'
-                    }`}
+                        : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
+                    )}
                   >
+                    <item.icon className="h-3.5 w-3.5" aria-hidden />
                     {item.label}
                   </Link>
                 );
@@ -129,7 +132,7 @@ export function ParentShell({ children }: { children: React.ReactNode }) {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  className="ml-1 flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 text-sm font-semibold text-neutral-600 transition-colors hover:bg-neutral-200 focus-visible:outline-none focus-visible:shadow-focus-ring dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+                  className="ml-1 flex h-9 w-9 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline-none focus-visible:shadow-focus-ring dark:bg-brand-500 dark:text-neutral-950 dark:hover:bg-brand-400"
                   aria-label="Account menu"
                 >
                   {me.phoneE164.slice(-2)}
@@ -156,7 +159,7 @@ export function ParentShell({ children }: { children: React.ReactNode }) {
             </DropdownMenu>
           </div>
         </div>
-        <nav className="flex items-center gap-1 overflow-x-auto border-t border-neutral-100 px-6 py-1.5 md:hidden dark:border-neutral-800">
+        <nav className="flex items-center gap-1 overflow-x-auto border-t border-neutral-100 px-4 py-1.5 md:hidden dark:border-neutral-800">
           {NAV.map((item) => {
             const active =
               item.href === '/parent' ? pathname === item.href : pathname.startsWith(item.href);
@@ -165,12 +168,14 @@ export function ParentShell({ children }: { children: React.ReactNode }) {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? 'page' : undefined}
-                className={`shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                className={cn(
+                  'flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
                   active
                     ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'
-                    : 'text-neutral-600 dark:text-neutral-400'
-                }`}
+                    : 'text-neutral-600 dark:text-neutral-400',
+                )}
               >
+                <item.icon className="h-3.5 w-3.5" aria-hidden />
                 {item.label}
               </Link>
             );
