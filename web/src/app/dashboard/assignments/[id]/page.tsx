@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Paperclip, ExternalLink } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Card, PageHeader, EmptyState, StatusBadge, Button, Field, Input, PageLoading } from '@/components/ui';
+import { EmptyState, StatusBadge, Button, Field, Input, PageLoading } from '@/components/ui';
+import { TeacherPageHeader, AcademicCard } from '@/components/dashboard';
 
 interface Submission {
   id: string;
@@ -56,8 +57,14 @@ export default function AssignmentSubmissionsPage() {
 
   return (
     <div>
-      <PageHeader title="Submissions" description="Grade and give feedback — students are notified." />
+      <TeacherPageHeader
+        eyebrow="Homework"
+        title="Submissions"
+        description="Grade and give feedback — students are notified."
+        back={{ href: '/dashboard/batches', label: 'Batches' }}
+      />
 
+      <div className="mt-8">
       {submissions === null ? (
         <PageLoading />
       ) : submissions.length === 0 ? (
@@ -69,7 +76,7 @@ export default function AssignmentSubmissionsPage() {
       ) : (
         <div className="space-y-4">
           {submissions.map((submission) => (
-            <Card key={submission.id}>
+            <AcademicCard key={submission.id}>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-medium text-neutral-900 dark:text-neutral-50">
@@ -148,10 +155,11 @@ export default function AssignmentSubmissionsPage() {
                   </Button>
                 </div>
               )}
-            </Card>
+            </AcademicCard>
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }

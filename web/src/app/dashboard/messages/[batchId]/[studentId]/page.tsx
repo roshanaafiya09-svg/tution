@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import type { Me } from '@/lib/types';
-import { PageHeader, PageLoading } from '@/components/ui';
+import { PageLoading } from '@/components/ui';
+import { TeacherPageHeader } from '@/components/dashboard';
 import { MessageThread } from '@/components/message-thread';
 import { ConversationList } from '@/components/dashboard/conversation-list';
 
@@ -18,12 +19,13 @@ export default function TutorThreadPage() {
 
   return (
     <div>
-      <PageHeader
+      <TeacherPageHeader
+        eyebrow="Communication"
         title="Conversation"
         description="Visible to the tutor, the student, and any consented parent."
         back={{ href: '/dashboard/messages', label: 'All conversations' }}
       />
-      <div className="md:grid md:grid-cols-[320px_1fr] md:items-start md:gap-6">
+      <div className="mt-8 md:grid md:grid-cols-[320px_1fr] md:items-start md:gap-6">
         <div className="hidden md:block">
           <ConversationList activeBatchId={batchId} activeStudentId={studentId} />
         </div>

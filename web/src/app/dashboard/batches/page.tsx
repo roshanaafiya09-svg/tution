@@ -6,8 +6,6 @@ import { Users, Search, MoreVertical, UserPlus, CalendarClock, ClipboardCheck, A
 import { api, formatMinor } from '@/lib/api';
 import type { Batch, Curriculum, GradeLevel, Subject, Session, FeeEntry, Enrollment } from '@/lib/types';
 import {
-  Card,
-  PageHeader,
   EmptyState,
   StatusBadge,
   Button,
@@ -24,6 +22,7 @@ import {
   DropdownMenuItem,
   useToast,
 } from '@/components/ui';
+import { TeacherPageHeader, AcademicCard } from '@/components/dashboard';
 
 function currentPeriod(): string {
   const now = new Date();
@@ -189,14 +188,15 @@ export default function BatchesPage() {
 
   return (
     <div>
-      <PageHeader
+      <TeacherPageHeader
+        eyebrow="Your teaching spaces"
         title="Batches"
         description="Each batch is a group you teach on a schedule."
         action={<Button onClick={() => setShowForm(!showForm)}>{showForm ? 'Cancel' : 'New batch'}</Button>}
       />
 
       {showForm && (
-        <Card className="mb-6">
+        <AcademicCard className="mb-6 mt-8">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Batch name">
               <Input
@@ -272,9 +272,10 @@ export default function BatchesPage() {
               {saving ? 'Creating…' : 'Create batch'}
             </Button>
           </div>
-        </Card>
+        </AcademicCard>
       )}
 
+      <div className={showForm ? '' : 'mt-8'}>
       {batches === null ? (
         loadError ? (
           <ErrorState description="Could not load your batches. Check your connection and try again." onRetry={load} />
@@ -296,7 +297,7 @@ export default function BatchesPage() {
               </Button>
             }
           />
-          <Card>
+          <AcademicCard>
             <p className="text-sm font-semibold text-neutral-700 dark:text-neutral-200">What happens next?</p>
             <ol className="mt-3 space-y-2 text-sm text-neutral-500 dark:text-neutral-400">
               <li>1. Create a batch</li>
@@ -304,7 +305,7 @@ export default function BatchesPage() {
               <li>3. Set the schedule from the batch&apos;s Sessions tab</li>
               <li>4. Share the invite link on WhatsApp to bring your students in</li>
             </ol>
-          </Card>
+          </AcademicCard>
         </div>
       ) : (
         <>
@@ -350,7 +351,7 @@ export default function BatchesPage() {
                 const enrolled = studentCounts[batch.id];
 
                 return (
-                  <Card key={batch.id} className="flex h-full flex-col">
+                  <AcademicCard key={batch.id} interactive className="flex h-full flex-col">
                     <div className="flex items-start justify-between gap-2">
                       <Link href={`/dashboard/batches/${batch.id}`} className="min-w-0 flex-1">
                         <p className="truncate font-medium text-neutral-900 dark:text-neutral-50">
@@ -416,13 +417,14 @@ export default function BatchesPage() {
                         {feeStatus ? `${feeStatus.paid}/${feeStatus.total} paid this period` : 'Fees not generated this period'}
                       </p>
                     </Link>
-                  </Card>
+                  </AcademicCard>
                 );
               })}
             </div>
           )}
         </>
       )}
+      </div>
 
       {archiveTarget && (
         <ConfirmDialog

@@ -31,9 +31,7 @@ import type {
   Session,
 } from '@/lib/types';
 import {
-  Card,
   CardTitle,
-  PageHeader,
   EmptyState,
   StatusBadge,
   Button,
@@ -46,6 +44,7 @@ import {
   ErrorState,
   useToast,
 } from '@/components/ui';
+import { TeacherPageHeader, AcademicCard, StudentCard, ResourceCard, TimelineItem } from '@/components/dashboard';
 
 type Tab = 'students' | 'sessions' | 'materials' | 'homework' | 'announcements' | 'attendance';
 
@@ -103,19 +102,16 @@ export default function BatchDetailPage() {
 
   return (
     <div>
-      <PageHeader
+      <TeacherPageHeader
+        eyebrow="Batch"
         title={batch.title}
         description={`Up to ${batch.capacity} students · ${formatMinor(batch.fee_minor, batch.currency)} per ${
           batch.fee_period === 'monthly' ? 'month' : batch.fee_period
         }`}
-        action={
-          <Link href="/dashboard/batches">
-            <Button variant="secondary">All batches</Button>
-          </Link>
-        }
+        back={{ href: '/dashboard/batches', label: 'All batches' }}
       />
 
-      <div className="mb-6 flex gap-1 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800">
+      <div className="mb-6 mt-8 flex gap-1 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -188,7 +184,7 @@ function StudentsTab({ batchId }: { batchId: string }) {
 
   return (
     <div className="space-y-6">
-      <Card>
+      <AcademicCard>
         <div className="flex items-center gap-2">
           <Link2 className="h-4 w-4 text-brand-500 dark:text-brand-300" aria-hidden />
           <CardTitle>Invite students</CardTitle>
@@ -216,7 +212,7 @@ function StudentsTab({ batchId }: { batchId: string }) {
             <Button onClick={() => void createInvite()}>Create invite link</Button>
           </div>
         )}
-      </Card>
+      </AcademicCard>
 
       {students === null ? (
         <CardSkeleton />
@@ -227,27 +223,24 @@ function StudentsTab({ batchId }: { batchId: string }) {
           description="Share the invite link above — students appear here as soon as they join."
         />
       ) : (
-        <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
+        <AcademicCard className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
           {students.map((student) => (
-            <div key={student.id} className="flex items-center justify-between px-6 py-3">
-              <div>
-                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
-                  {student.display_name ?? student.phone_e164}
-                </p>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">{student.phone_e164}</p>
-              </div>
-              <div className="flex items-center gap-3">
+            <StudentCard
+              key={student.id}
+              name={student.display_name ?? student.phone_e164}
+              meta={student.phone_e164}
+              badge={<StatusBadge status={student.status} />}
+              action={
                 <Link
                   href={`/dashboard/messages/${batchId}/${student.student_id}`}
                   className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
                 >
                   Message
                 </Link>
-                <StatusBadge status={student.status} />
-              </div>
-            </div>
+              }
+            />
           ))}
-        </Card>
+        </AcademicCard>
       )}
     </div>
   );
@@ -318,7 +311,7 @@ function SessionsTab({ batchId }: { batchId: string }) {
       </Button>
 
       {showForm && (
-        <Card>
+        <AcademicCard>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Start time" hint="Your local time — daylight saving is handled for you.">
               <Input
@@ -380,7 +373,7 @@ function SessionsTab({ batchId }: { batchId: string }) {
               {creating ? 'Scheduling…' : 'Schedule'}
             </Button>
           </div>
-        </Card>
+        </AcademicCard>
       )}
 
       {sessions === null ? (
@@ -392,33 +385,37 @@ function SessionsTab({ batchId }: { batchId: string }) {
           description="Schedule a class — recurring sessions are created in one go."
         />
       ) : (
-        <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
-          {sessions.map((session) => (
-            <div key={session.id} className="flex items-center justify-between px-6 py-3">
-              <div>
-                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
-                  {new Date(session.scheduled_start_utc).toLocaleString('en-IN', {
-                    timeZone: session.timezone,
-                    weekday: 'short',
-                    day: 'numeric',
-                    month: 'short',
-                    hour: 'numeric',
-                    minute: '2-digit',
-                  })}
-                </p>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                  {session.duration_min} minutes
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <StatusBadge status={session.status} />
-                <Link href={`/dashboard/sessions/${session.id}`}>
-                  <Button variant="secondary">Attendance</Button>
-                </Link>
-              </div>
-            </div>
+        <div>
+          {sessions.map((session, i) => (
+            <TimelineItem key={session.id} isLast={i === sessions.length - 1}>
+              <AcademicCard className="flex flex-wrap items-center justify-between gap-3 py-3.5">
+                <div>
+                  <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                    {new Date(session.scheduled_start_utc).toLocaleString('en-IN', {
+                      timeZone: session.timezone,
+                      weekday: 'short',
+                      day: 'numeric',
+                      month: 'short',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })}
+                  </p>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    {session.duration_min} minutes
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <StatusBadge status={session.status} />
+                  <Link href={`/dashboard/sessions/${session.id}`}>
+                    <Button variant="secondary" size="sm">
+                      Attendance
+                    </Button>
+                  </Link>
+                </div>
+              </AcademicCard>
+            </TimelineItem>
           ))}
-        </Card>
+        </div>
       )}
     </div>
   );
@@ -458,7 +455,7 @@ function AttendanceTab({ batchId }: { batchId: string }) {
   }
 
   return (
-    <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
+    <AcademicCard className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
       {rows.map((row) => (
         <div key={row.id} className="flex items-center justify-between gap-3 px-6 py-3">
           <div className="flex items-center gap-2">
@@ -486,7 +483,7 @@ function AttendanceTab({ batchId }: { batchId: string }) {
           <StatusBadge status={row.status} />
         </div>
       ))}
-    </Card>
+    </AcademicCard>
   );
 }
 
@@ -577,7 +574,7 @@ function MaterialsTab({ batchId }: { batchId: string }) {
 
   return (
     <div className="space-y-4">
-      <Card>
+      <AcademicCard>
         <Field label="Upload a PDF or image" hint="Students can read it offline in the app.">
           <input
             type="file"
@@ -598,7 +595,7 @@ function MaterialsTab({ batchId }: { batchId: string }) {
             <InlineError>{error}</InlineError>
           </div>
         )}
-      </Card>
+      </AcademicCard>
 
       {materials === null ? (
         <CardSkeleton />
@@ -609,56 +606,54 @@ function MaterialsTab({ batchId }: { batchId: string }) {
           description="Upload notes, worksheets, or past papers."
         />
       ) : (
-        <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {materials.map((material) => (
-            <div key={material.id} className="flex flex-wrap items-center justify-between gap-2 px-6 py-3">
-              <div>
-                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
-                  {material.title}
-                </p>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                  {(material.size_bytes / 1024).toFixed(0)} KB
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {material.mime === 'application/pdf' && (
-                  <>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => void generateQuiz(material.id)}
-                      disabled={generatingId === material.id}
-                      loading={generatingId === material.id}
-                    >
-                      <Sparkles className="h-3.5 w-3.5" aria-hidden />
-                      {generatingId === material.id ? 'Generating…' : 'Generate quiz'}
-                    </Button>
-                    {indexedId === material.id ? (
-                      <span className="flex items-center gap-1 text-sm text-success dark:text-success-dark">
-                        <Check className="h-3.5 w-3.5" aria-hidden />
-                        Indexed
-                      </span>
-                    ) : (
+            <ResourceCard
+              key={material.id}
+              icon={FileText}
+              title={material.title}
+              meta={`${(material.size_bytes / 1024).toFixed(0)} KB`}
+              action={
+                <div className="flex flex-wrap items-center gap-2">
+                  {material.mime === 'application/pdf' && (
+                    <>
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={() => void indexForAi(material.id)}
-                        disabled={indexingId === material.id}
-                        loading={indexingId === material.id}
+                        onClick={() => void generateQuiz(material.id)}
+                        disabled={generatingId === material.id}
+                        loading={generatingId === material.id}
                       >
-                        <Database className="h-3.5 w-3.5" aria-hidden />
-                        {indexingId === material.id ? 'Indexing…' : 'Index for AI'}
+                        <Sparkles className="h-3.5 w-3.5" aria-hidden />
+                        {generatingId === material.id ? 'Generating…' : 'Generate quiz'}
                       </Button>
-                    )}
-                  </>
-                )}
-                <Button variant="secondary" size="sm" onClick={() => void download(material.id)}>
-                  Open
-                </Button>
-              </div>
-            </div>
+                      {indexedId === material.id ? (
+                        <span className="flex items-center gap-1 text-sm text-success dark:text-success-dark">
+                          <Check className="h-3.5 w-3.5" aria-hidden />
+                          Indexed
+                        </span>
+                      ) : (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => void indexForAi(material.id)}
+                          disabled={indexingId === material.id}
+                          loading={indexingId === material.id}
+                        >
+                          <Database className="h-3.5 w-3.5" aria-hidden />
+                          {indexingId === material.id ? 'Indexing…' : 'Index for AI'}
+                        </Button>
+                      )}
+                    </>
+                  )}
+                  <Button variant="secondary" size="sm" onClick={() => void download(material.id)}>
+                    Open
+                  </Button>
+                </div>
+              }
+            />
           ))}
-        </Card>
+        </div>
       )}
     </div>
   );
@@ -716,7 +711,7 @@ function HomeworkTab({ batchId }: { batchId: string }) {
       <Button onClick={() => setShowForm(!showForm)}>{showForm ? 'Cancel' : 'Set homework'}</Button>
 
       {showForm && (
-        <Card>
+        <AcademicCard>
           <div className="grid gap-4">
             <Field label="Title">
               <Input
@@ -754,7 +749,7 @@ function HomeworkTab({ batchId }: { batchId: string }) {
               {creating ? 'Setting homework…' : 'Set homework'}
             </Button>
           </div>
-        </Card>
+        </AcademicCard>
       )}
 
       {assignments === null ? (
@@ -766,7 +761,7 @@ function HomeworkTab({ batchId }: { batchId: string }) {
           description="Students are notified as soon as you set it."
         />
       ) : (
-        <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
+        <AcademicCard className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
           {assignments.map((assignment) => (
             <div key={assignment.id} className="flex items-center justify-between px-6 py-3">
               <div>
@@ -789,7 +784,7 @@ function HomeworkTab({ batchId }: { batchId: string }) {
               </Link>
             </div>
           ))}
-        </Card>
+        </AcademicCard>
       )}
     </div>
   );
@@ -835,7 +830,7 @@ function AnnouncementsTab({ batchId }: { batchId: string }) {
 
   return (
     <div className="space-y-4">
-      <Card>
+      <AcademicCard>
         <Field label="Message the whole batch" hint="Everyone gets a notification.">
           <Textarea
             rows={3}
@@ -850,7 +845,7 @@ function AnnouncementsTab({ batchId }: { batchId: string }) {
             {posting ? 'Sending…' : 'Send'}
           </Button>
         </div>
-      </Card>
+      </AcademicCard>
 
       {announcements === null ? (
         <CardSkeleton />
@@ -861,7 +856,7 @@ function AnnouncementsTab({ batchId }: { batchId: string }) {
           description="Anything you send here reaches every student."
         />
       ) : (
-        <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
+        <AcademicCard className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
           {announcements.map((announcement) => (
             <div key={announcement.id} className="px-6 py-3">
               <p className="text-sm text-neutral-800 dark:text-neutral-200">{announcement.body}</p>
@@ -870,7 +865,7 @@ function AnnouncementsTab({ batchId }: { batchId: string }) {
               </p>
             </div>
           ))}
-        </Card>
+        </AcademicCard>
       )}
     </div>
   );

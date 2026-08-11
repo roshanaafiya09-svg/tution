@@ -5,6 +5,10 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import posthog from 'posthog-js';
 import {
+  Home,
+  Layers,
+  Wallet,
+  MessagesSquare,
   CalendarClock,
   BookMarked,
   ShieldCheck,
@@ -34,10 +38,10 @@ import {
 } from '@/components/ui';
 
 const NAV = [
-  { href: '/dashboard', label: 'Today' },
-  { href: '/dashboard/batches', label: 'Batches' },
-  { href: '/dashboard/fees', label: 'Fees' },
-  { href: '/dashboard/messages', label: 'Messages' },
+  { href: '/dashboard', label: 'Today', icon: Home },
+  { href: '/dashboard/batches', label: 'Batches', icon: Layers },
+  { href: '/dashboard/fees', label: 'Fees', icon: Wallet },
+  { href: '/dashboard/messages', label: 'Messages', icon: MessagesSquare },
 ];
 
 const BUSINESS_GROUPS = [
@@ -156,12 +160,14 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                     key={item.href}
                     href={item.href}
                     aria-current={active ? 'page' : undefined}
-                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
                       active
                         ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'
-                        : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100'
-                    }`}
+                        : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
+                    )}
                   >
+                    <item.icon className="h-3.5 w-3.5" aria-hidden />
                     {item.label}
                   </Link>
                 );
@@ -170,11 +176,12 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
-                    className={`flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:shadow-focus-ring ${
+                    className={cn(
+                      'flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:shadow-focus-ring',
                       businessActive
                         ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'
-                        : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100'
-                    }`}
+                        : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
+                    )}
                   >
                     Business
                     <ChevronDown className="h-3.5 w-3.5" aria-hidden />
@@ -218,11 +225,12 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  className={`ml-1 flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-focus-ring ${
+                  className={cn(
+                    'ml-1 flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-focus-ring',
                     profileActive
-                      ? 'bg-brand-600 text-white'
-                      : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700'
-                  }`}
+                      ? 'bg-brand-600 text-white dark:bg-brand-500 dark:text-neutral-950'
+                      : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700',
+                  )}
                   aria-label="Account menu"
                 >
                   {me.phoneE164.slice(-2)}
@@ -249,8 +257,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             </DropdownMenu>
           </div>
         </div>
-        <nav className="flex items-center gap-1 overflow-x-auto border-t border-neutral-100 px-6 py-1.5 md:hidden dark:border-neutral-800">
-          {[...NAV, ...BUSINESS_NAV, { href: '/dashboard/profile', label: 'Profile' }].map((item) => {
+        <nav className="flex items-center gap-1 overflow-x-auto border-t border-neutral-100 px-4 py-1.5 md:hidden dark:border-neutral-800">
+          {[...NAV, ...BUSINESS_NAV, { href: '/dashboard/profile', label: 'Profile', icon: User }].map((item) => {
             const active =
               item.href === '/dashboard' ? pathname === item.href : pathname.startsWith(item.href);
             return (
@@ -258,12 +266,14 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? 'page' : undefined}
-                className={`shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                className={cn(
+                  'flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
                   active
                     ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'
-                    : 'text-neutral-600 dark:text-neutral-400'
-                }`}
+                    : 'text-neutral-600 dark:text-neutral-400',
+                )}
               >
+                <item.icon className="h-3.5 w-3.5" aria-hidden />
                 {item.label}
               </Link>
             );

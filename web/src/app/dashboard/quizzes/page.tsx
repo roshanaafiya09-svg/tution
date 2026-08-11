@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { ListChecks, Upload, Sparkles, Search, PenLine, Send } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { QuizDraftSummary } from '@/lib/types';
-import { Card, PageHeader, EmptyState, StatusBadge, CardSkeleton, ErrorState } from '@/components/ui';
+import { EmptyState, StatusBadge, CardSkeleton, ErrorState } from '@/components/ui';
+import { TeacherPageHeader, AcademicCard } from '@/components/dashboard';
 
 const PROCESS_STEPS = [
   { icon: Upload, label: 'Upload a PDF material' },
@@ -30,12 +31,13 @@ export default function QuizzesPage() {
 
   return (
     <div>
-      <PageHeader
+      <TeacherPageHeader
+        eyebrow="Growth"
         title="Quizzes"
         description="AI-drafted quizzes from your materials — review and approve before publishing to a batch."
       />
 
-      <Card className="mb-6">
+      <AcademicCard className="mb-6 mt-8">
         <p className="mb-4 text-sm font-semibold text-neutral-700 dark:text-neutral-200">How it works</p>
         <ol className="grid gap-4 sm:grid-cols-5">
           {PROCESS_STEPS.map((step, i) => (
@@ -54,7 +56,7 @@ export default function QuizzesPage() {
           AI-generated content should always be reviewed by you before publishing — nothing reaches students until
           you approve it.
         </p>
-      </Card>
+      </AcademicCard>
 
       {loadError ? (
         <ErrorState description="Could not load your quiz drafts. Check your connection and try again." onRetry={load} />
@@ -70,7 +72,7 @@ export default function QuizzesPage() {
           description="Generate one from a PDF material in a batch's Materials tab."
         />
       ) : (
-        <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
+        <AcademicCard className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
           {drafts.map((draft) => (
             <Link
               key={draft.id}
@@ -88,7 +90,7 @@ export default function QuizzesPage() {
               <StatusBadge status={draft.status} />
             </Link>
           ))}
-        </Card>
+        </AcademicCard>
       )}
     </div>
   );

@@ -5,8 +5,6 @@ import { CircleDollarSign, CheckCircle2, AlertCircle, Wallet, Users, Search } fr
 import { api, formatMinor } from '@/lib/api';
 import type { Batch, FeeEntry, FeeTotals } from '@/lib/types';
 import {
-  Card,
-  PageHeader,
   EmptyState,
   StatusBadge,
   Button,
@@ -18,6 +16,7 @@ import {
   InlineError,
   useToast,
 } from '@/components/ui';
+import { TeacherPageHeader, AcademicCard, SectionHeader, StudentCard } from '@/components/dashboard';
 
 function currentPeriod(): string {
   const now = new Date();
@@ -115,9 +114,9 @@ export default function FeesPage() {
 
   return (
     <div>
-      <PageHeader title="Fees" description="Who has paid this month, and who hasn't." />
+      <TeacherPageHeader eyebrow="Billing" title="Fees" description="Who has paid this month, and who hasn't." />
 
-      <Card className="mb-6">
+      <AcademicCard className="mb-6 mt-8">
         <div className="grid gap-6 sm:grid-cols-3">
           <div className="flex flex-col gap-1.5">
             <StepLabel step={1}>Select month</StepLabel>
@@ -147,7 +146,7 @@ export default function FeesPage() {
             <InlineError>{generateError}</InlineError>
           </div>
         )}
-      </Card>
+      </AcademicCard>
 
       {entries === null ? (
         loadError ? (
@@ -228,23 +227,16 @@ export default function FeesPage() {
           </div>
 
           {showUnpaid && unpaid.length > 0 && (
-            <>
-              <h2 className="mb-3 text-lg font-semibold text-neutral-900 dark:text-neutral-50">
-                Not yet paid ({unpaid.length})
-              </h2>
-              <Card className="mb-8 divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
+            <div className="mb-8">
+              <SectionHeader title={`Not yet paid (${unpaid.length})`} />
+              <AcademicCard className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
                 {unpaid.map((entry) => (
-                  <div key={entry.id} className="flex items-center justify-between px-6 py-3">
-                    <div>
-                      <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
-                        {entry.display_name ?? entry.phone_e164}
-                      </p>
-                      <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                        {entry.batch_title} · {formatMinor(entry.expected_minor, entry.currency)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <StatusBadge status={entry.status} />
+                  <StudentCard
+                    key={entry.id}
+                    name={entry.display_name ?? entry.phone_e164}
+                    meta={`${entry.batch_title} · ${formatMinor(entry.expected_minor, entry.currency)}`}
+                    badge={<StatusBadge status={entry.status} />}
+                    action={
                       <Button
                         variant="secondary"
                         size="sm"
@@ -254,35 +246,27 @@ export default function FeesPage() {
                       >
                         {recordingId === entry.id ? 'Saving…' : 'Mark paid'}
                       </Button>
-                    </div>
-                  </div>
+                    }
+                  />
                 ))}
-              </Card>
-            </>
+              </AcademicCard>
+            </div>
           )}
 
           {showSettled && settled.length > 0 && (
-            <>
-              <h2 className="mb-3 text-lg font-semibold text-neutral-900 dark:text-neutral-50">
-                Settled ({settled.length})
-              </h2>
-              <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
+            <div>
+              <SectionHeader title={`Settled (${settled.length})`} />
+              <AcademicCard className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
                 {settled.map((entry) => (
-                  <div key={entry.id} className="flex items-center justify-between px-6 py-3">
-                    <div>
-                      <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
-                        {entry.display_name ?? entry.phone_e164}
-                      </p>
-                      <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                        {entry.batch_title} ·{' '}
-                        {formatMinor(entry.recorded_paid_minor ?? 0, entry.currency)}
-                      </p>
-                    </div>
-                    <StatusBadge status={entry.status} />
-                  </div>
+                  <StudentCard
+                    key={entry.id}
+                    name={entry.display_name ?? entry.phone_e164}
+                    meta={`${entry.batch_title} · ${formatMinor(entry.recorded_paid_minor ?? 0, entry.currency)}`}
+                    badge={<StatusBadge status={entry.status} />}
+                  />
                 ))}
-              </Card>
-            </>
+              </AcademicCard>
+            </div>
           )}
 
           {((showUnpaid && unpaid.length === 0) || !showUnpaid) &&

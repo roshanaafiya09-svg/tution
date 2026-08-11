@@ -6,8 +6,6 @@ import { Download, Trash2, Check, AlertTriangle } from 'lucide-react';
 import { api, tokenStore } from '@/lib/api';
 import type { TutorProfile } from '@/lib/types';
 import {
-  Card,
-  PageHeader,
   Button,
   Field,
   Input,
@@ -22,6 +20,7 @@ import {
   DialogFooter,
   useToast,
 } from '@/components/ui';
+import { TeacherPageHeader, AcademicCard } from '@/components/dashboard';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -117,8 +116,9 @@ export default function ProfilePage() {
 
   return (
     <div>
-      <PageHeader title="Profile" description="This is what parents and students see." />
+      <TeacherPageHeader eyebrow="Account" title="Profile" description="This is what parents and students see." />
 
+      <div className="mt-8">
       {loadError ? (
         <ErrorState description="Could not load your profile. Check your connection and try again." onRetry={load} />
       ) : profile === undefined ? (
@@ -127,7 +127,7 @@ export default function ProfilePage() {
         </div>
       ) : (
         <>
-          <Card className="max-w-2xl">
+          <AcademicCard className="max-w-2xl">
             {profile && (
               <div className="mb-6 flex items-center gap-3 border-b border-neutral-100 pb-4 dark:border-neutral-800">
                 <StatusBadge status={profile.verification_status} />
@@ -187,10 +187,10 @@ export default function ProfilePage() {
                 </span>
               )}
             </div>
-          </Card>
+          </AcademicCard>
 
-          <Card className="mt-6 max-w-2xl border-error/20 dark:border-error/25">
-            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Your data</h2>
+          <AcademicCard className="mt-6 max-w-2xl border-error/20 dark:border-error/25">
+            <h2 className="font-display text-lg font-semibold text-neutral-900 dark:text-neutral-50">Your data</h2>
             <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
               Export everything the app has on you, or permanently delete your account.
             </p>
@@ -251,9 +251,10 @@ export default function ProfilePage() {
                 <InlineError>{exportError}</InlineError>
               </div>
             )}
-          </Card>
+          </AcademicCard>
         </>
       )}
+      </div>
     </div>
   );
 }

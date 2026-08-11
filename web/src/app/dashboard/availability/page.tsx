@@ -5,8 +5,6 @@ import { CalendarClock, CalendarOff, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AvailabilityRule, AvailabilityException } from '@/lib/types';
 import {
-  Card,
-  PageHeader,
   EmptyState,
   Button,
   Field,
@@ -22,6 +20,7 @@ import {
   DialogFooter,
   useToast,
 } from '@/components/ui';
+import { TeacherPageHeader, AcademicCard } from '@/components/dashboard';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 // Display order for the weekly grid — Monday first, matching how tutors think about a teaching week.
@@ -139,17 +138,19 @@ export default function AvailabilityPage() {
 
   return (
     <div>
-      <PageHeader
+      <TeacherPageHeader
+        eyebrow="Teaching profile"
         title="Availability"
         description="When you're generally free to teach — batches and sessions should fit inside these windows."
       />
 
       {error && (
-        <div className="mb-4">
+        <div className="mb-4 mt-8">
           <InlineError>{error}</InlineError>
         </div>
       )}
 
+      <div className="mt-8">
       {loadError ? (
         <ErrorState description="Could not load your availability. Check your connection and try again." onRetry={() => void load()} />
       ) : rules === null || exceptions === null ? (
@@ -167,12 +168,19 @@ export default function AvailabilityPage() {
             />
           </div>
 
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Weekly schedule</h2>
+          <div className="mb-4 flex items-end justify-between gap-4">
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-brand-500 dark:text-brand-300">
+                Every week
+              </p>
+              <h2 className="font-display text-xl font-semibold text-neutral-900 dark:text-neutral-50">
+                Weekly schedule
+              </h2>
+            </div>
             <Button onClick={() => setShowRuleForm(true)}>Add rule</Button>
           </div>
 
-          <Card className="mb-8 divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
+          <AcademicCard className="mb-8 divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
             {DISPLAY_ORDER.map((weekday) => {
               const dayRules = rules.filter((r) => r.weekday === weekday);
               return (
@@ -205,10 +213,17 @@ export default function AvailabilityPage() {
                 </div>
               );
             })}
-          </Card>
+          </AcademicCard>
 
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Exceptions</h2>
+          <div className="mb-4 flex items-end justify-between gap-4">
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-brand-500 dark:text-brand-300">
+                One-off changes
+              </p>
+              <h2 className="font-display text-xl font-semibold text-neutral-900 dark:text-neutral-50">
+                Exceptions
+              </h2>
+            </div>
             <Button onClick={() => setShowExceptionForm(true)}>Add exception</Button>
           </div>
 
@@ -219,7 +234,7 @@ export default function AvailabilityPage() {
               description="Days off or extra availability will show up here."
             />
           ) : (
-            <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
+            <AcademicCard className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
               {exceptions.map((exception) => (
                 <div key={exception.id} className="flex items-center justify-between px-6 py-3">
                   <div>
@@ -246,10 +261,11 @@ export default function AvailabilityPage() {
                   </Button>
                 </div>
               ))}
-            </Card>
+            </AcademicCard>
           )}
         </>
       )}
+      </div>
 
       <Dialog open={showRuleForm} onOpenChange={setShowRuleForm}>
         <DialogContent title="Add a weekly rule" description="This time window repeats every week until you remove it.">

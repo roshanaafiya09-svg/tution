@@ -14,9 +14,7 @@ import type {
   TutorSubject,
 } from '@/lib/types';
 import {
-  Card,
   CardTitle,
-  PageHeader,
   EmptyState,
   StatusBadge,
   Badge,
@@ -29,6 +27,7 @@ import {
   Spinner,
   useToast,
 } from '@/components/ui';
+import { TeacherPageHeader, AcademicCard, SectionHeader } from '@/components/dashboard';
 import { cn } from '@/lib/cn';
 
 export default function MarketplacePage() {
@@ -189,7 +188,8 @@ export default function MarketplacePage() {
 
   return (
     <div>
-      <PageHeader
+      <TeacherPageHeader
+        eyebrow="Growth"
         title="Marketplace"
         description="Your public discovery listing, Proof-of-Teaching score, and 1:1 bookings."
         action={
@@ -202,10 +202,12 @@ export default function MarketplacePage() {
       />
 
       {error && (
-        <div className="mb-4">
+        <div className="mb-4 mt-8">
           <InlineError>{error}</InlineError>
         </div>
       )}
+
+      <div className="mt-8">
 
       {loadError && (
         <ErrorState
@@ -215,7 +217,7 @@ export default function MarketplacePage() {
       )}
 
       {!loadError && dataLoaded && (
-        <Card className="mb-8">
+        <AcademicCard className="mb-8">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="font-display text-lg font-semibold text-neutral-900 dark:text-neutral-50">
@@ -257,12 +259,12 @@ export default function MarketplacePage() {
               </li>
             ))}
           </ul>
-        </Card>
+        </AcademicCard>
       )}
 
       {!loadError && (
       <div className="mb-8 grid gap-4 sm:grid-cols-2">
-        <Card>
+        <AcademicCard>
           <div className="mb-3 flex items-center gap-2">
             <MapPin className="h-4 w-4 text-brand-500 dark:text-brand-300" aria-hidden />
             <CardTitle>Location</CardTitle>
@@ -341,9 +343,9 @@ export default function MarketplacePage() {
               </Button>
             </div>
           )}
-        </Card>
+        </AcademicCard>
 
-        <Card>
+        <AcademicCard>
           <div className="mb-3 flex items-center gap-2">
             <Award className="h-4 w-4 text-brand-500 dark:text-brand-300" aria-hidden />
             <CardTitle>Proof-of-Teaching score</CardTitle>
@@ -395,13 +397,13 @@ export default function MarketplacePage() {
               )}
             </>
           )}
-        </Card>
+        </AcademicCard>
       </div>
       )}
 
       {!loadError && (
       <>
-      <h2 className="mb-3 text-lg font-semibold text-neutral-900 dark:text-neutral-50">Upcoming bookings</h2>
+      <SectionHeader title="Upcoming bookings" />
       {bookings === null ? (
         <div className="mb-8 space-y-3">
           <CardSkeleton />
@@ -427,7 +429,7 @@ export default function MarketplacePage() {
       ) : (
         <div className="mb-8 space-y-3">
           {upcoming.map((booking) => (
-            <Card key={booking.id} className="flex flex-wrap items-center justify-between gap-3">
+            <AcademicCard key={booking.id} className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="font-medium text-neutral-900 dark:text-neutral-50">
                   {subjectName(booking.subject_id)}
@@ -462,17 +464,15 @@ export default function MarketplacePage() {
                   Student no-show
                 </Button>
               </div>
-            </Card>
+            </AcademicCard>
           ))}
         </div>
       )}
 
       {other.length > 0 && (
         <>
-          <h2 className="mb-3 text-lg font-semibold text-neutral-900 dark:text-neutral-50">
-            Past & other bookings
-          </h2>
-          <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
+          <SectionHeader title="Past & other bookings" />
+          <AcademicCard className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
             {other.map((booking) => (
               <div key={booking.id} className="flex items-center justify-between px-6 py-3">
                 <div>
@@ -486,11 +486,12 @@ export default function MarketplacePage() {
                 <StatusBadge status={booking.status} />
               </div>
             ))}
-          </Card>
+          </AcademicCard>
         </>
       )}
       </>
       )}
+      </div>
     </div>
   );
 }

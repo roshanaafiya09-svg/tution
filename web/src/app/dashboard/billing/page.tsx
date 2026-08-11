@@ -6,8 +6,6 @@ import { api, formatMinor } from '@/lib/api';
 import { payForOrder } from '@/lib/razorpay';
 import type { PaymentOrder, Payout, SubscriptionPlan, SubscriptionRecap } from '@/lib/types';
 import {
-  Card,
-  PageHeader,
   EmptyState,
   StatusBadge,
   Button,
@@ -18,6 +16,7 @@ import {
   ConfirmDialog,
   useToast,
 } from '@/components/ui';
+import { TeacherPageHeader, AcademicCard, SectionHeader } from '@/components/dashboard';
 
 export default function BillingPage() {
   const toast = useToast();
@@ -85,14 +84,19 @@ export default function BillingPage() {
 
   return (
     <div>
-      <PageHeader title="Subscription & billing" description="Your subscription, trial status, and money you've earned." />
+      <TeacherPageHeader
+        eyebrow="Account"
+        title="Subscription & billing"
+        description="Your subscription, trial status, and money you've earned."
+      />
 
       {error && (
-        <div className="mb-4">
+        <div className="mb-4 mt-8">
           <InlineError>{error}</InlineError>
         </div>
       )}
 
+      <div className="mt-8">
       {loadError ? (
         <ErrorState description="Could not load your subscription. Check your connection and try again." onRetry={load} />
       ) : recap === null ? (
@@ -106,7 +110,7 @@ export default function BillingPage() {
         </div>
       ) : (
         <>
-          <Card className="mb-6 border-brand-200 bg-brand-50/40 dark:border-brand-500/25 dark:bg-brand-500/5">
+          <AcademicCard className="mb-6 border-brand-200 bg-brand-50/40 dark:border-brand-500/25 dark:bg-brand-500/5">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.1em] text-brand-600 dark:text-brand-300">
@@ -131,7 +135,7 @@ export default function BillingPage() {
                 </div>
               )}
             </div>
-          </Card>
+          </AcademicCard>
 
           <div className="mb-8 grid gap-4 sm:grid-cols-3">
             <StatCard icon={GraduationCap} label="Classes run" value={recap.classesRun} />
@@ -145,13 +149,13 @@ export default function BillingPage() {
 
           {!isPaid && plans && (
             <>
-              <h2 className="mb-3 text-lg font-semibold text-neutral-900 dark:text-neutral-50">Plans</h2>
+              <SectionHeader title="Plans" />
               <div className="mb-8 grid gap-4 sm:grid-cols-2">
                 {Object.entries(plans).map(([planId, plan]) => {
                   const perDay = plan.priceMinor / plan.periodDays;
                   const bestValue = cheapestPerDay !== null && perDay <= cheapestPerDay;
                   return (
-                    <Card key={planId} className={bestValue ? 'border-brand-300 dark:border-brand-500/40' : undefined}>
+                    <AcademicCard key={planId} className={bestValue ? 'border-brand-300 dark:border-brand-500/40' : undefined}>
                       <div className="flex items-start justify-between gap-2">
                         <p className="font-medium text-neutral-900 dark:text-neutral-50">{plan.label}</p>
                         {bestValue && (
@@ -173,14 +177,14 @@ export default function BillingPage() {
                       >
                         {purchasing === planId ? 'Processing…' : 'Subscribe'}
                       </Button>
-                    </Card>
+                    </AcademicCard>
                   );
                 })}
               </div>
             </>
           )}
 
-          <h2 className="mb-3 text-lg font-semibold text-neutral-900 dark:text-neutral-50">Payouts</h2>
+          <SectionHeader title="Payouts" />
           {payouts === null || payouts.length === 0 ? (
             <EmptyState
               icon={Landmark}
@@ -188,7 +192,7 @@ export default function BillingPage() {
               description="Payouts appear here once students pay fees online and a payout run settles them to you."
             />
           ) : (
-            <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
+            <AcademicCard className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
               {payouts.map((payout) => (
                 <div key={payout.id} className="flex items-center justify-between px-6 py-3">
                   <div>
@@ -203,10 +207,11 @@ export default function BillingPage() {
                   <StatusBadge status={payout.status} />
                 </div>
               ))}
-            </Card>
+            </AcademicCard>
           )}
         </>
       )}
+      </div>
 
       <ConfirmDialog
         open={planToConfirm !== null}

@@ -5,8 +5,6 @@ import { BookMarked, Bell, X, Check } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
 import type { Curriculum, GradeLevel, Subject, TutorSubject } from '@/lib/types';
 import {
-  Card,
-  PageHeader,
   EmptyState,
   Button,
   Field,
@@ -18,6 +16,7 @@ import {
   ConfirmDialog,
   useToast,
 } from '@/components/ui';
+import { TeacherPageHeader, AcademicCard } from '@/components/dashboard';
 
 export default function SubjectsPage() {
   const toast = useToast();
@@ -122,19 +121,20 @@ export default function SubjectsPage() {
 
   return (
     <div>
-      <PageHeader
+      <TeacherPageHeader
+        eyebrow="Teaching profile"
         title="Subjects & rates"
         description="What you teach, which curricula, and your hourly rate for each — feeds the marketplace and 1:1 bookings."
         action={<Button onClick={() => setShowForm((s) => !s)}>{showForm ? 'Cancel' : 'Add subject'}</Button>}
       />
 
-      <p className="-mt-4 mb-6 max-w-2xl text-sm text-neutral-500 dark:text-neutral-400">
+      <p className="mb-6 mt-4 max-w-2xl text-sm text-neutral-500 dark:text-neutral-400">
         Students search and filter by subject, curriculum, and rate — the more complete this list, the easier you
         are to find and book.
       </p>
 
       {showForm && (
-        <Card className="mb-6">
+        <AcademicCard className="mb-6">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Subject">
               <Select
@@ -208,7 +208,7 @@ export default function SubjectsPage() {
               {saving ? 'Saving…' : 'Add subject'}
             </Button>
           </div>
-        </Card>
+        </AcademicCard>
       )}
 
       {loadError ? (
@@ -227,7 +227,7 @@ export default function SubjectsPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {offerings.map((offering) => (
-            <Card key={offering.id}>
+            <AcademicCard key={offering.id}>
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="font-medium text-neutral-900 dark:text-neutral-50">
@@ -271,7 +271,7 @@ export default function SubjectsPage() {
                   </Button>
                 )}
               </div>
-            </Card>
+            </AcademicCard>
           ))}
         </div>
       )}

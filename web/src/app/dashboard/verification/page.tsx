@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { IdCard, GraduationCap, ShieldQuestion, ShieldCheck, Lock } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { VerificationDocType, VerificationUpload } from '@/lib/types';
-import { Card, CardTitle, PageHeader, EmptyState, StatusBadge, InlineError, CardSkeleton, ErrorState, useToast } from '@/components/ui';
+import { CardTitle, EmptyState, StatusBadge, InlineError, CardSkeleton, ErrorState, useToast } from '@/components/ui';
+import { TeacherPageHeader, AcademicCard } from '@/components/dashboard';
 
 const DOC_LABELS: Record<VerificationDocType, string> = {
   id_proof: 'ID proof (Aadhaar, PAN, etc.)',
@@ -81,17 +82,19 @@ export default function VerificationPage() {
 
   return (
     <div>
-      <PageHeader
+      <TeacherPageHeader
+        eyebrow="Trust"
         title="Verification"
         description="Upload your ID and qualifications for review — both need to be approved before your profile shows a verified badge. Typically reviewed within 24 hours."
       />
 
       {error && (
-        <div className="mb-4">
+        <div className="mb-4 mt-8">
           <InlineError>{error}</InlineError>
         </div>
       )}
 
+      <div className="mt-8">
       {loadError ? (
         <ErrorState description="Could not load your verification status. Check your connection and try again." onRetry={load} />
       ) : uploads === null ? (
@@ -106,7 +109,7 @@ export default function VerificationPage() {
           </p>
 
           {fullyVerified && (
-            <Card className="mb-6 border-success/30 bg-success-bg dark:border-success-dark/30 dark:bg-success/10">
+            <AcademicCard className="mb-6 border-success/30 bg-success-bg dark:border-success-dark/30 dark:bg-success/10">
               <p className="mb-2 text-sm font-medium text-neutral-700 dark:text-neutral-200">
                 Verified badge preview
               </p>
@@ -117,7 +120,7 @@ export default function VerificationPage() {
                 <ShieldCheck className="h-4 w-4" aria-hidden />
                 Verified tutor
               </span>
-            </Card>
+            </AcademicCard>
           )}
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -125,7 +128,7 @@ export default function VerificationPage() {
               const latest = latestFor(type);
               const Icon = DOC_ICONS[type];
               return (
-                <Card key={type}>
+                <AcademicCard key={type}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
                       <Icon className="mt-0.5 h-5 w-5 text-brand-500 dark:text-brand-300" aria-hidden />
@@ -171,7 +174,7 @@ export default function VerificationPage() {
                   {uploading === type && (
                     <p className="mt-2 text-sm text-neutral-400 dark:text-neutral-500">Uploading…</p>
                   )}
-                </Card>
+                </AcademicCard>
               );
             })}
           </div>
@@ -193,6 +196,7 @@ export default function VerificationPage() {
           </p>
         </>
       )}
+      </div>
     </div>
   );
 }

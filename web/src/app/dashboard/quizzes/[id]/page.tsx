@@ -13,8 +13,6 @@ import type {
   QuizDraftQuestion,
 } from '@/lib/types';
 import {
-  Card,
-  PageHeader,
   StatusBadge,
   Button,
   Field,
@@ -25,6 +23,7 @@ import {
   ErrorState,
   useToast,
 } from '@/components/ui';
+import { TeacherPageHeader, AcademicCard } from '@/components/dashboard';
 
 export default function QuizDraftPage() {
   const { id } = useParams<{ id: string }>();
@@ -100,20 +99,20 @@ export default function QuizDraftPage() {
 
   return (
     <div>
-      <PageHeader
-        eyebrow={batch ? batch.title : undefined}
+      <TeacherPageHeader
+        eyebrow={batch ? batch.title : 'Quiz'}
         title="Quiz draft"
         description={`${draft.questions.length} question${draft.questions.length === 1 ? '' : 's'} · review each one before approving — nothing reaches students until you publish.`}
         action={<StatusBadge status={draft.status} />}
       />
 
       {error && (
-        <div className="mb-4">
+        <div className="mb-4 mt-8">
           <InlineError>{error}</InlineError>
         </div>
       )}
 
-      <div className="space-y-4">
+      <div className="mt-8 space-y-4">
         {draft.questions.map((question) => (
           <QuestionCard
             key={question.id}
@@ -158,7 +157,7 @@ export default function QuizDraftPage() {
           ) : attempts.length === 0 ? (
             <p className="text-sm text-neutral-500 dark:text-neutral-400">No attempts yet.</p>
           ) : (
-            <Card className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
+            <AcademicCard className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
               {attempts.map((attempt) => (
                 <div key={attempt.id} className="flex items-center justify-between px-6 py-3">
                   <p className="text-sm text-neutral-900 dark:text-neutral-100">
@@ -169,7 +168,7 @@ export default function QuizDraftPage() {
                   </p>
                 </div>
               ))}
-            </Card>
+            </AcademicCard>
           )}
         </div>
       )}
@@ -214,7 +213,7 @@ function QuestionCard({
 
   if (!editing) {
     return (
-      <Card>
+      <AcademicCard>
         <div className="flex items-start justify-between gap-3">
           <p className="font-medium text-neutral-900 dark:text-neutral-50">{question.question_text}</p>
           <span className="shrink-0 text-xs capitalize text-neutral-400 dark:text-neutral-500">
@@ -241,12 +240,12 @@ function QuestionCard({
             Edit
           </Button>
         )}
-      </Card>
+      </AcademicCard>
     );
   }
 
   return (
-    <Card>
+    <AcademicCard>
       <Field label="Question">
         <Input
           value={form.questionText}
@@ -295,6 +294,6 @@ function QuestionCard({
           Cancel
         </Button>
       </div>
-    </Card>
+    </AcademicCard>
   );
 }
