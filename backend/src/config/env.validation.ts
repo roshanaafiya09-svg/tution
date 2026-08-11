@@ -27,17 +27,15 @@ export const envSchema = z.object({
     .default('http://localhost:3000')
     .describe('Comma-separated list of allowed origins for the web dashboard'),
 
-  // --- Telegram OTP (Bot API) — the only real OTP delivery channel.
-  // Both vars optional together: unset falls back to a console-logging
-  // dev provider (no code changes). See handover.md §6.7. ---
-  TELEGRAM_BOT_TOKEN: z.string().optional(),
-  TELEGRAM_BOT_USERNAME: z.string().optional(),
-
-  // --- Email OTP (Brevo HTTPS API) — the active real OTP delivery
-  // channel. Unset falls back to the console-logging dev provider (no
-  // code changes). Render's free tier blocks outbound SMTP ports
-  // entirely, so this replaced the SMTP_* mechanism below as the thing
-  // that actually sends — see email-otp-migration-plan.md. ---
+  // --- Email OTP (Brevo HTTPS API) — the ONLY OTP delivery channel,
+  // full stop. Optional at the schema level only because local dev is
+  // allowed to fall back to a console-logging provider when these are
+  // intentionally absent (see ConsoleOtpProvider) — IdentityModule's
+  // OTP_PROVIDER factory enforces both vars as hard-required the moment
+  // NODE_ENV=production, throwing at startup rather than silently
+  // downgrading. Render's free tier blocks outbound SMTP ports
+  // entirely, so this is HTTPS-based, not SMTP — see
+  // email-otp-migration-plan.md. ---
   BREVO_API_KEY: z.string().optional(),
 
   // --- SMTP_* — kept for now (deliberately not read for sending

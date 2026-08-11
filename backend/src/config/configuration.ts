@@ -21,16 +21,10 @@ export const redisConfig = registerAs('redis', () => ({
   url: process.env.REDIS_URL as string,
 }));
 
-export const telegramConfig = registerAs('telegram', () => ({
-  botToken: process.env.TELEGRAM_BOT_TOKEN,
-  // Needed to build the t.me/<username>?start=<token> deep link the
-  // linking flow hands to the user — the Bot API never exposes the
-  // bot's own username on the send path, so it has to be configured.
-  botUsername: process.env.TELEGRAM_BOT_USERNAME,
-}));
-
 export const emailConfig = registerAs('email', () => ({
-  // Brevo (HTTPS email API) — the active OTP delivery mechanism.
+  // Brevo (HTTPS email API) — the sole OTP delivery channel. Required
+  // in production (IdentityModule's OTP_PROVIDER factory refuses to
+  // start without it — no fallback of any kind, Telegram or console).
   // Render's free tier blocks outbound SMTP ports entirely (25/465/587),
   // which is why this exists alongside the SMTP_* vars below rather than
   // replacing them outright — see email-otp-migration-plan.md's Brevo

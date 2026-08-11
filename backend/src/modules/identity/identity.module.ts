@@ -27,11 +27,9 @@ const otpProviderLogger = new Logger('IdentityModule');
  * consent live in TrustModule. Owns tables: users, user_roles,
  * profiles_tutor, profiles_student.
  *
- * The Telegram-linking subsystem (identity/telegram/*) and
- * TelegramOtpProvider still exist on disk (see
- * email-otp-migration-plan.md — deletion deferred) but are
- * deliberately not registered here, so they're inert dead code, not
- * part of this module's DI graph.
+ * Email, via Brevo's HTTPS API, is the sole OTP delivery channel — see
+ * the OTP_PROVIDER factory below. The Telegram-based OTP/linking
+ * subsystem this replaced has been removed entirely (2026-08-11).
  */
 @Module({
   imports: [JwtModule.register({}), SubscriptionsModule],
@@ -45,11 +43,15 @@ const otpProviderLogger = new Logger('IdentityModule');
     {
       provide: OTP_PROVIDER,
       inject: [ConfigService, ConsoleOtpProvider, EmailOtpProvider],
-      // Email (via Brevo's HTTPS API) is the only real delivery
-      // channel; console is the zero-credential dev fallback that logs
-      // the code instead of sending it. BREVO_API_KEY plus SMTP_USER
-      // (reused as the sender identity, not for SMTP) are what's
-      // actually required — see EmailOtpProvider.
+      // Email (via Brevo's HTTPS API) is the ONLY OTP delivery channel —
+      // no fallback of any kind in production. BREVO_API_KEY plus
+      // SMTP_USER (reused as the sender identity, not for SMTP) are
+      // required there; see EmailOtpProvider. ConsoleOtpProvider (logs
+      // the code instead of sending it) is a development-only
+      // convenience for when those credentials are intentionally absent
+      // locally — reachable in production is a startup-time hard error,
+      // not a silent downgrade, so a misconfigured deploy fails loudly
+      // instead of pretending OTPs were sent.
       useFactory: (
         config: ConfigService,
         consoleProvider: ConsoleOtpProvider,
@@ -59,6 +61,7 @@ const otpProviderLogger = new Logger('IdentityModule');
           config.get<string>('email.brevoApiKey') &&
           config.get<string>('email.smtpUser'),
         );
+
         if (emailConfigured) {
           otpProviderLogger.log(
             'Brevo configured — using email for OTP delivery',
@@ -66,8 +69,17 @@ const otpProviderLogger = new Logger('IdentityModule');
           return emailProvider;
         }
 
+        if (config.get<string>('app.nodeEnv') === 'production') {
+          throw new Error(
+            'BREVO_API_KEY and SMTP_USER must both be set in production — ' +
+              'email via Brevo is the only OTP delivery channel and there ' +
+              'is no fallback. Refusing to start rather than silently ' +
+              'using the console-logging development provider.',
+          );
+        }
+
         otpProviderLogger.warn(
-          'BREVO_API_KEY/SMTP_USER not set — OTPs will be logged, not sent',
+          'BREVO_API_KEY/SMTP_USER not set — development OTPs will be logged, not sent',
         );
         return consoleProvider;
       },

@@ -12,7 +12,7 @@ import type { AuthTokens } from './auth.service';
 
 /**
  * Blueprint §4/§6: "Google Sign-In on web". Our schema keys accounts on
- * phone_e164 (NOT NULL) — phone/email OTP (delivered via Telegram) is how
+ * phone_e164 (NOT NULL) — phone/email OTP (delivered via email/Brevo) is how
  * an account is *created*. Google Sign-In here links to an *existing*
  * account by email rather than creating a phone-less one; making
  * phone_e164 nullable to support Google-first signup is a real schema

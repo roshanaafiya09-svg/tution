@@ -43,10 +43,17 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
-      # Telegram is the only OTP delivery channel. Both are required
-      # together — unset falls back to console-logged codes, which is a
-      # dev-only mode and must not be relied on in production.
-      - key: TELEGRAM_BOT_TOKEN
+      # Email, via Brevo's HTTPS API, is the ONLY OTP delivery channel —
+      # both required together, with no fallback of any kind in
+      # production. The backend refuses to start if either is missing
+      # once NODE_ENV=production (set above) — it will NOT silently log
+      # codes instead of emailing them. BREVO_API_KEY is the Brevo
+      # transactional API key; SMTP_USER is reused as the Brevo sender
+      # identity (must match a sender verified in the Brevo dashboard),
+      # not used for actual SMTP. See handover.md §6.7. Paste real
+      # values into Render's dashboard after the first deploy — never
+      # here.
+      - key: BREVO_API_KEY
         sync: false
-      - key: TELEGRAM_BOT_USERNAME
+      - key: SMTP_USER
         sync: false
