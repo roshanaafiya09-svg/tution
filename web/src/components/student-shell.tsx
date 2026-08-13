@@ -32,6 +32,7 @@ import {
 const NAV = [
   { href: '/student', label: 'Overview' },
   { href: '/student/find-a-teacher', label: 'Find a Teacher' },
+  { href: '/student/find-an-academy', label: 'Find an Academy' },
   { href: '/student/schedule', label: 'Schedule' },
   { href: '/student/assignments', label: 'Assignments' },
   { href: '/student/materials', label: 'Materials' },

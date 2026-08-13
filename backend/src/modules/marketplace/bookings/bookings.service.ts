@@ -123,6 +123,20 @@ export class BookingsService {
     return this.repository.listDistinctCompletedStudentIds(tutorId);
   }
 
+  /** Multi-tutor sibling of hasCompletedBookingWith — read-only
+   *  accessor for AcademyReviewsModule's verified-session gate, checked
+   *  against any of an academy's active member tutors. */
+  hasCompletedBookingWithAny(studentId: string, tutorIds: string[]) {
+    return this.repository.hasCompletedBetweenAny(tutorIds, studentId);
+  }
+
+  /** Multi-tutor sibling of listDistinctCompletedStudentIds — read-only
+   *  accessor for AcademiesModule's students-taught count, spanning
+   *  every active member tutor of an academy. */
+  listDistinctCompletedStudentIdsForTutors(tutorIds: string[]) {
+    return this.repository.listDistinctCompletedStudentIdsForTutors(tutorIds);
+  }
+
   /** Loaded and validated by PaymentsService before creating an order —
    *  mirrors the ownership + status checks initiateFeeOrder does inline. */
   async assertPayableByStudent(bookingId: string, studentId: string) {

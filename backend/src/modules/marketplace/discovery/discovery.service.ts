@@ -15,6 +15,7 @@ import { STORAGE_PROVIDER } from '../../../common/storage/storage-provider.inter
 import type { StorageProvider } from '../../../common/storage/storage-provider.interface';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { ContactRequestsRepository } from './contact-requests.repository';
+import { AcademyMembershipsRepository } from '../academy-memberships/academy-memberships.repository';
 import type { SearchTutorsDto } from './dto/search-tutors.dto';
 import type { ContactTeacherDto } from './dto/contact-teacher.dto';
 
@@ -43,6 +44,7 @@ export class DiscoveryService {
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
     private readonly contactRequestsRepository: ContactRequestsRepository,
     private readonly notificationsService: NotificationsService,
+    private readonly academyMembershipsRepository: AcademyMembershipsRepository,
   ) {}
 
   async isGateOpen(): Promise<boolean> {
@@ -144,14 +146,21 @@ export class DiscoveryService {
   async getPublicTutorPage(slug: string) {
     const profile = await this.profilesService.getPublicTutorProfile(slug);
 
-    const [offerings, proofOfTeaching, reviews, location, openBatches] =
-      await Promise.all([
-        this.discoveryRepository.listOfferingsForTutor(profile.user_id),
-        this.proofOfTeachingService.scoreForTutor(profile.user_id),
-        this.reviewsService.listForTutor(profile.user_id),
-        this.tutorLocationsRepository.findByTutorId(profile.user_id),
-        this.batchesRepository.listOpenWithSeatsForTutor(profile.user_id),
-      ]);
+    const [
+      offerings,
+      proofOfTeaching,
+      reviews,
+      location,
+      openBatches,
+      academies,
+    ] = await Promise.all([
+      this.discoveryRepository.listOfferingsForTutor(profile.user_id),
+      this.proofOfTeachingService.scoreForTutor(profile.user_id),
+      this.reviewsService.listForTutor(profile.user_id),
+      this.tutorLocationsRepository.findByTutorId(profile.user_id),
+      this.batchesRepository.listOpenWithSeatsForTutor(profile.user_id),
+      this.academyMembershipsRepository.listActiveForTutor(profile.user_id),
+    ]);
 
     return {
       profile: {
@@ -196,6 +205,19 @@ export class DiscoveryService {
       })),
       proofOfTeaching,
       reviews,
+      /** Bidirectional link into Find an Academy — Path 1 of the
+       *  requirement (Find a Teacher -> Teacher Profile -> "Teaching
+       *  under" -> View Academy). */
+      academies: await Promise.all(
+        academies.map(async (a) => ({
+          id: a.id,
+          name: a.name,
+          slug: a.slug,
+          logoUrl: a.logo_object_key
+            ? await this.storage.createDownloadUrl(a.logo_object_key)
+            : null,
+        })),
+      ),
     };
   }
 

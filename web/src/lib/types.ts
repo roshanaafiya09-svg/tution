@@ -336,6 +336,17 @@ export interface ProofOfTeaching {
   };
 }
 
+/** A tutor's active academy affiliation — shown as a "Teaching under"
+ *  badge on their own profile and the public tutor page, and the
+ *  bidirectional link into Find an Academy (Path 1: Find a Teacher ->
+ *  Teacher Profile -> "Teaching under" -> View Academy). */
+export interface TutorAcademyAffiliation {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl: string | null;
+}
+
 export interface PublicTutorPage {
   profile: {
     displayName: string | null;
@@ -357,6 +368,102 @@ export interface PublicTutorPage {
   offerings: DiscoveryOffering[];
   availableBatches: AvailableBatch[];
   proofOfTeaching: ProofOfTeaching;
+  reviews: { reviews: Review[]; summary: ReviewSummary };
+  academies: TutorAcademyAffiliation[];
+}
+
+// --- Find an Academy ---
+
+export type AcademyVerificationStatus = 'pending' | 'verified' | 'rejected';
+
+export interface AcademyOffering {
+  tutorSubjectId: string;
+  tutorId: string;
+  tutorDisplayName: string | null;
+  tutorSlug: string;
+  subjectId: string;
+  subjectName: Record<string, string>;
+  subjectSlug: string;
+  curriculumId: string;
+  gradeMin: number;
+  gradeMax: number;
+  hourlyRateMinor: number;
+}
+
+export interface AcademyCardResult {
+  academyId: string;
+  name: string;
+  slug: string;
+  tagline: string | null;
+  logoUrl: string | null;
+  verificationStatus: AcademyVerificationStatus;
+  teachingMode: TeachingMode | null;
+  location: { city: string; areaLabel: string | null } | null;
+  subjects: string[];
+  grades: { min: number; max: number };
+  teacherCount: number;
+  studentsCount: number | null;
+  rating: ReviewSummary;
+}
+
+export interface AcademySearchResponse {
+  gateOpen: boolean;
+  curated: boolean;
+  results: AcademyCardResult[];
+}
+
+export interface AcademyTeacherSummary {
+  tutorId: string;
+  displayName: string | null;
+  slug: string;
+  headline: string | null;
+  avatarUrl: string | null;
+  yearsExperience: number | null;
+  verificationStatus: 'pending' | 'verified' | 'rejected';
+}
+
+export interface AcademyPhoto {
+  id: string;
+  url: string;
+  caption: string | null;
+}
+
+export interface AcademyBatch {
+  id: string;
+  tutorId: string;
+  tutorDisplayName: string | null;
+  title: string;
+  subjectId: string;
+  gradeLevelId: string;
+  feeMinor: number;
+  currency: string;
+  feePeriod: 'monthly' | 'quarterly' | 'one_time';
+  capacity: number;
+  seatsRemaining: number;
+}
+
+export interface PublicAcademyPage {
+  academy: {
+    id: string;
+    name: string;
+    slug: string;
+    tagline: string | null;
+    description: string | null;
+    methodology: string | null;
+    yearsEstablished: number | null;
+    achievements: string | null;
+    certifications: string | null;
+    teachingMode: TeachingMode | null;
+    verificationStatus: AcademyVerificationStatus;
+    logoUrl: string | null;
+    coverUrl: string | null;
+  };
+  location: { city: string; areaLabel: string | null } | null;
+  teachers: AcademyTeacherSummary[];
+  photos: AcademyPhoto[];
+  offerings: AcademyOffering[];
+  availableBatches: AcademyBatch[];
+  studentsCount: number | null;
   reviews: { reviews: Review[]; summary: ReviewSummary };
 }
 

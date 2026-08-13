@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import posthog from 'posthog-js';
-import { Home, UserPlus, MessagesSquare, Search, Sparkles, User, LogOut } from 'lucide-react';
+import { Home, UserPlus, MessagesSquare, Search, Building2, Sparkles, User, LogOut } from 'lucide-react';
 import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
 import type { Me } from '@/lib/types';
 import { impersonationStore } from '@/lib/impersonation';
@@ -25,6 +25,7 @@ import {
 const NAV = [
   { href: '/parent', label: 'Home', icon: Home },
   { href: '/parent/find-a-teacher', label: 'Find a Teacher', icon: Search },
+  { href: '/parent/find-an-academy', label: 'Find an Academy', icon: Building2 },
   { href: '/parent/link', label: 'Link a child', icon: UserPlus },
   { href: '/parent/messages', label: 'Messages', icon: MessagesSquare },
   { href: '/parent/premium', label: 'Premium', icon: Sparkles },

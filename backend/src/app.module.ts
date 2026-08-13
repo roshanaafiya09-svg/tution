@@ -44,6 +44,9 @@ import { TutorLocationsModule } from './modules/marketplace/locations/tutor-loca
 import { ProofOfTeachingModule } from './modules/marketplace/proof-of-teaching/proof-of-teaching.module';
 import { ReviewsModule } from './modules/marketplace/reviews/reviews.module';
 import { DiscoveryModule } from './modules/marketplace/discovery/discovery.module';
+import { AcademyMembershipsModule } from './modules/marketplace/academy-memberships/academy-memberships.module';
+import { AcademyReviewsModule } from './modules/marketplace/academy-reviews/academy-reviews.module';
+import { AcademiesModule } from './modules/marketplace/academies/academies.module';
 
 /**
  * Dev-only Super Admin auto-login (see src/dev/dev-auto-login.controller.ts).
@@ -127,6 +130,9 @@ if (process.env.NODE_ENV !== 'production') {
     ProofOfTeachingModule,
     ReviewsModule,
     DiscoveryModule,
+    AcademyMembershipsModule,
+    AcademyReviewsModule,
+    AcademiesModule,
   ],
   providers: [
     {

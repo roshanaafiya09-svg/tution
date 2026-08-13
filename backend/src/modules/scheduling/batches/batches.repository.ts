@@ -184,4 +184,70 @@ export class BatchesRepository {
       .orderBy('batches.created_at', 'desc')
       .execute();
   }
+
+  /** Multi-tutor sibling of listDistinctStudentIdsForTutor — an
+   *  academy's students-taught count spans every active member tutor,
+   *  not just one. Empty-array guard mirrors
+   *  DiscoveryRepository.searchOfferings' tutorIds filter (a dummy UUID
+   *  keeps the `in (...)` clause valid rather than special-casing it). */
+  async listDistinctStudentIdsForTutors(tutorIds: string[]): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom('enrollments')
+      .innerJoin('batches', 'batches.id', 'enrollments.batch_id')
+      .select('enrollments.student_id')
+      .distinct()
+      .where(
+        'batches.tutor_id',
+        'in',
+        tutorIds.length ? tutorIds : ['00000000-0000-0000-0000-000000000000'],
+      )
+      .execute();
+    return rows.map((r) => r.student_id);
+  }
+
+  /** Multi-tutor sibling of listOpenWithSeatsForTutor — backs the
+   *  Academy Profile's "Academy batches" section, which spans every
+   *  active member tutor. Also selects tutor_id (the single-tutor
+   *  version doesn't, since it's redundant there) so the UI can
+   *  attribute each batch to the teacher running it. */
+  listOpenWithSeatsForTutors(tutorIds: string[]) {
+    return this.db
+      .selectFrom('batches')
+      .leftJoin('enrollments', (join) =>
+        join
+          .onRef('enrollments.batch_id', '=', 'batches.id')
+          .on('enrollments.status', '=', 'active'),
+      )
+      .select((eb) => [
+        'batches.id',
+        'batches.tutor_id',
+        'batches.title',
+        'batches.subject_id',
+        'batches.grade_level_id',
+        'batches.capacity',
+        'batches.fee_minor',
+        'batches.currency',
+        'batches.fee_period',
+        eb.fn.count('enrollments.id').as('enrolled_count'),
+      ])
+      .where(
+        'batches.tutor_id',
+        'in',
+        tutorIds.length ? tutorIds : ['00000000-0000-0000-0000-000000000000'],
+      )
+      .where('batches.status', '=', 'active')
+      .groupBy([
+        'batches.id',
+        'batches.tutor_id',
+        'batches.title',
+        'batches.subject_id',
+        'batches.grade_level_id',
+        'batches.capacity',
+        'batches.fee_minor',
+        'batches.currency',
+        'batches.fee_period',
+      ])
+      .orderBy('batches.created_at', 'desc')
+      .execute();
+  }
 }

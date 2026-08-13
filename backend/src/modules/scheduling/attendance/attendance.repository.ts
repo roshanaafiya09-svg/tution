@@ -159,6 +159,30 @@ export class AttendanceRepository {
     return Number(row.count) > 0;
   }
 
+  /** Multi-tutor sibling of hasVerifiedAttendanceWithTutor — the
+   *  batch-class half of AcademyReviewsService's verified-session gate,
+   *  checked against any of an academy's active member tutors rather
+   *  than one. Empty-array guard mirrors the pattern used elsewhere for
+   *  tutorIds filters (dummy UUID keeps `in (...)` valid). */
+  async hasVerifiedAttendanceWithAnyTutor(
+    studentId: string,
+    tutorIds: string[],
+  ): Promise<boolean> {
+    const row = await this.db
+      .selectFrom('attendance')
+      .innerJoin('class_sessions', 'class_sessions.id', 'attendance.session_id')
+      .select((eb) => eb.fn.countAll().as('count'))
+      .where('attendance.student_id', '=', studentId)
+      .where(
+        'class_sessions.tutor_id',
+        'in',
+        tutorIds.length ? tutorIds : ['00000000-0000-0000-0000-000000000000'],
+      )
+      .where('attendance.status', 'in', ['present', 'late'])
+      .executeTakeFirstOrThrow();
+    return Number(row.count) > 0;
+  }
+
   /** Attendance % across every batch a tutor teaches — the "attendance
    *  retention" input to the Proof-of-Teaching score (blueprint §10
    *  Phase 4). Structural copy of summaryForStudent, grouped by tutor

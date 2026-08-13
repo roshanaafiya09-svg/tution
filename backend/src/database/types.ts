@@ -621,6 +621,94 @@ export interface TeacherContactRequestsTable {
   created_at: GeneratedTimestamp;
 }
 
+// --- Find an Academy (migration 0030) ---
+
+/** An academy is a separate org entity from a tutor — see
+ *  academy_memberships for how teachers connect to it. No self-serve
+ *  academy-admin role exists yet, so rows here are superadmin-managed. */
+export interface AcademiesTable {
+  id: string;
+  name: string;
+  slug: string;
+  tagline: string | null;
+  description: string | null;
+  methodology: string | null;
+  years_established: number | null;
+  achievements: string | null;
+  certifications: string | null;
+  teaching_mode: 'online' | 'offline' | 'both' | null;
+  logo_object_key: string | null;
+  cover_object_key: string | null;
+  verification_status: Generated<'pending' | 'verified' | 'rejected'>;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+/** Mirrors TutorLocationsTable exactly, keyed by academy_id instead of
+ *  tutor_id — same PostGIS radius-search shape. */
+export interface AcademyLocationsTable {
+  academy_id: string;
+  city: string;
+  area_label: string | null;
+  lat: number;
+  lng: number;
+  geog: ColumnType<string, RawBuilder<unknown>, RawBuilder<unknown>>;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+/** The teacher <-> academy connection. Multiple historical rows per
+ *  (academy_id, tutor_id) are expected — leaving and rejoining is
+ *  meaningful academy history, not overwritten in place. Only one
+ *  'active' row per (academy_id, tutor_id) is allowed (partial unique
+ *  index in the migration); enforced at the app layer too for a clean
+ *  error message, see AcademyMembershipsRepository.findActiveMembership. */
+export interface AcademyMembershipsTable {
+  id: string;
+  academy_id: string;
+  tutor_id: string;
+  status: Generated<'active' | 'left'>;
+  joined_at: GeneratedTimestamp;
+  left_at: Timestamp | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+export interface AcademyPhotosTable {
+  id: string;
+  academy_id: string;
+  object_key: string;
+  caption: string | null;
+  sort_order: Generated<number>;
+  created_at: GeneratedTimestamp;
+}
+
+/** Separate rating system from `reviews` (teacher ratings) — an
+ *  academy's trust signal never mixes with an individual teacher's. */
+export interface AcademyReviewsTable {
+  id: string;
+  academy_id: string;
+  student_id: string;
+  rating: number;
+  comment: string | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+/** "Contact Academy" leads from Find an Academy — mirrors
+ *  teacher_contact_requests, but persist-only (no NotificationsService
+ *  fan-out) since no academy-owner user exists yet to notify. Visible
+ *  to superadmin via GET /admin/academies/:id/contact-requests. */
+export interface AcademyContactRequestsTable {
+  id: string;
+  academy_id: string;
+  requester_id: string;
+  requester_role: 'student' | 'parent';
+  message: string | null;
+  read_at: Timestamp | null;
+  created_at: GeneratedTimestamp;
+}
+
 export interface DB {
   users: UsersTable;
   user_roles: UserRolesTable;
@@ -673,4 +761,11 @@ export interface DB {
   booking_waitlists: BookingWaitlistsTable;
   reviews: ReviewsTable;
   teacher_contact_requests: TeacherContactRequestsTable;
+
+  academies: AcademiesTable;
+  academy_locations: AcademyLocationsTable;
+  academy_memberships: AcademyMembershipsTable;
+  academy_photos: AcademyPhotosTable;
+  academy_reviews: AcademyReviewsTable;
+  academy_contact_requests: AcademyContactRequestsTable;
 }

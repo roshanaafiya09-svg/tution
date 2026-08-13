@@ -113,6 +113,27 @@ export class BookingsRepository {
     return Number(row.count) > 0;
   }
 
+  /** Multi-tutor sibling of hasCompletedBetween — the 1:1-booking half
+   *  of AcademyReviewsService's verified-session gate, checked against
+   *  any of an academy's active member tutors. */
+  async hasCompletedBetweenAny(
+    tutorIds: string[],
+    studentId: string,
+  ): Promise<boolean> {
+    const row = await this.db
+      .selectFrom('bookings')
+      .select((eb) => eb.fn.countAll().as('count'))
+      .where(
+        'tutor_id',
+        'in',
+        tutorIds.length ? tutorIds : ['00000000-0000-0000-0000-000000000000'],
+      )
+      .where('student_id', '=', studentId)
+      .where('status', '=', 'completed')
+      .executeTakeFirstOrThrow();
+    return Number(row.count) > 0;
+  }
+
   /** Distinct students with at least one completed booking with this
    *  tutor — the 1:1-booking half of ProofOfTeachingService's
    *  students-taught count (batch enrollments are the other half). */
@@ -122,6 +143,25 @@ export class BookingsRepository {
       .select('student_id')
       .distinct()
       .where('tutor_id', '=', tutorId)
+      .where('status', '=', 'completed')
+      .execute();
+    return rows.map((r) => r.student_id);
+  }
+
+  /** Multi-tutor sibling of listDistinctCompletedStudentIds — the
+   *  1:1-booking half of an academy's students-taught count. */
+  async listDistinctCompletedStudentIdsForTutors(
+    tutorIds: string[],
+  ): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom('bookings')
+      .select('student_id')
+      .distinct()
+      .where(
+        'tutor_id',
+        'in',
+        tutorIds.length ? tutorIds : ['00000000-0000-0000-0000-000000000000'],
+      )
       .where('status', '=', 'completed')
       .execute();
     return rows.map((r) => r.student_id);

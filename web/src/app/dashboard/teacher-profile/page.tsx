@@ -19,6 +19,7 @@ import type {
   ReviewSummary,
   Subject,
   TeachingMode,
+  TutorAcademyAffiliation,
   TutorLocation,
   TutorProfile,
   TutorSubject,
@@ -115,6 +116,7 @@ export default function TeacherProfilePage() {
   const [openBatches, setOpenBatches] = useState<OpenBatch[]>([]);
   const [proofOfTeaching, setProofOfTeaching] = useState<ProofOfTeaching | null>(null);
   const [rating, setRating] = useState<ReviewSummary | null>(null);
+  const [academies, setAcademies] = useState<TutorAcademyAffiliation[]>([]);
   const [loadError, setLoadError] = useState(false);
 
   const [editing, setEditing] = useState(false);
@@ -127,7 +129,7 @@ export default function TeacherProfilePage() {
   const load = useCallback(async () => {
     setLoadError(false);
     try {
-      const [meRes, prof, subj, tutorSubj, loc, avail, batches] = await Promise.all([
+      const [meRes, prof, subj, tutorSubj, loc, avail, batches, memberships] = await Promise.all([
         api.get<Me>('/auth/me'),
         api.get<TutorProfile | null>('/profiles/tutor/me'),
         api.get<Subject[]>('/catalog/subjects'),
@@ -135,6 +137,7 @@ export default function TeacherProfilePage() {
         api.get<TutorLocation | null>('/marketplace/locations/me'),
         api.get<unknown[]>('/availability/me'),
         api.get<OpenBatch[]>('/batches/me/open'),
+        api.get<TutorAcademyAffiliation[]>('/marketplace/academies/me/memberships'),
       ]);
       setProfile(prof);
       setSubjects(subj);
@@ -142,6 +145,7 @@ export default function TeacherProfilePage() {
       setLocation(loc);
       setAvailabilityCount(avail.length);
       setOpenBatches(batches);
+      setAcademies(memberships);
 
       const [pot, reviews] = await Promise.all([
         api.get<ProofOfTeaching>('/marketplace/proof-of-teaching/me'),
@@ -521,6 +525,23 @@ export default function TeacherProfilePage() {
                       </p>
                     </div>
                   ))}
+                {academies.length > 0 && (
+                  <div className="mt-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">
+                      Teaching under
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap gap-2">
+                      {academies.map((a) => (
+                        <span
+                          key={a.id}
+                          className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"
+                        >
+                          🏫 {a.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </AcademicCard>
 
               <div className="mb-8 grid gap-4 sm:grid-cols-3">
