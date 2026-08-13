@@ -40,6 +40,7 @@ import {
 
 const NAV = [
   { href: '/dashboard', label: 'Today', icon: Home },
+  { href: '/dashboard/teacher-profile', label: 'Teacher Profile', icon: UserCircle },
   { href: '/dashboard/batches', label: 'Batches', icon: Layers },
   { href: '/dashboard/fees', label: 'Fees', icon: Wallet },
   { href: '/dashboard/messages', label: 'Messages', icon: MessagesSquare },
@@ -49,7 +50,6 @@ const BUSINESS_GROUPS = [
   {
     label: 'Teaching profile',
     items: [
-      { href: '/dashboard/teacher-profile', label: 'Teacher Profile', icon: UserCircle },
       { href: '/dashboard/subjects', label: 'Subjects & rates', icon: BookMarked },
       { href: '/dashboard/availability', label: 'Availability', icon: CalendarClock },
     ],
