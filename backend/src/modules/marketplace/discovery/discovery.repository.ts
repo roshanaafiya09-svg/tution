@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import { KYSELY_CONNECTION } from '../../../database/database.module';
 import type { DB } from '../../../database/types';
 
@@ -8,6 +8,10 @@ export interface OfferingSearchFilters {
   curriculumId?: string;
   grade?: number;
   tutorIds?: string[];
+  language?: string;
+  teachingMode?: 'online' | 'offline' | 'both';
+  minExperience?: number;
+  feeMaxMinor?: number;
   limit: number;
 }
 
@@ -42,6 +46,9 @@ export class DiscoveryRepository {
         'profiles_tutor.display_name',
         'profiles_tutor.slug as tutor_slug',
         'profiles_tutor.headline',
+        'profiles_tutor.avatar_object_key',
+        'profiles_tutor.teaching_mode',
+        'profiles_tutor.languages',
       ])
       .where('profiles_tutor.verification_status', '=', 'verified');
 
@@ -67,6 +74,32 @@ export class DiscoveryRepository {
         filters.tutorIds.length
           ? filters.tutorIds
           : ['00000000-0000-0000-0000-000000000000'],
+      );
+    }
+    if (filters.teachingMode) {
+      query = query.where(
+        'profiles_tutor.teaching_mode',
+        '=',
+        filters.teachingMode,
+      );
+    }
+    if (filters.minExperience != null) {
+      query = query.where(
+        'profiles_tutor.years_experience',
+        '>=',
+        filters.minExperience,
+      );
+    }
+    if (filters.feeMaxMinor != null) {
+      query = query.where(
+        'tutor_subjects.hourly_rate_minor',
+        '<=',
+        filters.feeMaxMinor,
+      );
+    }
+    if (filters.language) {
+      query = query.where(
+        sql<boolean>`profiles_tutor.languages @> ${JSON.stringify([filters.language])}::jsonb`,
       );
     }
 

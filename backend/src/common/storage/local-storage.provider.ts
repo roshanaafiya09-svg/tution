@@ -7,9 +7,17 @@ import { PresignedUpload, StorageProvider } from './storage-provider.interface';
 /**
  * Dev-only stand-in for Supabase Storage that stores files on local disk
  * and serves them through the API itself (see MaterialsController's
- * upload/download routes). Real deployments use Supabase Storage so
- * media never touches the API — this exists purely so the upload flow
- * is runnable without cloud credentials.
+ * local-upload/local-download routes). Real deployments use Supabase
+ * Storage so media never touches the API — this exists purely so the
+ * upload flow is runnable without cloud credentials.
+ *
+ * The upload/download URLs below are intentionally routed through
+ * MaterialsController regardless of which feature is using this shared
+ * provider (course materials, tutor avatars, ...) — objectKey alone
+ * scopes each file (`batches/...`, `avatars/...`), and Materials'
+ * local-upload/local-download handlers are already generic passthroughs
+ * keyed only by objectKey, so every caller of StorageModule reuses those
+ * same two dev-only routes instead of each feature adding its own.
  */
 @Injectable()
 export class LocalStorageProvider implements StorageProvider {

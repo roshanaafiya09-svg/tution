@@ -13,8 +13,8 @@ import { SubmissionsRepository } from './submissions/submissions.repository';
 import { BatchesService } from '../scheduling/batches/batches.service';
 import { BatchesRepository } from '../scheduling/batches/batches.repository';
 import { NotificationsService } from '../notifications/notifications.service';
-import { STORAGE_PROVIDER } from '../delivery/materials/storage/storage-provider.interface';
-import type { StorageProvider } from '../delivery/materials/storage/storage-provider.interface';
+import { STORAGE_PROVIDER } from '../../common/storage/storage-provider.interface';
+import type { StorageProvider } from '../../common/storage/storage-provider.interface';
 import type { CreateAssignmentDto } from './assignments/dto/create-assignment.dto';
 import { AnalyticsService } from '../analytics/analytics.service';
 

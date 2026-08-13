@@ -20,7 +20,7 @@ const DEFAULT_DOWNLOAD_EXPIRY_SECONDS = 60 * 60;
  * because both of those now require a linked billing account/credit
  * card just to create a bucket, even on their free tiers; Supabase's
  * free-tier storage does not. Selected automatically when Supabase
- * credentials are configured (see DeliveryModule).
+ * credentials are configured (see StorageModule).
  *
  * Supabase's S3 endpoint requires path-style addressing
  * (bucket-in-path, not virtual-hosted-style subdomain) — forcePathStyle

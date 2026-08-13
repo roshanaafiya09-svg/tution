@@ -18,6 +18,7 @@ import { ProfilesController } from './profiles/profiles.controller';
 import { ProfilesService } from './profiles/profiles.service';
 import { ProfilesRepository } from './profiles/profiles.repository';
 import { SubscriptionsModule } from '../billing/subscriptions/subscriptions.module';
+import { StorageModule } from '../../common/storage/storage.module';
 
 const otpProviderLogger = new Logger('IdentityModule');
 
@@ -30,9 +31,13 @@ const otpProviderLogger = new Logger('IdentityModule');
  * Email, via Brevo's HTTPS API, is the sole OTP delivery channel — see
  * the OTP_PROVIDER factory below. The Telegram-based OTP/linking
  * subsystem this replaced has been removed entirely (2026-08-11).
+ *
+ * StorageModule is imported for tutor avatar uploads (ProfilesService) —
+ * the same shared StorageProvider DeliveryModule uses for materials, not
+ * a second one.
  */
 @Module({
-  imports: [JwtModule.register({}), SubscriptionsModule],
+  imports: [JwtModule.register({}), SubscriptionsModule, StorageModule],
   controllers: [AuthController, ProfilesController],
   providers: [
     UsersRepository,

@@ -113,6 +113,20 @@ export class BookingsRepository {
     return Number(row.count) > 0;
   }
 
+  /** Distinct students with at least one completed booking with this
+   *  tutor — the 1:1-booking half of ProofOfTeachingService's
+   *  students-taught count (batch enrollments are the other half). */
+  async listDistinctCompletedStudentIds(tutorId: string): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom('bookings')
+      .select('student_id')
+      .distinct()
+      .where('tutor_id', '=', tutorId)
+      .where('status', '=', 'completed')
+      .execute();
+    return rows.map((r) => r.student_id);
+  }
+
   markConfirmed(id: string) {
     return this.db
       .updateTable('bookings')

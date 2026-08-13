@@ -117,6 +117,12 @@ export class BookingsService {
     return this.repository.hasCompletedBetween(tutorId, studentId);
   }
 
+  /** Read-only accessor for ProofOfTeachingModule's students-taught
+   *  count — avoids exposing the repository itself outside this module. */
+  listDistinctCompletedStudentIds(tutorId: string) {
+    return this.repository.listDistinctCompletedStudentIds(tutorId);
+  }
+
   /** Loaded and validated by PaymentsService before creating an order —
    *  mirrors the ownership + status checks initiateFeeOrder does inline. */
   async assertPayableByStudent(bookingId: string, studentId: string) {

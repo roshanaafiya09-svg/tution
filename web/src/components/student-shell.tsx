@@ -11,6 +11,7 @@ import {
   ListChecks,
   CalendarCheck,
   ChevronDown,
+  Search,
   User,
   LogOut,
 } from 'lucide-react';
@@ -40,6 +41,7 @@ const MORE_GROUPS = [
   {
     label: 'Learning',
     items: [
+      { href: '/student/find-a-teacher', label: 'Find a Teacher', icon: Search },
       { href: '/student/batches', label: 'My Batches', icon: BookMarked },
       { href: '/student/quizzes', label: 'Quizzes', icon: ListChecks },
       { href: '/student/attendance', label: 'Attendance', icon: CalendarCheck },

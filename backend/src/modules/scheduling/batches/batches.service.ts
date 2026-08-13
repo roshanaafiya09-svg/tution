@@ -23,6 +23,10 @@ export class BatchesService {
     return this.repository.listForStudent(studentId);
   }
 
+  listOpenWithSeats(tutorId: string) {
+    return this.repository.listOpenWithSeatsForTutor(tutorId);
+  }
+
   async create(tutorId: string, dto: CreateBatchDto) {
     const batch = await this.repository.create(tutorId, dto);
     this.analytics.capture(tutorId, 'batch_created', { batchId: batch.id });

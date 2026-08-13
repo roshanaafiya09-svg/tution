@@ -49,6 +49,8 @@ export interface ImpersonationResponse {
   };
 }
 
+export type TeachingMode = 'online' | 'offline' | 'both';
+
 export interface TutorProfile {
   user_id: string;
   display_name: string;
@@ -57,6 +59,39 @@ export interface TutorProfile {
   years_experience: number | null;
   verification_status: 'pending' | 'verified' | 'rejected';
   slug: string;
+  avatar_object_key: string | null;
+  avatarUrl: string | null;
+  qualifications: string | null;
+  languages: string[] | null;
+  teaching_mode: TeachingMode | null;
+  methodology: string | null;
+  achievements: string | null;
+  certifications: string | null;
+  fee_note: string | null;
+}
+
+export interface AvailableBatch {
+  id: string;
+  title: string;
+  subjectId: string;
+  gradeLevelId: string;
+  feeMinor: number;
+  currency: string;
+  feePeriod: 'monthly' | 'quarterly' | 'one_time';
+  capacity: number;
+  seatsRemaining: number;
+}
+
+export interface ContactRequest {
+  id: string;
+  requester_id: string;
+  requester_role: 'student' | 'parent';
+  message: string | null;
+  read_at: string | null;
+  created_at: string;
+  email: string | null;
+  phone_e164: string;
+  student_display_name: string | null;
 }
 
 export interface Batch {
@@ -274,7 +309,12 @@ export interface DiscoveryTutorResult {
   displayName: string | null;
   slug: string;
   headline: string | null;
+  avatarUrl: string | null;
+  teachingMode: TeachingMode | null;
+  languages: string[];
+  location: { city: string; areaLabel: string | null } | null;
   proofOfTeachingScore: number;
+  studentsTaught: number;
   rating: ReviewSummary;
   offerings: DiscoveryOffering[];
 }
@@ -288,6 +328,7 @@ export interface DiscoverySearchResponse {
 export interface ProofOfTeaching {
   tutorId: string;
   score: number;
+  studentsTaught: number;
   inputs: {
     verifiedHours: number;
     attendanceRetentionRate: number | null;
@@ -303,9 +344,18 @@ export interface PublicTutorPage {
     bio: string | null;
     yearsExperience: number | null;
     verificationStatus: 'pending' | 'verified' | 'rejected';
+    avatarUrl: string | null;
+    qualifications: string | null;
+    languages: string[];
+    teachingMode: TeachingMode | null;
+    methodology: string | null;
+    achievements: string | null;
+    certifications: string | null;
+    feeNote: string | null;
   };
   location: { city: string; areaLabel: string | null } | null;
   offerings: DiscoveryOffering[];
+  availableBatches: AvailableBatch[];
   proofOfTeaching: ProofOfTeaching;
   reviews: { reviews: Review[]; summary: ReviewSummary };
 }

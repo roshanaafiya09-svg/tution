@@ -7,8 +7,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { VerificationsRepository } from './verifications.repository';
-import { STORAGE_PROVIDER } from '../../delivery/materials/storage/storage-provider.interface';
-import type { StorageProvider } from '../../delivery/materials/storage/storage-provider.interface';
+import { STORAGE_PROVIDER } from '../../../common/storage/storage-provider.interface';
+import type { StorageProvider } from '../../../common/storage/storage-provider.interface';
 import { ProfilesService } from '../../identity/profiles/profiles.service';
 import { AuditLogService } from '../audit/audit-log.service';
 import {

@@ -131,4 +131,57 @@ export class BatchesRepository {
       .where('student_id', '=', studentId)
       .execute();
   }
+
+  /** Every student ever enrolled in one of this tutor's batches (active
+   *  or left — "taught" includes past students, not just current ones).
+   *  Used by ProofOfTeachingService's students-taught count. */
+  async listDistinctStudentIdsForTutor(tutorId: string): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom('enrollments')
+      .innerJoin('batches', 'batches.id', 'enrollments.batch_id')
+      .select('enrollments.student_id')
+      .distinct()
+      .where('batches.tutor_id', '=', tutorId)
+      .execute();
+    return rows.map((r) => r.student_id);
+  }
+
+  /** Tutor's currently-open batches with live seats remaining — a single
+   *  grouped query, no N+1 (unlike listForTutor + a per-batch
+   *  countActiveEnrollments call). Backs the "Available batches" section
+   *  of the Teacher Profile and public discovery profile. */
+  listOpenWithSeatsForTutor(tutorId: string) {
+    return this.db
+      .selectFrom('batches')
+      .leftJoin('enrollments', (join) =>
+        join
+          .onRef('enrollments.batch_id', '=', 'batches.id')
+          .on('enrollments.status', '=', 'active'),
+      )
+      .select((eb) => [
+        'batches.id',
+        'batches.title',
+        'batches.subject_id',
+        'batches.grade_level_id',
+        'batches.capacity',
+        'batches.fee_minor',
+        'batches.currency',
+        'batches.fee_period',
+        eb.fn.count('enrollments.id').as('enrolled_count'),
+      ])
+      .where('batches.tutor_id', '=', tutorId)
+      .where('batches.status', '=', 'active')
+      .groupBy([
+        'batches.id',
+        'batches.title',
+        'batches.subject_id',
+        'batches.grade_level_id',
+        'batches.capacity',
+        'batches.fee_minor',
+        'batches.currency',
+        'batches.fee_period',
+      ])
+      .orderBy('batches.created_at', 'desc')
+      .execute();
+  }
 }

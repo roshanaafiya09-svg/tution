@@ -18,7 +18,7 @@ import { CurrentUser } from '../../identity/auth/decorators/current-user.decorat
 import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
 import { MaterialsService } from './materials.service';
 import { CreateMaterialDto } from './dto/create-material.dto';
-import { LocalStorageProvider } from './storage/local-storage.provider';
+import { LocalStorageProvider } from '../../../common/storage/local-storage.provider';
 
 @Controller('materials')
 export class MaterialsController {
@@ -97,6 +97,11 @@ export class MaterialsController {
       decodeURIComponent(objectKey),
     );
     const body = await this.localStorage.read(key);
+    // Helmet's default Cross-Origin-Resource-Policy: same-origin blocks the
+    // browser from loading this cross-origin (API on :3001, web on :3000)
+    // as an <img> — real deployments serve avatars from Supabase Storage's
+    // own domain instead, so this only matters for this dev-only stand-in.
+    reply.header('Cross-Origin-Resource-Policy', 'cross-origin');
     return reply.send(body);
   }
 }

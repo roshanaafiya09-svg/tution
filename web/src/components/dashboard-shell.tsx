@@ -17,6 +17,7 @@ import {
   ListChecks,
   ChevronDown,
   User,
+  UserCircle,
   LogOut,
 } from 'lucide-react';
 import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
@@ -48,6 +49,7 @@ const BUSINESS_GROUPS = [
   {
     label: 'Teaching profile',
     items: [
+      { href: '/dashboard/teacher-profile', label: 'Teacher Profile', icon: UserCircle },
       { href: '/dashboard/subjects', label: 'Subjects & rates', icon: BookMarked },
       { href: '/dashboard/availability', label: 'Availability', icon: CalendarClock },
     ],

@@ -5,17 +5,8 @@ import Link from 'next/link';
 import { Star, Info, SearchX, SlidersHorizontal } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
 import type { Curriculum, DiscoverySearchResponse, Subject } from '@/lib/types';
-import { Card, EmptyState, Field, Select, CardSkeleton } from '@/components/ui';
-
-function initials(name: string | null) {
-  if (!name) return 'T';
-  return name
-    .split(' ')
-    .map((part) => part[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
-}
+import { buildTutorSearchParams, tutorInitials as initials } from '@/lib/discovery';
+import { Card, EmptyState, ErrorState, Field, Select, CardSkeleton } from '@/components/ui';
 
 export default function DiscoverPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -24,6 +15,8 @@ export default function DiscoverPage() {
   const [curriculumId, setCurriculumId] = useState('');
   const [grade, setGrade] = useState('');
   const [results, setResults] = useState<DiscoverySearchResponse | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     void api.get<Subject[]>('/catalog/subjects').then(setSubjects);
@@ -31,14 +24,13 @@ export default function DiscoverPage() {
   }, []);
 
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (subjectId) params.set('subjectId', subjectId);
-    if (curriculumId) params.set('curriculumId', curriculumId);
-    if (grade) params.set('grade', grade);
+    setLoadError(false);
+    const params = buildTutorSearchParams({ subjectId, curriculumId, grade });
     void api
       .get<DiscoverySearchResponse>(`/marketplace/discovery/tutors?${params.toString()}`)
-      .then(setResults);
-  }, [subjectId, curriculumId, grade]);
+      .then(setResults)
+      .catch(() => setLoadError(true));
+  }, [subjectId, curriculumId, grade, retryCount]);
 
   return (
     <main className="min-h-screen bg-background">
@@ -116,7 +108,12 @@ export default function DiscoverPage() {
           </Card>
         )}
 
-        {results === null ? (
+        {loadError ? (
+          <ErrorState
+            description="Could not load tutors. Check your connection and try again."
+            onRetry={() => setRetryCount((n) => n + 1)}
+          />
+        ) : results === null ? (
           <div className="grid gap-4 sm:grid-cols-2">
             {Array.from({ length: 4 }).map((_, i) => (
               <CardSkeleton key={i} />

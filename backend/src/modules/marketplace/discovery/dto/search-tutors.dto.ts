@@ -1,13 +1,18 @@
 import { Type } from 'class-transformer';
 import {
+  IsIn,
   IsInt,
   IsLatitude,
   IsLongitude,
   IsOptional,
+  IsString,
   IsUUID,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
+
+const TEACHING_MODES = ['online', 'offline', 'both'] as const;
 
 export class SearchTutorsDto {
   @IsOptional()
@@ -24,6 +29,35 @@ export class SearchTutorsDto {
   @Min(1)
   @Max(13)
   grade?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  language?: string;
+
+  @IsOptional()
+  @IsIn(TEACHING_MODES)
+  teachingMode?: (typeof TEACHING_MODES)[number];
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(60)
+  minExperience?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  feeMaxMinor?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  minRating?: number;
 
   @IsOptional()
   @Type(() => Number)

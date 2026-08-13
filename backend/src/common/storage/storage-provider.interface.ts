@@ -14,6 +14,11 @@ export interface PresignedUpload {
  * their free tiers. Either way, the API only ever hands out a presigned
  * URL and records the resulting object key, so large files bypass it
  * entirely — that contract doesn't change with the provider.
+ *
+ * Shared by DeliveryModule (course materials) and IdentityModule (tutor
+ * avatars) via StorageModule below — one provider, one bucket, keyed by
+ * an object-key prefix per feature (`batches/...`, `avatars/...`), not
+ * a separate registration per feature.
  */
 export interface StorageProvider {
   createPresignedUpload(

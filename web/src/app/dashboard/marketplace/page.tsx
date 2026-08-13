@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { MapPin, Award, CalendarClock, LocateFixed, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { MapPin, Award, CalendarClock, LocateFixed, Check, ChevronDown, ChevronUp, MessageCircle } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
 import type {
   AvailabilityRule,
   Booking,
+  ContactRequest,
   ProofOfTeaching,
   Subject,
   TutorLocation,
@@ -35,6 +36,8 @@ export default function MarketplacePage() {
   const [location, setLocation] = useState<TutorLocation | null | undefined>(undefined);
   const [proofOfTeaching, setProofOfTeaching] = useState<ProofOfTeaching | null>(null);
   const [bookings, setBookings] = useState<Booking[] | null>(null);
+  const [contactRequests, setContactRequests] = useState<ContactRequest[] | null>(null);
+  const [markingReadId, setMarkingReadId] = useState<string | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [tutorSubjects, setTutorSubjects] = useState<TutorSubject[]>([]);
   const [availabilityRules, setAvailabilityRules] = useState<AvailabilityRule[]>([]);
@@ -52,7 +55,7 @@ export default function MarketplacePage() {
   const load = useCallback(async () => {
     setLoadError(false);
     try {
-      const [loc, pot, own, subj, tutorSubj, rules, prof] = await Promise.all([
+      const [loc, pot, own, subj, tutorSubj, rules, prof, requests] = await Promise.all([
         api.get<TutorLocation | null>('/marketplace/locations/me'),
         api.get<ProofOfTeaching>('/marketplace/proof-of-teaching/me'),
         api.get<Booking[]>('/marketplace/bookings/tutor'),
@@ -60,6 +63,7 @@ export default function MarketplacePage() {
         api.get<TutorSubject[]>('/tutor-subjects/me'),
         api.get<AvailabilityRule[]>('/availability/me'),
         api.get<TutorProfile | null>('/profiles/tutor/me'),
+        api.get<ContactRequest[]>('/marketplace/discovery/contact-requests/me'),
       ]);
       setLocation(loc);
       setProofOfTeaching(pot);
@@ -68,6 +72,7 @@ export default function MarketplacePage() {
       setTutorSubjects(tutorSubj);
       setAvailabilityRules(rules);
       setProfile(prof);
+      setContactRequests(requests);
       if (loc) {
         setLocForm({
           city: loc.city,
@@ -157,6 +162,25 @@ export default function MarketplacePage() {
     } finally {
       setBusyId(null);
     }
+  }
+
+  async function markContactRequestRead(id: string) {
+    setMarkingReadId(id);
+    try {
+      await api.post(`/marketplace/discovery/contact-requests/${id}/read`);
+      await load();
+    } catch {
+      toast({ title: 'Could not update this request', variant: 'error' });
+    } finally {
+      setMarkingReadId(null);
+    }
+  }
+
+  function requesterLabel(request: ContactRequest): string {
+    if (request.requester_role === 'student' && request.student_display_name) {
+      return request.student_display_name;
+    }
+    return request.email ?? request.phone_e164;
   }
 
   const upcoming = bookings?.filter((b) => b.status === 'confirmed') ?? [];
@@ -488,6 +512,53 @@ export default function MarketplacePage() {
             ))}
           </AcademicCard>
         </>
+      )}
+
+      <SectionHeader title="Contact requests" />
+      {contactRequests === null ? (
+        <div className="mb-8 space-y-3">
+          <CardSkeleton />
+        </div>
+      ) : contactRequests.length === 0 ? (
+        <div className="mb-8">
+          <EmptyState
+            icon={MessageCircle}
+            title="No contact requests yet"
+            description="When a student or parent reaches out from Find a Teacher, their message appears here."
+          />
+        </div>
+      ) : (
+        <div className="mb-8 space-y-3">
+          {contactRequests.map((request) => (
+            <AcademicCard key={request.id} className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="font-medium text-neutral-900 dark:text-neutral-50">{requesterLabel(request)}</p>
+                  <Badge variant="neutral" className="capitalize">
+                    {request.requester_role}
+                  </Badge>
+                  {!request.read_at && <Badge variant="brand">New</Badge>}
+                </div>
+                {request.message && (
+                  <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">{request.message}</p>
+                )}
+                <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
+                  {new Date(request.created_at).toLocaleString('en-IN')}
+                </p>
+              </div>
+              {!request.read_at && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void markContactRequestRead(request.id)}
+                  disabled={markingReadId === request.id}
+                >
+                  Mark read
+                </Button>
+              )}
+            </AcademicCard>
+          ))}
+        </div>
       )}
       </>
       )}

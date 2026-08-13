@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Put, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -7,6 +16,7 @@ import type { AccessTokenPayload } from '../auth/tokens.service';
 import { ProfilesService } from './profiles.service';
 import { UpsertTutorProfileDto } from './dto/upsert-tutor-profile.dto';
 import { UpsertStudentProfileDto } from './dto/upsert-student-profile.dto';
+import { AvatarUploadUrlDto } from './dto/avatar-upload-url.dto';
 
 @Controller('profiles')
 export class ProfilesController {
@@ -32,6 +42,23 @@ export class ProfilesController {
   @Get('tutor/:slug')
   getPublicTutorProfile(@Param('slug') slug: string) {
     return this.profilesService.getPublicTutorProfile(slug);
+  }
+
+  @Post('tutor/avatar-upload-url')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('tutor')
+  createAvatarUploadUrl(
+    @CurrentUser() user: AccessTokenPayload,
+    @Body() dto: AvatarUploadUrlDto,
+  ) {
+    return this.profilesService.createAvatarUploadUrl(user.sub, dto);
+  }
+
+  @Delete('tutor/avatar')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('tutor')
+  removeAvatar(@CurrentUser() user: AccessTokenPayload) {
+    return this.profilesService.removeAvatar(user.sub);
   }
 
   @Put('student')

@@ -58,6 +58,14 @@ export interface ProfilesTutorTable {
   years_experience: number | null;
   verification_status: Generated<'pending' | 'verified' | 'rejected'>;
   slug: string;
+  avatar_object_key: string | null;
+  qualifications: string | null;
+  languages: JSONColumnType<string[], string | undefined, string> | null;
+  teaching_mode: 'online' | 'offline' | 'both' | null;
+  methodology: string | null;
+  achievements: string | null;
+  certifications: string | null;
+  fee_note: string | null;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
 }
@@ -600,6 +608,19 @@ export interface ReviewsTable {
   updated_at: GeneratedTimestamp;
 }
 
+/** "Contact Teacher" leads from Find a Teacher (public discovery) — a
+ *  lightweight, notification-adjacent record, not a messaging thread.
+ *  See migration 0029. */
+export interface TeacherContactRequestsTable {
+  id: string;
+  tutor_id: string;
+  requester_id: string;
+  requester_role: 'student' | 'parent';
+  message: string | null;
+  read_at: Timestamp | null;
+  created_at: GeneratedTimestamp;
+}
+
 export interface DB {
   users: UsersTable;
   user_roles: UserRolesTable;
@@ -651,4 +672,5 @@ export interface DB {
   bookings: BookingsTable;
   booking_waitlists: BookingWaitlistsTable;
   reviews: ReviewsTable;
+  teacher_contact_requests: TeacherContactRequestsTable;
 }

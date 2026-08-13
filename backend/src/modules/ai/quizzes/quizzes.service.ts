@@ -7,8 +7,8 @@ import {
 } from '@nestjs/common';
 import { QuizzesRepository } from './quizzes.repository';
 import { MaterialsRepository } from '../../delivery/materials/materials.repository';
-import { STORAGE_PROVIDER } from '../../delivery/materials/storage/storage-provider.interface';
-import type { StorageProvider } from '../../delivery/materials/storage/storage-provider.interface';
+import { STORAGE_PROVIDER } from '../../../common/storage/storage-provider.interface';
+import type { StorageProvider } from '../../../common/storage/storage-provider.interface';
 import { AiService } from '../ai.service';
 import { AnalyticsService } from '../../analytics/analytics.service';
 import { extractPdfText } from './pdf-text';

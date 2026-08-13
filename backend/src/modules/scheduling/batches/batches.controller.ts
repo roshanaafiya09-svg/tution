@@ -33,6 +33,14 @@ export class BatchesController {
     return this.batchesService.listForStudent(user.sub);
   }
 
+  /** Open batches with live seats remaining — backs the "Available
+   *  batches" section on the Teacher Profile page. */
+  @Get('me/open')
+  @Roles('tutor')
+  listOwnOpen(@CurrentUser() user: AccessTokenPayload) {
+    return this.batchesService.listOpenWithSeats(user.sub);
+  }
+
   @Post()
   @Roles('tutor')
   @UseGuards(ActiveSubscriptionGuard)

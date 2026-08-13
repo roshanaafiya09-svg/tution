@@ -7,8 +7,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { MaterialsRepository } from './materials.repository';
-import { STORAGE_PROVIDER } from './storage/storage-provider.interface';
-import type { StorageProvider } from './storage/storage-provider.interface';
+import { STORAGE_PROVIDER } from '../../../common/storage/storage-provider.interface';
+import type { StorageProvider } from '../../../common/storage/storage-provider.interface';
 import { BatchesService } from '../../scheduling/batches/batches.service';
 import { BatchesRepository } from '../../scheduling/batches/batches.repository';
 import {

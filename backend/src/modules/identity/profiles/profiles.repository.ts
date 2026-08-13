@@ -8,6 +8,13 @@ export interface UpsertTutorProfileInput {
   headline?: string;
   bio?: string;
   yearsExperience?: number;
+  qualifications?: string;
+  languages?: string[];
+  teachingMode?: 'online' | 'offline' | 'both';
+  methodology?: string;
+  achievements?: string;
+  certifications?: string;
+  feeNote?: string;
 }
 
 export interface UpsertStudentProfileInput {
@@ -53,6 +60,7 @@ export class ProfilesRepository {
     slug: string,
     input: UpsertTutorProfileInput,
   ) {
+    const languages = input.languages ? JSON.stringify(input.languages) : null;
     return this.db
       .insertInto('profiles_tutor')
       .values({
@@ -61,6 +69,13 @@ export class ProfilesRepository {
         headline: input.headline ?? null,
         bio: input.bio ?? null,
         years_experience: input.yearsExperience ?? null,
+        qualifications: input.qualifications ?? null,
+        languages,
+        teaching_mode: input.teachingMode ?? null,
+        methodology: input.methodology ?? null,
+        achievements: input.achievements ?? null,
+        certifications: input.certifications ?? null,
+        fee_note: input.feeNote ?? null,
         slug,
       })
       .onConflict((oc) =>
@@ -69,6 +84,13 @@ export class ProfilesRepository {
           headline: input.headline ?? null,
           bio: input.bio ?? null,
           years_experience: input.yearsExperience ?? null,
+          qualifications: input.qualifications ?? null,
+          languages,
+          teaching_mode: input.teachingMode ?? null,
+          methodology: input.methodology ?? null,
+          achievements: input.achievements ?? null,
+          certifications: input.certifications ?? null,
+          fee_note: input.feeNote ?? null,
         }),
       )
       .returningAll()
@@ -80,6 +102,19 @@ export class ProfilesRepository {
     return this.db
       .updateTable('profiles_tutor')
       .set({ verification_status: status })
+      .where('user_id', '=', userId)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
+
+  /** Avatar upload writes the object key immediately (before the client's
+   *  PUT completes), same eventually-consistent tradeoff MaterialsService
+   *  accepts for course materials — kept only here, not duplicated per
+   *  caller. Passing null clears it (used by the remove-photo flow). */
+  setTutorAvatarObjectKey(userId: string, objectKey: string | null) {
+    return this.db
+      .updateTable('profiles_tutor')
+      .set({ avatar_object_key: objectKey })
       .where('user_id', '=', userId)
       .returningAll()
       .executeTakeFirstOrThrow();

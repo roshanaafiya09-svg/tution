@@ -1,61 +1,36 @@
-import { Logger, Module } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Module } from '@nestjs/common';
 import { IdentityModule } from '../identity/identity.module';
 import { SchedulingModule } from '../scheduling/scheduling.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { StorageModule } from '../../common/storage/storage.module';
 import { MaterialsController } from './materials/materials.controller';
 import { MaterialsService } from './materials/materials.service';
 import { MaterialsRepository } from './materials/materials.repository';
-import { STORAGE_PROVIDER } from './materials/storage/storage-provider.interface';
-import { LocalStorageProvider } from './materials/storage/local-storage.provider';
-import { SupabaseStorageProvider } from './materials/storage/supabase-storage.provider';
 import { AnnouncementsController } from './announcements/announcements.controller';
 import { AnnouncementsService } from './announcements/announcements.service';
 import { AnnouncementsRepository } from './announcements/announcements.repository';
 
-const storageLogger = new Logger('DeliveryModule');
-
 /**
  * Bounded context: materials (Supabase Storage-backed uploads, per-batch
  * visibility), announcements. Assignment/submission grading lives in
- * AssessmentModule. Owns tables: materials, announcements.
+ * AssessmentModule. Owns tables: materials, announcements. File storage
+ * itself is owned by the shared StorageModule (also used by
+ * IdentityModule for tutor avatars) — this module just consumes it.
  */
 @Module({
-  imports: [IdentityModule, SchedulingModule, NotificationsModule],
+  imports: [
+    IdentityModule,
+    SchedulingModule,
+    NotificationsModule,
+    StorageModule,
+  ],
   controllers: [MaterialsController, AnnouncementsController],
   providers: [
     MaterialsService,
     MaterialsRepository,
-    LocalStorageProvider,
-    {
-      provide: STORAGE_PROVIDER,
-      inject: [ConfigService, LocalStorageProvider],
-      useFactory: (
-        config: ConfigService,
-        localProvider: LocalStorageProvider,
-      ) => {
-        const configured = Boolean(
-          config.get<string>('storage.projectRef') &&
-          config.get<string>('storage.bucket') &&
-          config.get<string>('storage.region') &&
-          config.get<string>('storage.accessKeyId') &&
-          config.get<string>('storage.secretAccessKey'),
-        );
-        if (configured) {
-          storageLogger.log(
-            'Supabase Storage configured — using it for material storage',
-          );
-          return new SupabaseStorageProvider(config);
-        }
-        storageLogger.warn(
-          'Supabase Storage not configured — materials will be stored on local disk',
-        );
-        return localProvider;
-      },
-    },
     AnnouncementsService,
     AnnouncementsRepository,
   ],
-  exports: [MaterialsRepository, STORAGE_PROVIDER],
+  exports: [MaterialsRepository, StorageModule],
 })
 export class DeliveryModule {}
