@@ -135,7 +135,9 @@ export default function ParentFindATeacherPage() {
               type="number"
               min={0}
               value={feeMaxMinor ? String(Number(feeMaxMinor) / 100) : ''}
-              onChange={(e) => setFeeMaxMinor(e.target.value ? String(Number(e.target.value) * 100) : '')}
+              onChange={(e) =>
+                setFeeMaxMinor(e.target.value ? String(Math.round(Number(e.target.value) * 100)) : '')
+              }
             />
           </Field>
           <Field label="Min. rating">

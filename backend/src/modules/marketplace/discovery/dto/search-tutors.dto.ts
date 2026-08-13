@@ -4,6 +4,7 @@ import {
   IsInt,
   IsLatitude,
   IsLongitude,
+  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
@@ -52,9 +53,12 @@ export class SearchTutorsDto {
   @Min(0)
   feeMaxMinor?: number;
 
+  /** Half-star granularity (e.g. "4.5+ stars") is a normal rating-filter
+   *  UX, so this allows one decimal place — @IsInt() would reject the
+   *  UI's own 4.5 option on every request. */
   @IsOptional()
   @Type(() => Number)
-  @IsInt()
+  @IsNumber({ maxDecimalPlaces: 1 })
   @Min(1)
   @Max(5)
   minRating?: number;
