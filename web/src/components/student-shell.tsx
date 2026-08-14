@@ -5,6 +5,12 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import posthog from 'posthog-js';
 import {
+  Home,
+  Search,
+  Building2,
+  CalendarClock,
+  FileCheck2,
+  BookOpen,
   BookMarked,
   Megaphone,
   HelpCircle,
@@ -30,12 +36,12 @@ import {
 } from '@/components/ui';
 
 const NAV = [
-  { href: '/student', label: 'Overview' },
-  { href: '/student/find-a-teacher', label: 'Find a Teacher' },
-  { href: '/student/find-an-academy', label: 'Find an Academy' },
-  { href: '/student/schedule', label: 'Schedule' },
-  { href: '/student/assignments', label: 'Assignments' },
-  { href: '/student/materials', label: 'Materials' },
+  { href: '/student', label: 'Overview', icon: Home },
+  { href: '/student/find-a-teacher', label: 'Find a Teacher', icon: Search },
+  { href: '/student/find-an-academy', label: 'Find an Academy', icon: Building2 },
+  { href: '/student/schedule', label: 'Schedule', icon: CalendarClock },
+  { href: '/student/assignments', label: 'Assignments', icon: FileCheck2 },
+  { href: '/student/materials', label: 'Materials', icon: BookOpen },
 ];
 
 const MORE_GROUPS = [
@@ -147,12 +153,13 @@ export function StudentShell({ children }: { children: React.ReactNode }) {
                     key={item.href}
                     href={item.href}
                     aria-current={active ? 'page' : undefined}
-                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                       active
                         ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'
                         : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100'
                     }`}
                   >
+                    <item.icon className="h-3.5 w-3.5" aria-hidden />
                     {item.label}
                   </Link>
                 );
@@ -252,7 +259,7 @@ export function StudentShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <nav className="flex items-center gap-1 overflow-x-auto border-t border-neutral-100 px-6 py-1.5 md:hidden dark:border-neutral-800">
-          {[...NAV, ...MORE_NAV, { href: '/student/profile', label: 'Profile' }].map((item) => {
+          {[...NAV, ...MORE_NAV, { href: '/student/profile', label: 'Profile', icon: User }].map((item) => {
             const active =
               item.href === '/student' ? pathname === item.href : pathname.startsWith(item.href);
             return (
@@ -260,12 +267,13 @@ export function StudentShell({ children }: { children: React.ReactNode }) {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? 'page' : undefined}
-                className={`shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                className={`flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                   active
                     ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'
                     : 'text-neutral-600 dark:text-neutral-400'
                 }`}
               >
+                <item.icon className="h-3.5 w-3.5" aria-hidden />
                 {item.label}
               </Link>
             );
