@@ -15,8 +15,10 @@ import {
   Users,
   UserCircle,
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import type {
+  AcademyCardResult,
+  AcademySearchResponse,
   Me,
   ProofOfTeaching,
   ReviewSummary,
@@ -28,6 +30,7 @@ import type {
   TutorProfile,
   TutorSubject,
 } from '@/lib/types';
+import { academyInitials } from '@/lib/academies';
 import {
   Badge,
   Button,
@@ -126,6 +129,12 @@ export default function TeacherProfilePage() {
 
   const [editing, setEditing] = useState(false);
   const [academyChoiceOpen, setAcademyChoiceOpen] = useState(false);
+  const [academyQuery, setAcademyQuery] = useState('');
+  const [academyPool, setAcademyPool] = useState<AcademyCardResult[] | null>(null);
+  const [academyPoolLoading, setAcademyPoolLoading] = useState(false);
+  const [academyPoolError, setAcademyPoolError] = useState(false);
+  const [selectedAcademy, setSelectedAcademy] = useState<AcademyCardResult | null>(null);
+  const [sendingJoinRequest, setSendingJoinRequest] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -169,6 +178,41 @@ export default function TeacherProfilePage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** Candidate pool for the inline "Search Academy by name" field in
+   *  profile setup — same GET /marketplace/academies the standalone
+   *  Find an Academy pages already use, no separate name-search
+   *  endpoint. Filtering by the typed name happens client-side, same
+   *  pattern the existing find-an-academy list page already uses. */
+  const loadAcademyPool = useCallback(() => {
+    setAcademyPoolLoading(true);
+    setAcademyPoolError(false);
+    api
+      .get<AcademySearchResponse>('/marketplace/academies')
+      .then((res) => setAcademyPool(res.results))
+      .catch(() => setAcademyPoolError(true))
+      .finally(() => setAcademyPoolLoading(false));
+  }, []);
+
+  /** Reuses the existing join-request endpoint — no new API, no new
+   *  table. Re-runs load() on success so joinRequests picks up the new
+   *  pending row, which is what makes the outer "pendingRequest" branch
+   *  above automatically take over and show "Request pending". */
+  async function sendInlineJoinRequest(academy: AcademyCardResult) {
+    setSendingJoinRequest(true);
+    try {
+      await api.post(`/marketplace/academies/${academy.slug}/join-requests`, {});
+      toast({ title: `Request sent to ${academy.name}.`, variant: 'success' });
+      await load();
+    } catch (err) {
+      toast({
+        title: err instanceof ApiError ? err.message : 'Could not send your request',
+        variant: 'error',
+      });
+    } finally {
+      setSendingJoinRequest(false);
+    }
+  }
 
   function startEditing() {
     setForm(profile ? toForm(profile) : EMPTY_FORM);
@@ -341,11 +385,22 @@ export default function TeacherProfilePage() {
             }
 
             if (academyChoiceOpen) {
+              const needle = academyQuery.trim().toLowerCase();
+              const matches =
+                needle.length > 0 && academyPool
+                  ? academyPool.filter((a) => a.name.toLowerCase().includes(needle)).slice(0, 8)
+                  : [];
+              const alreadyPendingHere = selectedAcademy
+                ? joinRequests.some(
+                    (r) => r.academy_slug === selectedAcademy.slug && r.status === 'pending',
+                  )
+                : false;
+
               return (
                 <AcademicCard>
                   <div className="flex items-start gap-3">
                     <School className="mt-0.5 h-5 w-5 shrink-0 text-brand-500 dark:text-brand-300" aria-hidden />
-                    <div className="flex-1">
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                         Connect to an Academy
                       </p>
@@ -353,26 +408,145 @@ export default function TeacherProfilePage() {
                         Search for an academy and request to join. You&apos;ll remain an independent teacher
                         throughout.
                       </p>
-                      {lastDeclined && (
+                      {lastDeclined && !selectedAcademy && (
                         <p className="mt-2 rounded-md bg-neutral-50 p-3 text-sm text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400">
                           Your request to join {lastDeclined.academy_name} was declined. You can request again.
                         </p>
                       )}
-                      <div className="mt-3 flex flex-wrap items-center gap-3">
-                        <Link href="/dashboard/find-an-academy">
-                          <Button size="sm" variant="secondary">
-                            <Search className="h-3.5 w-3.5" aria-hidden />
-                            Search Academy
-                          </Button>
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => setAcademyChoiceOpen(false)}
-                          className="text-sm font-medium text-neutral-500 hover:underline dark:text-neutral-400"
-                        >
-                          ← Back
-                        </button>
-                      </div>
+
+                      {selectedAcademy ? (
+                        <div className="mt-3 rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
+                          <div className="flex items-start gap-3">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
+                              {academyInitials(selectedAcademy.name)}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                                  {selectedAcademy.name}
+                                </p>
+                                {selectedAcademy.verificationStatus === 'verified' && (
+                                  <StatusBadge status="verified" />
+                                )}
+                              </div>
+                              {selectedAcademy.tagline && (
+                                <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
+                                  {selectedAcademy.tagline}
+                                </p>
+                              )}
+                              <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-neutral-400 dark:text-neutral-500">
+                                {selectedAcademy.location && (
+                                  <span className="flex items-center gap-1">
+                                    <MapPin className="h-3 w-3" aria-hidden />
+                                    {selectedAcademy.location.city}
+                                  </span>
+                                )}
+                                <span className="flex items-center gap-1">
+                                  <Users className="h-3 w-3" aria-hidden />
+                                  {selectedAcademy.teacherCount} teacher
+                                  {selectedAcademy.teacherCount === 1 ? '' : 's'}
+                                </span>
+                                {selectedAcademy.rating.average != null && (
+                                  <span className="flex items-center gap-1">
+                                    <Star className="h-3 w-3 fill-accent-400 text-accent-400" aria-hidden />
+                                    {selectedAcademy.rating.average}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="mt-3 flex flex-wrap items-center gap-3">
+                            {alreadyPendingHere ? (
+                              <Badge variant="brand">Request Pending</Badge>
+                            ) : (
+                              <Button
+                                size="sm"
+                                onClick={() => void sendInlineJoinRequest(selectedAcademy)}
+                                disabled={sendingJoinRequest}
+                              >
+                                {sendingJoinRequest ? 'Sending…' : 'Connect / Request to Join'}
+                              </Button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedAcademy(null)}
+                              className="text-sm font-medium text-neutral-500 hover:underline dark:text-neutral-400"
+                            >
+                              ← Choose a different academy
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="mt-3">
+                            <Field label="Search Academy by name">
+                              <Input
+                                value={academyQuery}
+                                onChange={(e) => setAcademyQuery(e.target.value)}
+                                placeholder="e.g. Bright Future Academy"
+                                autoFocus
+                              />
+                            </Field>
+                          </div>
+                          {academyPoolLoading && (
+                            <p className="mt-2 text-sm text-neutral-400 dark:text-neutral-500">
+                              Loading academies…
+                            </p>
+                          )}
+                          {academyPoolError && (
+                            <p className="mt-2 text-sm text-error dark:text-error-dark">
+                              Could not load academies.{' '}
+                              <button type="button" onClick={loadAcademyPool} className="underline">
+                                Retry
+                              </button>
+                            </p>
+                          )}
+                          {needle.length > 0 && !academyPoolLoading && !academyPoolError && (
+                            matches.length > 0 ? (
+                              <ul className="mt-2 divide-y divide-neutral-100 overflow-hidden rounded-lg border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
+                                {matches.map((a) => (
+                                  <li key={a.academyId}>
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedAcademy(a)}
+                                      className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                                    >
+                                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
+                                        {academyInitials(a.name)}
+                                      </span>
+                                      <span className="min-w-0 flex-1">
+                                        <span className="block truncate font-medium text-neutral-900 dark:text-neutral-50">
+                                          {a.name}
+                                        </span>
+                                        {a.location && (
+                                          <span className="block truncate text-xs text-neutral-400 dark:text-neutral-500">
+                                            {a.location.city}
+                                          </span>
+                                        )}
+                                      </span>
+                                      {a.verificationStatus === 'verified' && <StatusBadge status="verified" />}
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="mt-2 text-sm text-neutral-400 dark:text-neutral-500">
+                                No academies match &quot;{academyQuery.trim()}&quot;.
+                              </p>
+                            )
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAcademyChoiceOpen(false);
+                              setAcademyQuery('');
+                            }}
+                            className="mt-3 text-sm font-medium text-neutral-500 hover:underline dark:text-neutral-400"
+                          >
+                            ← Back
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                   <div className="mt-4 border-t border-neutral-100 pt-4 dark:border-neutral-800">
@@ -425,7 +599,12 @@ export default function TeacherProfilePage() {
                         size="sm"
                         variant="secondary"
                         className="mt-2"
-                        onClick={() => setAcademyChoiceOpen(true)}
+                        onClick={() => {
+                          setAcademyChoiceOpen(true);
+                          setSelectedAcademy(null);
+                          setAcademyQuery('');
+                          if (academyPool === null) loadAcademyPool();
+                        }}
                       >
                         <Search className="h-3.5 w-3.5" aria-hidden />
                         Search Academy
