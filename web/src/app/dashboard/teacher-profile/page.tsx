@@ -125,6 +125,7 @@ export default function TeacherProfilePage() {
   const [loadError, setLoadError] = useState(false);
 
   const [editing, setEditing] = useState(false);
+  const [academyChoiceOpen, setAcademyChoiceOpen] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -285,16 +286,156 @@ export default function TeacherProfilePage() {
             <CardSkeleton />
           </div>
         ) : profile === null && !editing ? (
-          <TeacherEmptyState
-            icon={UserCircle}
-            title="Set up your public profile"
-            description="Add a photo and details so students and parents can find and get to know you in Find a Teacher."
-            action={
-              <Button size="sm" onClick={startEditing}>
-                Set up profile
-              </Button>
+          (() => {
+            const pendingRequest = joinRequests.find((r) => r.status === 'pending');
+            const lastDeclined = !pendingRequest
+              ? joinRequests.find((r) => r.status === 'rejected')
+              : undefined;
+
+            if (academies.length > 0) {
+              return (
+                <AcademicCard>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">
+                    Teaching under
+                  </p>
+                  <div className="mb-4 flex flex-wrap gap-2">
+                    {academies.map((a) => (
+                      <span
+                        key={a.id}
+                        className="flex items-center gap-1.5 rounded-full bg-neutral-100 px-3 py-1 text-sm text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
+                      >
+                        🏫 {a.name}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="mb-3 text-sm text-neutral-500 dark:text-neutral-400">
+                    Now let&apos;s set up your own public profile — every teacher keeps one, academy member or not.
+                  </p>
+                  <Button size="sm" onClick={startEditing}>
+                    Set up profile
+                  </Button>
+                </AcademicCard>
+              );
             }
-          />
+
+            if (pendingRequest) {
+              return (
+                <AcademicCard>
+                  <div className="mb-4 flex items-start gap-3">
+                    <School className="mt-0.5 h-5 w-5 shrink-0 text-brand-500 dark:text-brand-300" aria-hidden />
+                    <div>
+                      <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                        Request pending — {pendingRequest.academy_name}
+                      </p>
+                      <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
+                        You&apos;ll be notified once the academy responds. Meanwhile, let&apos;s set up your own
+                        public profile.
+                      </p>
+                    </div>
+                  </div>
+                  <Button size="sm" onClick={startEditing}>
+                    Set up profile
+                  </Button>
+                </AcademicCard>
+              );
+            }
+
+            if (academyChoiceOpen) {
+              return (
+                <AcademicCard>
+                  <div className="flex items-start gap-3">
+                    <School className="mt-0.5 h-5 w-5 shrink-0 text-brand-500 dark:text-brand-300" aria-hidden />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                        Connect to an Academy
+                      </p>
+                      <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
+                        Search for an academy and request to join. You&apos;ll remain an independent teacher
+                        throughout.
+                      </p>
+                      {lastDeclined && (
+                        <p className="mt-2 rounded-md bg-neutral-50 p-3 text-sm text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400">
+                          Your request to join {lastDeclined.academy_name} was declined. You can request again.
+                        </p>
+                      )}
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <Link href="/dashboard/find-an-academy">
+                          <Button size="sm" variant="secondary">
+                            <Search className="h-3.5 w-3.5" aria-hidden />
+                            Search Academy
+                          </Button>
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => setAcademyChoiceOpen(false)}
+                          className="text-sm font-medium text-neutral-500 hover:underline dark:text-neutral-400"
+                        >
+                          ← Back
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-4 border-t border-neutral-100 pt-4 dark:border-neutral-800">
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                      You can set up your own public profile now, or come back to it later.
+                    </p>
+                    <Button size="sm" variant="secondary" className="mt-2" onClick={startEditing}>
+                      Set up profile now
+                    </Button>
+                  </div>
+                </AcademicCard>
+              );
+            }
+
+            return (
+              <AcademicCard>
+                <p className="mb-4 text-sm text-neutral-500 dark:text-neutral-400">
+                  How do you teach? You can change this anytime from your Teacher Profile.
+                </p>
+                <div className="flex items-start gap-3">
+                  <UserCircle className="mt-0.5 h-5 w-5 shrink-0 text-brand-500 dark:text-brand-300" aria-hidden />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                      Individual / Independent Teacher
+                    </p>
+                    <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
+                      Set up your own public profile — this is what students and parents see in Find a Teacher.
+                    </p>
+                    <Button size="sm" className="mt-2" onClick={startEditing}>
+                      Set up profile
+                    </Button>
+                  </div>
+                </div>
+                <div className="mt-4 border-t border-neutral-100 pt-4 dark:border-neutral-800">
+                  <div className="flex items-start gap-3">
+                    <School className="mt-0.5 h-5 w-5 shrink-0 text-brand-500 dark:text-brand-300" aria-hidden />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                        I teach under an Academy
+                      </p>
+                      <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
+                        Connect to an academy — you&apos;ll remain an individual teacher while becoming a member.
+                      </p>
+                      {lastDeclined && (
+                        <p className="mt-2 rounded-md bg-neutral-50 p-3 text-sm text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400">
+                          Your request to join {lastDeclined.academy_name} was declined. You can request again.
+                        </p>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="mt-2"
+                        onClick={() => setAcademyChoiceOpen(true)}
+                      >
+                        <Search className="h-3.5 w-3.5" aria-hidden />
+                        Search Academy
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </AcademicCard>
+            );
+          })()
         ) : editing ? (
           <AcademicCard>
             <div className="mb-5 flex flex-wrap items-center gap-4">
