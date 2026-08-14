@@ -120,6 +120,19 @@ export class UsersRepository {
       .execute();
   }
 
+  /** Grants an additional role to an already-existing user, e.g. linking
+   *  an academy owner (see AcademyAdminService.linkOwner) — unlike
+   *  createWithRole, this never creates a user, only adds to
+   *  `user_roles`. Idempotent: granting a role the user already has is a
+   *  no-op, not a conflict error. */
+  grantRole(userId: string, role: UserRole) {
+    return this.db
+      .insertInto('user_roles')
+      .values({ user_id: userId, role })
+      .onConflict((oc) => oc.columns(['user_id', 'role']).doNothing())
+      .execute();
+  }
+
   getRoles(userId: string) {
     return this.db
       .selectFrom('user_roles')

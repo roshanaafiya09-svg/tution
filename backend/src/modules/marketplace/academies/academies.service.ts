@@ -1,16 +1,24 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { AcademiesRepository } from './academies.repository';
 import { AcademyLocationsRepository } from './academy-locations.repository';
 import { AcademyPhotosRepository } from './academy-photos.repository';
 import { AcademyMembershipsRepository } from '../academy-memberships/academy-memberships.repository';
+import { AcademyMembershipRequestsRepository } from '../academy-memberships/academy-membership-requests.repository';
 import { AcademyContactRequestsRepository } from './academy-contact-requests.repository';
 import { AcademyReviewsService } from '../academy-reviews/academy-reviews.service';
 import { BatchesRepository } from '../../scheduling/batches/batches.repository';
 import { BookingsService } from '../bookings/bookings.service';
+import { NotificationsService } from '../../notifications/notifications.service';
 import { STORAGE_PROVIDER } from '../../../common/storage/storage-provider.interface';
 import type { StorageProvider } from '../../../common/storage/storage-provider.interface';
 import type { SearchAcademiesDto } from './dto/search-academies.dto';
 import type { ContactAcademyDto } from './dto/contact-academy.dto';
+import type { JoinRequestDto } from './dto/join-request.dto';
 
 /** Rarer entity type than tutors — reusing DiscoveryService's 25-tutor/
  *  250-student gate would stay permanently closed. A small verified-
@@ -34,10 +42,12 @@ export class AcademiesService {
     private readonly academyLocationsRepository: AcademyLocationsRepository,
     private readonly academyPhotosRepository: AcademyPhotosRepository,
     private readonly academyMembershipsRepository: AcademyMembershipsRepository,
+    private readonly academyMembershipRequestsRepository: AcademyMembershipRequestsRepository,
     private readonly academyContactRequestsRepository: AcademyContactRequestsRepository,
     private readonly academyReviewsService: AcademyReviewsService,
     private readonly batchesRepository: BatchesRepository,
     private readonly bookingsService: BookingsService,
+    private readonly notificationsService: NotificationsService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
   ) {}
 
@@ -282,6 +292,68 @@ export class AcademiesService {
           : null,
       })),
     );
+  }
+
+  /** Teacher Profile > Teaching Arrangement > "Request to Join Academy".
+   *  Only ever creates a academy_membership_requests row — never touches
+   *  the tutor's own account/profile/batches/students/reviews, and
+   *  never grants the `academy` role to anyone (see this feature's plan
+   *  doc, "hard invariant" section). Notifies the academy's owner if one
+   *  exists yet (a superadmin-managed academy with no owner account yet
+   *  simply isn't notified — same "known gap until an owner exists"
+   *  posture as academy_contact_requests pre-0031). */
+  async requestToJoin(slug: string, tutorId: string, dto: JoinRequestDto) {
+    const academy = await this.academiesRepository.findBySlug(slug);
+    if (!academy) {
+      throw new NotFoundException('Academy not found');
+    }
+
+    const existingMembership =
+      await this.academyMembershipsRepository.findActiveMembership(
+        academy.id,
+        tutorId,
+      );
+    if (existingMembership) {
+      throw new BadRequestException(
+        'You are already an active member of this academy',
+      );
+    }
+
+    const existingRequest =
+      await this.academyMembershipRequestsRepository.findPending(
+        academy.id,
+        tutorId,
+      );
+    if (existingRequest) {
+      throw new BadRequestException(
+        'You already have a pending request to join this academy',
+      );
+    }
+
+    const request = await this.academyMembershipRequestsRepository.create(
+      academy.id,
+      tutorId,
+      dto.message ?? null,
+    );
+
+    if (academy.owner_user_id) {
+      await this.notificationsService.notify({
+        userIds: [academy.owner_user_id],
+        type: 'academy_join_request',
+        title: 'New teacher join request',
+        body: 'A teacher has requested to join your academy.',
+        payload: { academyId: academy.id, requestId: request.id },
+      });
+    }
+
+    return request;
+  }
+
+  /** A teacher's own join requests (all statuses) — backs the pending/
+   *  declined states on Teaching Arrangement and the find-an-academy
+   *  "Request to Join" button. */
+  listOwnJoinRequests(tutorId: string) {
+    return this.academyMembershipRequestsRepository.listForTutor(tutorId);
   }
 
   /** Distinct students across every active member tutor of an academy —

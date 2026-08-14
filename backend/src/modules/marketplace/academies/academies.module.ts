@@ -5,6 +5,7 @@ import { BookingsModule } from '../bookings/bookings.module';
 import { StorageModule } from '../../../common/storage/storage.module';
 import { AcademyMembershipsModule } from '../academy-memberships/academy-memberships.module';
 import { AcademyReviewsModule } from '../academy-reviews/academy-reviews.module';
+import { NotificationsModule } from '../../notifications/notifications.module';
 import { AcademiesController } from './academies.controller';
 import { AcademyAdminController } from './academy-admin.controller';
 import { AcademiesService } from './academies.service';
@@ -18,17 +19,22 @@ import { AcademyContactRequestsRepository } from './academy-contact-requests.rep
  * Bounded context: public academy discovery search + ranking + the
  * public academy page ("Find an Academy" — same shape as
  * DiscoveryModule, applied to the new academies entity instead of
- * tutors), plus the superadmin-only academy management surface
- * (AcademyAdminController) — no self-serve Academy Dashboard/owner role
- * exists yet, see migration 0030's doc comment.
+ * tutors), the teacher-facing "request to join an academy" endpoints,
+ * plus the superadmin-only academy management surface
+ * (AcademyAdminController).
  *
  * Imports AcademyMembershipsModule (leaf, also imported independently
- * by AcademyReviewsModule) and AcademyReviewsModule (rating display —
- * a separate trust signal from teacher reviews, never mixed). Neither
- * of those two modules imports this one, so there's no cycle — see
- * AcademyMembershipsModule's doc comment for why the membership
- * repository was pulled out into its own leaf module instead of living
- * here directly.
+ * by AcademyReviewsModule and AcademyOwnerModule) and AcademyReviewsModule
+ * (rating display — a separate trust signal from teacher reviews, never
+ * mixed). Neither of those two modules imports this one, so there's no
+ * cycle — see AcademyMembershipsModule's doc comment for why the
+ * membership repositories were pulled out into their own leaf module
+ * instead of living here directly.
+ *
+ * Exports the repositories too (not just the service) so AcademyOwnerModule
+ * — the self-serve Academy Dashboard, see migration 0031 — can reuse the
+ * same queries instead of duplicating them, mirroring how the membership
+ * leaf module is already shared this way.
  */
 @Module({
   imports: [
@@ -38,6 +44,7 @@ import { AcademyContactRequestsRepository } from './academy-contact-requests.rep
     StorageModule,
     AcademyMembershipsModule,
     AcademyReviewsModule,
+    NotificationsModule,
   ],
   controllers: [AcademiesController, AcademyAdminController],
   providers: [
@@ -48,6 +55,12 @@ import { AcademyContactRequestsRepository } from './academy-contact-requests.rep
     AcademyPhotosRepository,
     AcademyContactRequestsRepository,
   ],
-  exports: [AcademiesService],
+  exports: [
+    AcademiesService,
+    AcademiesRepository,
+    AcademyLocationsRepository,
+    AcademyPhotosRepository,
+    AcademyContactRequestsRepository,
+  ],
 })
 export class AcademiesModule {}

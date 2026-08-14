@@ -442,6 +442,85 @@ export interface AcademyBatch {
   seatsRemaining: number;
 }
 
+// --- Academy Dashboard (self-serve, role: 'academy') ---
+
+export interface AcademyOwnerProfile {
+  id: string;
+  name: string;
+  slug: string;
+  tagline: string | null;
+  description: string | null;
+  methodology: string | null;
+  yearsEstablished: number | null;
+  achievements: string | null;
+  certifications: string | null;
+  teachingMode: TeachingMode | null;
+  verificationStatus: AcademyVerificationStatus;
+  logoUrl: string | null;
+  coverUrl: string | null;
+  location: { city: string; areaLabel: string | null; lat: number; lng: number } | null;
+}
+
+export interface AcademyOwnerStats {
+  verificationStatus: AcademyVerificationStatus;
+  teacherCount: number;
+  studentsCount: number;
+  openBatchesCount: number;
+  pendingRequestCount: number;
+  unreadContactRequestCount: number;
+  rating: ReviewSummary;
+}
+
+export interface AcademyActiveTeacher {
+  membershipId: string;
+  tutorId: string;
+  displayName: string | null;
+  slug: string;
+  headline: string | null;
+  avatarUrl: string | null;
+  yearsExperience: number | null;
+  verificationStatus: 'pending' | 'verified' | 'rejected';
+  joinedAt: string;
+}
+
+export interface AcademyPendingRequest {
+  requestId: string;
+  tutorId: string;
+  displayName: string | null;
+  slug: string;
+  headline: string | null;
+  avatarUrl: string | null;
+  yearsExperience: number | null;
+  verificationStatus: 'pending' | 'verified' | 'rejected';
+  message: string | null;
+  requestedAt: string;
+}
+
+export interface AcademyRemovedTeacher {
+  membershipId: string;
+  tutorId: string;
+  displayName: string | null;
+  slug: string;
+  headline: string | null;
+  avatarUrl: string | null;
+  joinedAt: string;
+  leftAt: string | null;
+}
+
+/** A tutor's own request to join an academy — all statuses, backs the
+ *  Teaching Arrangement pending/declined states and the find-an-academy
+ *  "Request to Join" / "Request Pending" button. */
+export interface TutorJoinRequestSummary {
+  id: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  message: string | null;
+  created_at: string;
+  decided_at: string | null;
+  academy_id: string;
+  academy_name: string;
+  academy_slug: string;
+}
+
 export interface PublicAcademyPage {
   academy: {
     id: string;

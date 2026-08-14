@@ -75,6 +75,11 @@ export function LoginForm() {
     const me = await api.get<Me>('/auth/me').catch(() => null);
     if (me?.roles.includes('superadmin')) {
       router.replace('/admin');
+    } else if (me?.roles.includes('academy')) {
+      // An academy-owner account (created by superadmin, see
+      // AcademyAdminService.linkOwner) is expected to hold only this
+      // role — checked ahead of parent/tutor/student so it always wins.
+      router.replace('/academy');
     } else if (me?.roles.includes('parent')) {
       router.replace('/parent');
     } else if (me?.roles.includes('tutor')) {

@@ -47,6 +47,7 @@ import { DiscoveryModule } from './modules/marketplace/discovery/discovery.modul
 import { AcademyMembershipsModule } from './modules/marketplace/academy-memberships/academy-memberships.module';
 import { AcademyReviewsModule } from './modules/marketplace/academy-reviews/academy-reviews.module';
 import { AcademiesModule } from './modules/marketplace/academies/academies.module';
+import { AcademyOwnerModule } from './modules/marketplace/academy-owner/academy-owner.module';
 
 /**
  * Dev-only Super Admin auto-login (see src/dev/dev-auto-login.controller.ts).
@@ -133,6 +134,7 @@ if (process.env.NODE_ENV !== 'production') {
     AcademyMembershipsModule,
     AcademyReviewsModule,
     AcademiesModule,
+    AcademyOwnerModule,
   ],
   providers: [
     {

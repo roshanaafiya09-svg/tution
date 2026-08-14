@@ -1,12 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import {
   Award,
   BookMarked,
   CalendarClock,
   MapPin,
   Pencil,
+  School,
+  Search,
   Star,
   Trash2,
   Users,
@@ -20,6 +23,7 @@ import type {
   Subject,
   TeachingMode,
   TutorAcademyAffiliation,
+  TutorJoinRequestSummary,
   TutorLocation,
   TutorProfile,
   TutorSubject,
@@ -117,6 +121,7 @@ export default function TeacherProfilePage() {
   const [proofOfTeaching, setProofOfTeaching] = useState<ProofOfTeaching | null>(null);
   const [rating, setRating] = useState<ReviewSummary | null>(null);
   const [academies, setAcademies] = useState<TutorAcademyAffiliation[]>([]);
+  const [joinRequests, setJoinRequests] = useState<TutorJoinRequestSummary[]>([]);
   const [loadError, setLoadError] = useState(false);
 
   const [editing, setEditing] = useState(false);
@@ -129,7 +134,7 @@ export default function TeacherProfilePage() {
   const load = useCallback(async () => {
     setLoadError(false);
     try {
-      const [meRes, prof, subj, tutorSubj, loc, avail, batches, memberships] = await Promise.all([
+      const [meRes, prof, subj, tutorSubj, loc, avail, batches, memberships, requests] = await Promise.all([
         api.get<Me>('/auth/me'),
         api.get<TutorProfile | null>('/profiles/tutor/me'),
         api.get<Subject[]>('/catalog/subjects'),
@@ -138,6 +143,7 @@ export default function TeacherProfilePage() {
         api.get<unknown[]>('/availability/me'),
         api.get<OpenBatch[]>('/batches/me/open'),
         api.get<TutorAcademyAffiliation[]>('/marketplace/academies/me/memberships'),
+        api.get<TutorJoinRequestSummary[]>('/marketplace/academies/me/join-requests'),
       ]);
       setProfile(prof);
       setSubjects(subj);
@@ -146,6 +152,7 @@ export default function TeacherProfilePage() {
       setAvailabilityCount(avail.length);
       setOpenBatches(batches);
       setAcademies(memberships);
+      setJoinRequests(requests);
 
       const [pot, reviews] = await Promise.all([
         api.get<ProofOfTeaching>('/marketplace/proof-of-teaching/me'),
@@ -525,22 +532,89 @@ export default function TeacherProfilePage() {
                       </p>
                     </div>
                   ))}
-                {academies.length > 0 && (
-                  <div className="mt-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">
+              </AcademicCard>
+
+              <SectionHeader title="Teaching Arrangement" />
+              <AcademicCard className="mb-8">
+                {academies.length > 0 ? (
+                  <>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">
                       Teaching under
                     </p>
-                    <div className="mt-1.5 flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2">
                       {academies.map((a) => (
-                        <span
+                        <Link
                           key={a.id}
-                          className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"
+                          href={`/dashboard/find-an-academy/${a.slug}`}
+                          className="flex items-center gap-1.5 rounded-full bg-neutral-100 px-3 py-1 text-sm text-neutral-700 transition-colors hover:bg-brand-50 hover:text-brand-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-brand-500/15 dark:hover:text-brand-200"
                         >
                           🏫 {a.name}
-                        </span>
+                        </Link>
                       ))}
                     </div>
-                  </div>
+                    <Link
+                      href="/dashboard/find-an-academy"
+                      className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:underline dark:text-brand-300"
+                    >
+                      <Search className="h-3.5 w-3.5" aria-hidden />
+                      Connect to another Academy
+                    </Link>
+                  </>
+                ) : (
+                  (() => {
+                    const pendingRequest = joinRequests.find((r) => r.status === 'pending');
+                    const lastDeclined = !pendingRequest
+                      ? joinRequests.find((r) => r.status === 'rejected')
+                      : undefined;
+                    if (pendingRequest) {
+                      return (
+                        <div className="flex items-start gap-3">
+                          <School className="mt-0.5 h-5 w-5 shrink-0 text-brand-500 dark:text-brand-300" aria-hidden />
+                          <div>
+                            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                              Request pending — {pendingRequest.academy_name}
+                            </p>
+                            <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
+                              You&apos;ll be notified once the academy responds. You&apos;ll remain an independent
+                              teacher in the meantime.
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return (
+                      <>
+                        <div className="flex items-start gap-3">
+                          <UserCircle className="mt-0.5 h-5 w-5 shrink-0 text-brand-500 dark:text-brand-300" aria-hidden />
+                          <div>
+                            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                              Individual / Independent Teacher
+                            </p>
+                            <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
+                              You are currently teaching independently.
+                            </p>
+                          </div>
+                        </div>
+                        {lastDeclined && (
+                          <p className="mt-3 rounded-md bg-neutral-50 p-3 text-sm text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400">
+                            Your request to join {lastDeclined.academy_name} was declined. You can request again.
+                          </p>
+                        )}
+                        <div className="mt-4 border-t border-neutral-100 pt-4 dark:border-neutral-800">
+                          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">I teach under an Academy</p>
+                          <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
+                            Connect to an academy — you&apos;ll remain an individual teacher while becoming a member.
+                          </p>
+                          <Link href="/dashboard/find-an-academy" className="mt-2 inline-block">
+                            <Button size="sm" variant="secondary">
+                              <Search className="h-3.5 w-3.5" aria-hidden />
+                              Search Academy
+                            </Button>
+                          </Link>
+                        </div>
+                      </>
+                    );
+                  })()
                 )}
               </AcademicCard>
 

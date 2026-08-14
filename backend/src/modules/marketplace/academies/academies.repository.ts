@@ -47,6 +47,27 @@ export class AcademiesRepository {
       .executeTakeFirst();
   }
 
+  /** Resolves "my academy" for the self-serve Academy Dashboard — every
+   *  /academy/* endpoint keys off the caller's own id via this lookup,
+   *  never a client-supplied academy id, so an academy user can never
+   *  reach another academy's data. */
+  findByOwnerUserId(ownerUserId: string) {
+    return this.db
+      .selectFrom('academies')
+      .selectAll()
+      .where('owner_user_id', '=', ownerUserId)
+      .executeTakeFirst();
+  }
+
+  setOwnerUserId(id: string, ownerUserId: string) {
+    return this.db
+      .updateTable('academies')
+      .set({ owner_user_id: ownerUserId })
+      .where('id', '=', id)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
+
   async slugExists(slug: string): Promise<boolean> {
     const row = await this.db
       .selectFrom('academies')

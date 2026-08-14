@@ -11,6 +11,10 @@ import { AcademyPhotosRepository } from './academy-photos.repository';
 import { AcademyMembershipsRepository } from '../academy-memberships/academy-memberships.repository';
 import { AcademyContactRequestsRepository } from './academy-contact-requests.repository';
 import { UsersRepository } from '../../identity/users/users.repository';
+import {
+  identifierType,
+  normalizeIdentifier,
+} from '../../identity/identifier.util';
 import { randomSlugSuffix, slugify } from '../../identity/profiles/slug.util';
 import { STORAGE_PROVIDER } from '../../../common/storage/storage-provider.interface';
 import type { StorageProvider } from '../../../common/storage/storage-provider.interface';
@@ -20,6 +24,7 @@ import {
   MAX_ACADEMY_IMAGE_BYTES,
 } from './dto/academy-image-upload-url.dto';
 import type { AddMembershipDto } from './dto/add-membership.dto';
+import type { LinkAcademyOwnerDto } from './dto/link-academy-owner.dto';
 
 const IMAGE_MIME_EXTENSIONS: Record<string, string> = {
   'image/jpeg': '.jpg',
@@ -150,6 +155,46 @@ export class AcademyAdminService {
       );
     }
     return this.academyMembershipsRepository.create(academyId, dto.tutorId);
+  }
+
+  /** Superadmin-only account-creation step for the self-serve Academy
+   *  Dashboard (migration 0031): links an academy to the one user who
+   *  can manage it. Finds an existing account by identifier, or creates
+   *  one, then grants the `academy` role — the owner then signs in
+   *  through the completely unmodified /auth/otp/* flow. Never touches
+   *  a tutor's own roles/account: `academy` is only ever granted here,
+   *  to an academy-owner identifier, never as a side effect of a tutor
+   *  joining an academy (see AcademiesService.requestToJoin). */
+  async linkOwner(academyId: string, dto: LinkAcademyOwnerDto) {
+    await this.getOrThrow(academyId);
+
+    const identifier = normalizeIdentifier(dto.identifier);
+    let user = await this.usersRepository.findByIdentifier(identifier);
+
+    if (!user) {
+      if (identifierType(identifier) === 'email' && !dto.phoneE164) {
+        throw new BadRequestException(
+          'Creating a new account with an email also requires a phone number.',
+        );
+      }
+      user = await this.usersRepository.createWithRole(
+        identifier,
+        'academy',
+        dto.phoneE164,
+      );
+    } else {
+      const ownedElsewhere = await this.academiesRepository.findByOwnerUserId(
+        user.id,
+      );
+      if (ownedElsewhere && ownedElsewhere.id !== academyId) {
+        throw new BadRequestException(
+          'This account already owns a different academy.',
+        );
+      }
+      await this.usersRepository.grantRole(user.id, 'academy');
+    }
+
+    return this.academiesRepository.setOwnerUserId(academyId, user.id);
   }
 
   async removeMembership(membershipId: string) {

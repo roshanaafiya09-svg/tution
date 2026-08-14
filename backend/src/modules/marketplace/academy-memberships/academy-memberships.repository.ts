@@ -79,6 +79,33 @@ export class AcademyMembershipsRepository {
       .execute();
   }
 
+  /** Academy Dashboard > Teachers > Removed — past members only,
+   *  read-only history. Removing a teacher never deletes anything about
+   *  the teacher themselves, only flips this row's status (markLeft). */
+  listLeftForAcademy(academyId: string) {
+    return this.db
+      .selectFrom('academy_memberships')
+      .innerJoin(
+        'profiles_tutor',
+        'profiles_tutor.user_id',
+        'academy_memberships.tutor_id',
+      )
+      .select([
+        'academy_memberships.id as membership_id',
+        'academy_memberships.tutor_id',
+        'academy_memberships.joined_at',
+        'academy_memberships.left_at',
+        'profiles_tutor.display_name',
+        'profiles_tutor.slug as tutor_slug',
+        'profiles_tutor.headline',
+        'profiles_tutor.avatar_object_key',
+      ])
+      .where('academy_memberships.academy_id', '=', academyId)
+      .where('academy_memberships.status', '=', 'left')
+      .orderBy('academy_memberships.left_at', 'desc')
+      .execute();
+  }
+
   countActiveForAcademy(academyId: string) {
     return this.db
       .selectFrom('academy_memberships')

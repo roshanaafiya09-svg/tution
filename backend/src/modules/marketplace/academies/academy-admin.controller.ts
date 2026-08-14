@@ -16,6 +16,7 @@ import { AcademyAdminService } from './academy-admin.service';
 import { UpsertAcademyDto } from './dto/upsert-academy.dto';
 import { AcademyImageUploadUrlDto } from './dto/academy-image-upload-url.dto';
 import { AddMembershipDto } from './dto/add-membership.dto';
+import { LinkAcademyOwnerDto } from './dto/link-academy-owner.dto';
 
 /**
  * Superadmin only, enforced here (not just hidden in the UI) — mirrors
@@ -76,6 +77,13 @@ export class AcademyAdminController {
   @Delete('photos/:photoId')
   removePhoto(@Param('photoId') photoId: string) {
     return this.academyAdminService.removePhoto(photoId);
+  }
+
+  /** Creates/links the academy's self-serve owner account and grants the
+   *  `academy` role — see AcademyAdminService.linkOwner. */
+  @Post(':id/owner')
+  linkOwner(@Param('id') id: string, @Body() dto: LinkAcademyOwnerDto) {
+    return this.academyAdminService.linkOwner(id, dto);
   }
 
   @Post(':id/memberships')

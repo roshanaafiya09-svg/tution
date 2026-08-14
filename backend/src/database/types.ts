@@ -42,7 +42,8 @@ export type UserRole =
   | 'trust_safety'
   | 'finance'
   | 'growth'
-  | 'superadmin';
+  | 'superadmin'
+  | 'academy';
 
 export interface UserRolesTable {
   user_id: string;
@@ -624,8 +625,10 @@ export interface TeacherContactRequestsTable {
 // --- Find an Academy (migration 0030) ---
 
 /** An academy is a separate org entity from a tutor — see
- *  academy_memberships for how teachers connect to it. No self-serve
- *  academy-admin role exists yet, so rows here are superadmin-managed. */
+ *  academy_memberships for how teachers connect to it. Superadmin still
+ *  creates/verifies academies, but `owner_user_id` (migration 0031) lets
+ *  a self-serve `academy`-role user manage their own academy's profile,
+ *  photos, teacher membership requests, and contact requests. */
 export interface AcademiesTable {
   id: string;
   name: string;
@@ -640,6 +643,7 @@ export interface AcademiesTable {
   logo_object_key: string | null;
   cover_object_key: string | null;
   verification_status: Generated<'pending' | 'verified' | 'rejected'>;
+  owner_user_id: string | null;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
 }
@@ -709,6 +713,23 @@ export interface AcademyContactRequestsTable {
   created_at: GeneratedTimestamp;
 }
 
+/** A tutor's request to join an academy (migration 0031) — deliberately
+ *  separate from academy_memberships (which stays exactly
+ *  'active'/'left'). Accept turns into an academy_memberships insert
+ *  (via AcademyMembershipsRepository.create, reused as-is); reject only
+ *  ever updates this row. At most one 'pending' row per
+ *  (academy_id, tutor_id) — partial unique index in the migration. */
+export interface AcademyMembershipRequestsTable {
+  id: string;
+  academy_id: string;
+  tutor_id: string;
+  status: Generated<'pending' | 'accepted' | 'rejected'>;
+  message: string | null;
+  decided_at: Timestamp | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
 export interface DB {
   users: UsersTable;
   user_roles: UserRolesTable;
@@ -768,4 +789,5 @@ export interface DB {
   academy_photos: AcademyPhotosTable;
   academy_reviews: AcademyReviewsTable;
   academy_contact_requests: AcademyContactRequestsTable;
+  academy_membership_requests: AcademyMembershipRequestsTable;
 }
