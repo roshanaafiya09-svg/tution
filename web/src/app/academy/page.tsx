@@ -22,15 +22,21 @@ import {
   StatCard,
   StatusBadge,
 } from '@/components/ui';
-import { AcademyCard, AcademyPageIntro, AcademySectionHeader } from '@/components/academy';
+import { AcademyCard, AcademyHero, AcademyPageIntro, AcademySectionHeader, type DayPeriod } from '@/components/academy';
 import { academyInitials } from '@/lib/academies';
 import { useAcademyDashboard } from '@/components/academy-shell';
 
-function greeting(): string {
+const GREETING: Record<DayPeriod, string> = {
+  morning: 'Good morning',
+  afternoon: 'Good afternoon',
+  evening: 'Good evening',
+};
+
+function dayPeriod(): DayPeriod {
   const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 17) return 'Good afternoon';
-  return 'Good evening';
+  if (hour < 12) return 'morning';
+  if (hour < 17) return 'afternoon';
+  return 'evening';
 }
 
 export default function AcademyOverviewPage() {
@@ -103,15 +109,19 @@ export default function AcademyOverviewPage() {
     );
   }
 
+  const period = dayPeriod();
+
   return (
     <div>
-      <AcademyPageIntro
-        eyebrow="Academy Dashboard"
-        title={`${greeting()}, ${profile.name}`}
-        description="Here's what's happening at your academy today."
-      />
+      <div className="animate-fade-up" style={{ animationDelay: '0ms' }}>
+        <AcademyHero
+          period={period}
+          greeting={`${GREETING[period]}, ${profile.name} 👋`}
+          subtitle="Here's what's happening at your academy today."
+        />
+      </div>
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-8 grid gap-4 animate-fade-up sm:grid-cols-2 lg:grid-cols-4" style={{ animationDelay: '80ms' }}>
         <StatCard icon={Users} label="Teachers" value={stats.teacherCount} />
         <StatCard icon={GraduationCap} label="Students" value={stats.studentsCount} />
         <StatCard icon={CalendarClock} label="Active Batches" value={stats.openBatchesCount} />
@@ -123,7 +133,7 @@ export default function AcademyOverviewPage() {
         />
       </div>
 
-      <div className="mt-8 flex flex-wrap gap-2">
+      <div className="mt-8 flex flex-wrap animate-fade-up gap-2" style={{ animationDelay: '120ms' }}>
         <StatusBadge status={profile.verificationStatus} />
         {stats.pendingRequestCount > 0 && (
           <span className="text-sm text-neutral-500 dark:text-neutral-400">
@@ -137,7 +147,7 @@ export default function AcademyOverviewPage() {
         )}
       </div>
 
-      <div className="mt-8">
+      <section className="mt-8 animate-fade-up" style={{ animationDelay: '160ms' }}>
         <AcademySectionHeader title="Pending Teacher Requests" action={{ href: '/academy/teachers', label: 'View all' }} />
         {pendingRequests.length === 0 ? (
           <p className="text-sm text-neutral-500 dark:text-neutral-400">No pending requests right now.</p>
@@ -167,9 +177,9 @@ export default function AcademyOverviewPage() {
             ))}
           </div>
         )}
-      </div>
+      </section>
 
-      <div className="mt-8">
+      <section className="mt-8 animate-fade-up" style={{ animationDelay: '200ms' }}>
         <AcademySectionHeader title="Recent Contact Requests" action={{ href: '/academy/contact-requests', label: 'View all' }} />
         {contactRequests.length === 0 ? (
           <p className="text-sm text-neutral-500 dark:text-neutral-400">No contact requests yet.</p>
@@ -189,9 +199,9 @@ export default function AcademyOverviewPage() {
             ))}
           </div>
         )}
-      </div>
+      </section>
 
-      <div className="mt-8">
+      <section className="mt-8 animate-fade-up" style={{ animationDelay: '240ms' }}>
         <AcademySectionHeader title="Recent Reviews" action={{ href: '/academy/reviews', label: 'View all' }} />
         <AcademyCard className="flex items-center gap-3">
           <Award className="h-5 w-5 text-brand-500 dark:text-brand-300" aria-hidden />
@@ -201,7 +211,7 @@ export default function AcademyOverviewPage() {
               : `${stats.rating.count} review${stats.rating.count === 1 ? '' : 's'} · ${stats.rating.average} ★ average.`}
           </p>
         </AcademyCard>
-      </div>
+      </section>
     </div>
   );
 }

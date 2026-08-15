@@ -16,7 +16,6 @@ import {
   Settings,
   ChevronDown,
   LogOut,
-  School,
 } from 'lucide-react';
 import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
 import type { Me } from '@/lib/types';
@@ -173,6 +172,7 @@ export function AcademyShell({ children }: { children: React.ReactNode }) {
   }
 
   const manageActive = MANAGE_NAV.some((item) => pathname.startsWith(item.href));
+  const profileActive = pathname.startsWith('/academy/profile');
 
   return (
     <AcademyDashboardContext.Provider value={{ hasAcademy, markAcademyCreated: () => setHasAcademy(true) }}>
@@ -182,10 +182,9 @@ export function AcademyShell({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-8">
               <Link
                 href="/academy"
-                className="flex items-center gap-2 font-display text-xl font-semibold italic text-brand-800 dark:text-brand-200"
+                className="font-display text-xl font-semibold italic text-brand-800 dark:text-brand-200"
               >
-                <School className="h-5 w-5 not-italic" aria-hidden />
-                Academy Dashboard
+                Scholar
               </Link>
               <nav className="hidden items-center gap-1 md:flex">
                 {NAV.map((item) => {
@@ -257,7 +256,12 @@ export function AcademyShell({ children }: { children: React.ReactNode }) {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
-                    className="ml-1 flex h-9 w-9 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline-none focus-visible:shadow-focus-ring"
+                    className={cn(
+                      'ml-1 flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-focus-ring',
+                      profileActive
+                        ? 'bg-brand-600 text-white dark:bg-brand-500 dark:text-neutral-950'
+                        : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700',
+                    )}
                     aria-label="Account menu"
                   >
                     {me.phoneE164.slice(-2)}
@@ -268,6 +272,13 @@ export function AcademyShell({ children }: { children: React.ReactNode }) {
                   <div className="px-2.5 pb-2 text-sm font-medium text-neutral-800 dark:text-neutral-100">
                     {me.email ?? me.phoneE164}
                   </div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/academy/profile">
+                      <Building2 className="h-4 w-4 text-neutral-400" aria-hidden />
+                      Academy Profile
+                    </Link>
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onSelect={signOut} className="text-error dark:text-error-dark">
                     <LogOut className="h-4 w-4" aria-hidden />
