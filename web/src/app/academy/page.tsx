@@ -3,16 +3,28 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Award, GraduationCap, MessageCircle, Star, Users, CalendarClock } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import type {
   AcademyOwnerProfile,
   AcademyOwnerStats,
   AcademyPendingRequest,
   ContactRequest,
 } from '@/lib/types';
-import { Badge, CardSkeleton, ErrorState, StatCard, StatusBadge } from '@/components/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  CardSkeleton,
+  ErrorState,
+  Field,
+  InlineError,
+  Input,
+  StatCard,
+  StatusBadge,
+} from '@/components/ui';
 import { AcademyCard, AcademyPageIntro, AcademySectionHeader } from '@/components/academy';
 import { academyInitials } from '@/lib/academies';
+import { useAcademyDashboard } from '@/components/academy-shell';
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -22,27 +34,37 @@ function greeting(): string {
 }
 
 export default function AcademyOverviewPage() {
+  const { markAcademyCreated } = useAcademyDashboard();
   const [profile, setProfile] = useState<AcademyOwnerProfile | null>(null);
   const [stats, setStats] = useState<AcademyOwnerStats | null>(null);
   const [pendingRequests, setPendingRequests] = useState<AcademyPendingRequest[]>([]);
   const [contactRequests, setContactRequests] = useState<ContactRequest[]>([]);
   const [loadError, setLoadError] = useState(false);
+  // null = still checking, false = signed-up academy account with no
+  // `academies` row yet (fresh self-serve signup — see login-form.tsx
+  // and AcademyShell), true = normal case.
+  const [hasAcademy, setHasAcademy] = useState<boolean | null>(null);
 
   const load = useCallback(async () => {
     setLoadError(false);
     try {
-      const [profileRes, statsRes, pendingRes, contactRes] = await Promise.all([
-        api.get<AcademyOwnerProfile>('/academy/me'),
+      const profileRes = await api.get<AcademyOwnerProfile>('/academy/me');
+      setProfile(profileRes);
+      setHasAcademy(true);
+      const [statsRes, pendingRes, contactRes] = await Promise.all([
         api.get<AcademyOwnerStats>('/academy/me/stats'),
         api.get<AcademyPendingRequest[]>('/academy/me/teachers/pending'),
         api.get<ContactRequest[]>('/academy/me/contact-requests'),
       ]);
-      setProfile(profileRes);
       setStats(statsRes);
       setPendingRequests(pendingRes);
       setContactRequests(contactRes);
-    } catch {
-      setLoadError(true);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        setHasAcademy(false);
+      } else {
+        setLoadError(true);
+      }
     }
   }, []);
 
@@ -55,6 +77,17 @@ export default function AcademyOverviewPage() {
       <ErrorState
         description="Could not load your academy dashboard. Check your connection and try again."
         onRetry={() => void load()}
+      />
+    );
+  }
+
+  if (hasAcademy === false) {
+    return (
+      <CreateAcademyCard
+        onCreated={() => {
+          markAcademyCreated();
+          void load();
+        }}
       />
     );
   }
@@ -169,6 +202,69 @@ export default function AcademyOverviewPage() {
           </p>
         </AcademyCard>
       </div>
+    </div>
+  );
+}
+
+/** Self-serve signup's bootstrap step (see login-form.tsx's 'academy'-role
+ *  signup and AcademyShell) — a fresh `academy`-role account has no
+ *  `academies` row yet. Renders inline on the normal dashboard shell,
+ *  rather than replacing it, so the account lands on /academy immediately
+ *  after signup and can set up whenever it's ready. Posts straight to
+ *  POST /academy/me (AcademyOwnerService.createMyAcademy) — everything
+ *  else about the academy (description, subjects, location, photos...)
+ *  is filled in afterward from Academy Profile. */
+function CreateAcademyCard({ onCreated }: { onCreated: () => void }) {
+  const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    setError(null);
+    setSaving(true);
+    try {
+      await api.post('/academy/me', { name: name.trim() });
+      onCreated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create your academy.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div>
+      <AcademyPageIntro
+        eyebrow="Academy Dashboard"
+        title="Set up your academy"
+        description="Give your academy a name to get started — you can add a description, subjects, location, and photos afterward from Academy Profile."
+      />
+      <Card className="mt-8 max-w-md p-7">
+        <Field label="Academy name" required>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Bright Future Academy"
+            autoFocus
+            maxLength={200}
+          />
+        </Field>
+
+        {error && (
+          <div className="mt-3">
+            <InlineError>{error}</InlineError>
+          </div>
+        )}
+
+        <Button
+          className="mt-5 w-full sm:w-auto"
+          onClick={() => void submit()}
+          disabled={saving || !name.trim()}
+          loading={saving}
+        >
+          {saving ? 'Creating…' : 'Create Academy Profile'}
+        </Button>
+      </Card>
     </div>
   );
 }
