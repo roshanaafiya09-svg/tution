@@ -35,6 +35,16 @@ export class AcademyOwnerController {
     return this.academyOwnerService.getMe(user.sub);
   }
 
+  /** Self-serve signup's bootstrap step — see
+   *  AcademyOwnerService.createMyAcademy's doc comment. */
+  @Post('me')
+  createMyAcademy(
+    @CurrentUser() user: AccessTokenPayload,
+    @Body() dto: UpsertAcademyDto,
+  ) {
+    return this.academyOwnerService.createMyAcademy(user.sub, dto);
+  }
+
   @Get('me/stats')
   getStats(@CurrentUser() user: AccessTokenPayload) {
     return this.academyOwnerService.getStats(user.sub);

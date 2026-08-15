@@ -28,11 +28,14 @@ export class VerifyOtpDto {
 
   /**
    * First-time verification with no existing account creates one — the
-   * caller must say which role they're signing up as.
+   * caller must say which role they're signing up as. `academy` creates
+   * the user + role only (see AuthService) — the academy record itself
+   * is bootstrapped separately via POST /academy/me once the caller has
+   * a token, same lazy-creation pattern as a tutor's profiles_tutor row.
    */
   @IsOptional()
-  @IsIn(['tutor', 'student', 'parent'])
-  signupRole?: 'tutor' | 'student' | 'parent';
+  @IsIn(['tutor', 'student', 'parent', 'academy'])
+  signupRole?: 'tutor' | 'student' | 'parent' | 'academy';
 
   @IsOptional()
   @IsString()

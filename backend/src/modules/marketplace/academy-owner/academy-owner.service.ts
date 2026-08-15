@@ -18,6 +18,7 @@ import { BookingsService } from '../bookings/bookings.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { STORAGE_PROVIDER } from '../../../common/storage/storage-provider.interface';
 import type { StorageProvider } from '../../../common/storage/storage-provider.interface';
+import { randomSlugSuffix, slugify } from '../../identity/profiles/slug.util';
 import type { UpsertAcademyDto } from '../academies/dto/upsert-academy.dto';
 import {
   AcademyImageUploadUrlDto,
@@ -76,6 +77,28 @@ export class AcademyOwnerService {
       throw new NotFoundException('No academy is linked to this account yet');
     }
     return academy;
+  }
+
+  /**
+   * Self-serve signup's bootstrap step (see login-form.tsx's
+   * 'academy'-role signup): `/auth/otp/verify` grants the `academy` role
+   * and creates the user, but never touches `academies` — this is the
+   * one endpoint on this controller allowed to run with no academy
+   * linked yet, and the only one that creates rather than reads/mutates
+   * an existing row. One owner can never have two academies (also
+   * enforced by the DB's `academies_owner_user_id_uq` partial index) —
+   * checked here first for a clean 400 instead of a raw constraint
+   * error.
+   */
+  async createMyAcademy(ownerUserId: string, dto: UpsertAcademyDto) {
+    const existing =
+      await this.academiesRepository.findByOwnerUserId(ownerUserId);
+    if (existing) {
+      throw new BadRequestException('You already have an academy.');
+    }
+    const slug = await this.generateUniqueSlug(dto.name);
+    const academy = await this.academiesRepository.create(slug, dto);
+    return this.academiesRepository.setOwnerUserId(academy.id, ownerUserId);
   }
 
   async getMe(ownerUserId: string) {
@@ -419,6 +442,20 @@ export class AcademyOwnerService {
         `Image is too large (max ${Math.floor(MAX_ACADEMY_IMAGE_BYTES / 1024 / 1024)}MB)`,
       );
     }
+  }
+
+  /** Same slug-generation loop as AcademyAdminService.generateUniqueSlug
+   *  — small precedented duplication rather than exporting a private
+   *  method across modules (see countStudentsForTutors below). */
+  private async generateUniqueSlug(name: string): Promise<string> {
+    const base = slugify(name) || 'academy';
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const candidate = attempt === 0 ? base : `${base}-${randomSlugSuffix()}`;
+      if (!(await this.academiesRepository.slugExists(candidate))) {
+        return candidate;
+      }
+    }
+    return `${base}-${randomSlugSuffix()}-${Date.now()}`;
   }
 
   /** Same union-of-batch-and-booking-students logic as

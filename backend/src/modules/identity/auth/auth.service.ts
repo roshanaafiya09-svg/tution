@@ -44,7 +44,7 @@ export class AuthService {
   async verifyOtpAndIssueTokens(
     rawIdentifier: string,
     code: string,
-    signupRole: 'tutor' | 'student' | 'parent' | undefined,
+    signupRole: 'tutor' | 'student' | 'parent' | 'academy' | undefined,
     deviceLabel: string | undefined,
     phoneE164?: string,
   ): Promise<AuthTokens> {
@@ -55,7 +55,7 @@ export class AuthService {
     if (!user) {
       if (!signupRole) {
         throw new BadRequestException(
-          'No account yet — pass signupRole ("tutor", "student", or "parent") to create one.',
+          'No account yet — pass signupRole ("tutor", "student", "parent", or "academy") to create one.',
         );
       }
 

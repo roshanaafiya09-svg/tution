@@ -18,7 +18,7 @@ type IdentifierKind = 'phone' | 'email';
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
-const ROLES = ['tutor', 'student', 'parent'] as const;
+const ROLES = ['tutor', 'student', 'parent', 'academy'] as const;
 
 /** Reads the `sub` claim straight out of the access token — no server
  * round-trip needed just to identify the PostHog session. */
@@ -48,7 +48,7 @@ export function LoginForm() {
   // NOT NULL) — collected on the role step, only in that case.
   const [signupPhoneDigits, setSignupPhoneDigits] = useState('');
   const [code, setCode] = useState('');
-  const [signupRole, setSignupRole] = useState<'tutor' | 'student' | 'parent'>('tutor');
+  const [signupRole, setSignupRole] = useState<'tutor' | 'student' | 'parent' | 'academy'>('tutor');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const googleButtonRef = useRef<HTMLDivElement>(null);
@@ -76,9 +76,10 @@ export function LoginForm() {
     if (me?.roles.includes('superadmin')) {
       router.replace('/admin');
     } else if (me?.roles.includes('academy')) {
-      // An academy-owner account (created by superadmin, see
-      // AcademyAdminService.linkOwner) is expected to hold only this
-      // role — checked ahead of parent/tutor/student so it always wins.
+      // An academy-owner account (self-signed-up here, or created by
+      // superadmin via AcademyAdminService.linkOwner) is expected to
+      // hold only this role — checked ahead of parent/tutor/student so
+      // it always wins.
       router.replace('/academy');
     } else if (me?.roles.includes('parent')) {
       router.replace('/parent');
@@ -127,7 +128,7 @@ export function LoginForm() {
     }
   }
 
-  async function handleVerify(withRole?: 'tutor' | 'student' | 'parent') {
+  async function handleVerify(withRole?: 'tutor' | 'student' | 'parent' | 'academy') {
     setError(null);
     setLoading(true);
     try {
@@ -286,9 +287,9 @@ export function LoginForm() {
             <>
               <div>
                 <p className="mb-2 text-sm text-neutral-500 dark:text-neutral-400">
-                  New here — are you a tutor, a student, or a parent?
+                  New here — are you a tutor, a student, a parent, or an academy?
                 </p>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   {ROLES.map((role) => (
                     <button
                       key={role}

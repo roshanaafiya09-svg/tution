@@ -31,6 +31,11 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuLabel,
+  Card,
+  Field,
+  Input,
+  Button,
+  InlineError,
 } from '@/components/ui';
 
 const NAV = [
@@ -77,6 +82,11 @@ export function AcademyShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // null = still checking, false = signed-up academy user with no
+  // `academies` row yet (fresh self-serve signup — see login-form.tsx),
+  // true = normal case. Checked once up front so every page under
+  // /academy/* is covered, not just the overview.
+  const [hasAcademy, setHasAcademy] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (!tokenStore.access) {
@@ -86,12 +96,22 @@ export function AcademyShell({ children }: { children: React.ReactNode }) {
 
     api
       .get<Me>('/auth/me')
-      .then((account) => {
+      .then(async (account) => {
         if (!account.roles.includes('academy')) {
           router.replace('/get-the-app');
           return;
         }
         setMe(account);
+        try {
+          await api.get('/academy/me');
+          setHasAcademy(true);
+        } catch (err: unknown) {
+          if (err instanceof ApiError && err.status === 404) {
+            setHasAcademy(false);
+          } else {
+            setError('Could not load your academy.');
+          }
+        }
       })
       .catch((err: unknown) => {
         if (err instanceof ApiError && err.status === 401) {
@@ -120,12 +140,16 @@ export function AcademyShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!me) {
+  if (!me || hasAcademy === null) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <PageLoading />
       </div>
     );
+  }
+
+  if (!hasAcademy) {
+    return <CreateAcademyScreen onCreated={() => setHasAcademy(true)} onSignOut={signOut} />;
   }
 
   const manageActive = MANAGE_NAV.some((item) => pathname.startsWith(item.href));
@@ -256,6 +280,82 @@ export function AcademyShell({ children }: { children: React.ReactNode }) {
       </header>
 
       <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+    </div>
+  );
+}
+
+/** Self-serve signup's bootstrap step — a fresh `academy`-role account
+ *  (see login-form.tsx) has no `academies` row yet. This is the only
+ *  screen such an account can reach; every other /academy/* page stays
+ *  gated behind AcademyShell's hasAcademy check above. Posts straight to
+ *  POST /academy/me (AcademyOwnerService.createMyAcademy) — everything
+ *  else about the academy (description, subjects, location, photos...)
+ *  is filled in afterward from the normal Academy Profile page. */
+function CreateAcademyScreen({ onCreated, onSignOut }: { onCreated: () => void; onSignOut: () => void }) {
+  const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    setError(null);
+    setSaving(true);
+    try {
+      await api.post('/academy/me', { name: name.trim() });
+      onCreated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create your academy.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6 py-12">
+      <div className="w-full max-w-md">
+        <div className="mb-6 flex items-center justify-center gap-2 font-display text-xl font-semibold italic text-brand-800 dark:text-brand-200">
+          <School className="h-5 w-5 not-italic" aria-hidden />
+          Academy Dashboard
+        </div>
+        <Card className="p-7">
+          <h1 className="font-display text-lg font-semibold text-neutral-900 dark:text-neutral-50">
+            Name your academy
+          </h1>
+          <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+            This creates your academy — you can fill in the description, subjects, location, and photos afterward
+            from Academy Profile.
+          </p>
+
+          <div className="mt-5">
+            <Field label="Academy name" required>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Bright Future Academy"
+                autoFocus
+                maxLength={200}
+              />
+            </Field>
+          </div>
+
+          {error && (
+            <div className="mt-3">
+              <InlineError>{error}</InlineError>
+            </div>
+          )}
+
+          <Button className="mt-5 w-full" onClick={() => void submit()} disabled={saving || !name.trim()} loading={saving}>
+            {saving ? 'Creating…' : 'Create Academy'}
+          </Button>
+
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="mt-4 w-full text-center text-xs font-medium text-neutral-400 hover:text-neutral-600 hover:underline dark:text-neutral-500 dark:hover:text-neutral-300"
+          >
+            Sign out
+          </button>
+        </Card>
+      </div>
     </div>
   );
 }

@@ -13,11 +13,14 @@ import {
 
 const TEACHING_MODES = ['online', 'offline', 'both'] as const;
 
-/** Superadmin-only create/update — see AcademyAdminController. Location
- *  fields are optional and, when present, are upserted into
- *  academy_locations alongside the academies row itself (one endpoint,
- *  not a separate self-service location flow like tutors have, since a
- *  superadmin sets everything about an academy at once). */
+/** Shared by both AcademyAdminController (superadmin create/update of any
+ *  academy) and AcademyOwnerController (self-serve owner bootstrap via
+ *  POST /academy/me, and profile edit via PUT /academy/me/profile) — only
+ *  `name` is required, so the bootstrap call can send just that and fill
+ *  in everything else later. Location fields are optional and, when
+ *  present, are upserted into academy_locations alongside the academies
+ *  row itself (one endpoint, not a separate self-service location flow
+ *  like tutors have). */
 export class UpsertAcademyDto {
   @IsString()
   @MaxLength(200)
