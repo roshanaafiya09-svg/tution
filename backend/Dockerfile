@@ -28,4 +28,13 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=builder /app/dist ./dist
 
 EXPOSE 3001
-CMD ["node", "dist/main"]
+# Applies any not-yet-applied migration before the app starts serving,
+# on every container start — safe to run unconditionally since
+# migrateToLatest() is a no-op once the DB is already current (see
+# migrate.ts). This closes the "git push doesn't apply migrations"
+# gap that's bitten this project before: no separate manual step, no
+# paid-plan Render feature (Pre-Deploy Command) required. A failed
+# migration exits non-zero, `&&` short-circuits, and dist/main never
+# starts — the deploy fails its health check instead of serving
+# traffic against a schema the code doesn't match.
+CMD ["sh", "-c", "echo 'Running database migrations...' && node dist/database/migrate.js up && echo 'Migrations complete — starting server...' && node dist/main"]

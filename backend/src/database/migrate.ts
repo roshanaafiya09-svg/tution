@@ -11,21 +11,32 @@ import 'dotenv/config';
 import type { DB } from './types';
 
 /**
- * Loads .ts migration files via require() instead of Kysely's built-in
+ * Loads migration files via require() instead of Kysely's built-in
  * FileMigrationProvider, which uses dynamic import() — that fails under
  * ts-node on Windows because Node's ESM loader rejects raw drive-letter
  * paths (needs a file:// URL). require() has no such restriction.
+ *
+ * Matches this file's own extension rather than hardcoding `.ts`: under
+ * `ts-node src/database/migrate.ts` (local dev) __filename is `.ts` and
+ * migrations are required as `.ts` too; under the compiled production
+ * runtime (`node dist/database/migrate.js`) __filename is `.js` and
+ * `nest build` has already compiled every migration alongside it. A
+ * hardcoded `.ts` filter finds nothing runnable in the compiled
+ * output — every migration file there is `.js` (`.d.ts` declaration
+ * files also happen to satisfy `endsWith('.ts')`, which would crash
+ * `require()` under plain Node instead of silently doing nothing).
  */
 class TsRequireMigrationProvider implements MigrationProvider {
   constructor(private readonly migrationFolder: string) {}
 
   async getMigrations(): Promise<Record<string, Migration>> {
+    const ext = path.extname(__filename);
     const files = (await fs.readdir(this.migrationFolder)).filter((f) =>
-      f.endsWith('.ts'),
+      f.endsWith(ext),
     );
     const migrations: Record<string, Migration> = {};
     for (const file of files) {
-      const name = file.replace(/\.ts$/, '');
+      const name = file.slice(0, -ext.length);
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       migrations[name] = require(
         path.join(this.migrationFolder, file),
