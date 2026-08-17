@@ -13,6 +13,7 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { GoogleSignInDto } from './dto/google-signin.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
+import { VerifyContactUpdateDto } from './dto/verify-contact-update.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import type { AccessTokenPayload } from './tokens.service';
@@ -96,15 +97,32 @@ export class AuthController {
     };
   }
 
-  /** Sets the email a signed-in user can then also sign in with. */
+  /** Step 1 of setting the email a signed-in user can then also sign in
+   *  with — sends an OTP to the new address. Nothing is written to the
+   *  account until POST /auth/contact/verify (step 2) proves the caller
+   *  actually controls it; see AuthService.requestEmailUpdate for why a
+   *  direct write would be an account-hijack vector. */
   @Post('contact')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
-  async updateContact(
+  async requestContactUpdate(
     @CurrentUser() user: AccessTokenPayload,
     @Body() dto: UpdateContactDto,
   ) {
-    await this.usersRepository.updateEmail(user.sub, dto.email.toLowerCase());
+    await this.authService.requestEmailUpdate(user.sub, dto.email);
+    return { sent: true };
+  }
+
+  /** Step 2 — verifies the code sent to the new address, then applies
+   *  the change. */
+  @Post('contact/verify')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  async verifyContactUpdate(
+    @CurrentUser() user: AccessTokenPayload,
+    @Body() dto: VerifyContactUpdateDto,
+  ) {
+    await this.authService.confirmEmailUpdate(user.sub, dto.email, dto.code);
     return { updated: true };
   }
 }

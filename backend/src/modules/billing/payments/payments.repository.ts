@@ -121,22 +121,35 @@ export class PaymentsRepository {
       .executeTakeFirstOrThrow();
   }
 
+  /** Only transitions a payment still in `'created'` status. Razorpay
+   *  delivers webhooks at-least-once, and this same path is also hit by
+   *  `simulateCapture` — an atomic conditional UPDATE (not a
+   *  check-then-act in the service layer) is what actually makes a
+   *  duplicate delivery or a concurrent double-call a no-op instead of
+   *  crediting a fee/subscription/booking twice. Returns `undefined`
+   *  when no row matched, which the caller treats as "already settled,
+   *  nothing left to do." */
   markCaptured(id: string, providerPaymentId: string) {
     return this.db
       .updateTable('payments')
       .set({ status: 'captured', provider_payment_id: providerPaymentId })
       .where('id', '=', id)
+      .where('status', '=', 'created')
       .returningAll()
-      .executeTakeFirstOrThrow();
+      .executeTakeFirst();
   }
 
+  /** Same `'created'`-only guard as markCaptured — a failed event
+   *  replayed after the payment already captured (or was refunded) must
+   *  not flip its status backwards. */
   markFailed(id: string, reason: string) {
     return this.db
       .updateTable('payments')
       .set({ status: 'failed', failure_reason: reason })
       .where('id', '=', id)
+      .where('status', '=', 'created')
       .returningAll()
-      .executeTakeFirstOrThrow();
+      .executeTakeFirst();
   }
 
   markRefunded(id: string) {

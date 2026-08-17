@@ -83,3 +83,51 @@ describe('UsersRepository.createWithRole', () => {
     ).rejects.toThrow('createWithRole needs a phone number');
   });
 });
+
+describe('UsersRepository.updateEmail', () => {
+  /** updateEmail's only DB interaction is
+   *  `this.db.updateTable('users').set(...).where(...).execute()` —
+   *  mocking just that chain is enough to exercise the conflict
+   *  translation without emulating the full query builder. */
+  function build(execute: () => Promise<unknown>): UsersRepository {
+    const db = {
+      updateTable: () => ({
+        set: () => ({
+          where: () => ({ execute }),
+        }),
+      }),
+    } as unknown as Kysely<DB>;
+    return new UsersRepository(db);
+  }
+
+  it('translates an email collision into a clean 409 instead of leaking the raw driver error — a race where someone else claims the same email between AuthService.requestEmailUpdate and confirmEmailUpdate', async () => {
+    const repo = build(() =>
+      Promise.reject(pgUniqueViolation('users_email_unique_idx')),
+    );
+
+    await expect(
+      repo.updateEmail('user-1', 'taken@example.com'),
+    ).rejects.toBeInstanceOf(ConflictException);
+    await expect(
+      repo.updateEmail('user-1', 'taken@example.com'),
+    ).rejects.toThrow(/email already exists/);
+  });
+
+  it('does not swallow an unrelated error as a fake conflict', async () => {
+    const repo = build(() =>
+      Promise.reject(new Error('connection terminated unexpectedly')),
+    );
+
+    await expect(
+      repo.updateEmail('user-1', 'someone@example.com'),
+    ).rejects.toThrow('connection terminated unexpectedly');
+  });
+
+  it('succeeds normally when there is no conflict', async () => {
+    const repo = build(() => Promise.resolve(undefined));
+
+    await expect(
+      repo.updateEmail('user-1', 'new@example.com'),
+    ).resolves.toBeUndefined();
+  });
+});

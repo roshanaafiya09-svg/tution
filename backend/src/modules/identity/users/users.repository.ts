@@ -98,16 +98,24 @@ export class UsersRepository {
     }
   }
 
-  /** Editable profile field for an already-authenticated user (see
-   *  POST /auth/contact). Deliberately cannot touch telegram_chat_id —
-   *  that only ever comes from Telegram itself via the linking flow, so
-   *  a client can't claim someone else's chat. */
-  updateEmail(userId: string, email: string) {
-    return this.db
-      .updateTable('users')
-      .set({ email })
-      .where('id', '=', userId)
-      .execute();
+  /** Editable profile field for an already-authenticated user — see
+   *  AuthService.confirmEmailUpdate, which only calls this after the
+   *  caller has proven control of the new address via a fresh OTP (the
+   *  same challenge/consume flow used for login), closing the
+   *  account-hijack path a direct, unverified write would otherwise
+   *  open. Deliberately cannot touch telegram_chat_id — that only ever
+   *  comes from Telegram itself via the linking flow, so a client can't
+   *  claim someone else's chat. */
+  async updateEmail(userId: string, email: string): Promise<void> {
+    try {
+      await this.db
+        .updateTable('users')
+        .set({ email })
+        .where('id', '=', userId)
+        .execute();
+    } catch (err) {
+      throw translateEmailConflict(err);
+    }
   }
 
   /** Only ever called with a chat id Telegram itself reported to the
@@ -239,4 +247,20 @@ function translateSignupConflict(err: unknown): unknown {
         'An account with these details already exists.',
       );
   }
+}
+
+/** Same translation as translateSignupConflict above, scoped to the one
+ *  constraint updateEmail can actually hit — a race where someone else
+ *  claims the same email between AuthService.requestEmailUpdate's
+ *  availability check and confirmEmailUpdate's write. Without this, the
+ *  raw driver error would surface as an opaque 500 instead of a clean
+ *  409. */
+function translateEmailConflict(err: unknown): unknown {
+  if (!isUniqueViolation(err)) return err;
+  if (err.constraint === 'users_email_unique_idx') {
+    return new ConflictException(
+      'An account with this email already exists — try signing in instead.',
+    );
+  }
+  return err;
 }

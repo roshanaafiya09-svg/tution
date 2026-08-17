@@ -264,10 +264,14 @@ export class PaymentsService {
     if (!payment) throw new NotFoundException('No payment for this order');
 
     if (result.status === 'failed') {
-      return this.repository.markFailed(
+      // markFailed only affects a row still in 'created' — a failed
+      // event delivered (or replayed) after the payment already
+      // captured/refunded must not flip its status backwards.
+      const failed = await this.repository.markFailed(
         payment.id,
         'Provider reported payment.failed',
       );
+      return failed ?? (await this.repository.findById(payment.id)) ?? payment;
     }
     return this.settleCapture(payment, result.providerPaymentId);
   }
@@ -277,6 +281,16 @@ export class PaymentsService {
       payment.id,
       providerPaymentId,
     );
+    if (!captured) {
+      // Razorpay delivers webhooks at-least-once, and this path is also
+      // shared with simulateCapture — markCaptured only transitions a
+      // payment still in 'created', so a duplicate delivery (or a
+      // concurrent double-call) lands here instead of re-crediting the
+      // fee/subscription/parent-premium/booking a second time. Return
+      // the payment's current state as-is; this is the idempotent
+      // no-op, not an error.
+      return (await this.repository.findById(payment.id)) ?? payment;
+    }
 
     if (payment.fee_ledger_id) {
       await this.settleFee(

@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
 import { OtpService } from '../otp/otp.service';
 import { UsersRepository } from '../users/users.repository';
 import { identifierType, normalizeIdentifier } from '../identifier.util';
@@ -107,5 +111,44 @@ export class AuthService {
 
   logout(refreshToken: string): Promise<void> {
     return this.tokensService.revokeSession(refreshToken);
+  }
+
+  /**
+   * Step 1 of the self-service email change (see confirmEmailUpdate for
+   * step 2). A direct, unverified write to users.email would let any
+   * signed-in account claim someone else's real email address — a later
+   * login attempt with that email would then resolve to the attacker's
+   * account and hand over a valid session the moment the victim enters
+   * the code that was, in fact, correctly delivered to their own inbox.
+   * Proving control of the NEW address first closes that path entirely.
+   * Reuses the exact same OTP challenge/consume mechanism as login,
+   * keyed to the new email itself — same per-identifier rate limit,
+   * same 5-minute expiry, same 5-attempt cap.
+   */
+  async requestEmailUpdate(userId: string, rawEmail: string): Promise<void> {
+    const email = normalizeIdentifier(rawEmail);
+    const existing = await this.usersRepository.findByEmail(email);
+    if (existing && existing.id !== userId) {
+      throw new ConflictException(
+        'An account with this email already exists — try signing in instead.',
+      );
+    }
+    await this.otpService.requestOtp(email, { email });
+  }
+
+  /**
+   * Step 2 — only writes users.email once the code sent to the NEW
+   * address has been verified, i.e. once the caller has demonstrated
+   * they actually control it.
+   */
+  async confirmEmailUpdate(
+    userId: string,
+    rawEmail: string,
+    code: string,
+  ): Promise<void> {
+    const email = normalizeIdentifier(rawEmail);
+    await this.otpService.checkOtp(email, code);
+    await this.usersRepository.updateEmail(userId, email);
+    await this.otpService.consumeOtp(email);
   }
 }
