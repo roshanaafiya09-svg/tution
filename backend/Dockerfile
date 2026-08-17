@@ -27,6 +27,13 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
 
+# Run as the image's built-in unprivileged user rather than root — the
+# app never writes to its own filesystem at runtime (uploads go
+# straight to Supabase Storage in production; LocalStorageProvider's
+# disk writes are dev-only), so this has no functional cost.
+RUN chown -R node:node /app
+USER node
+
 EXPOSE 3001
 # Applies any not-yet-applied migration before the app starts serving,
 # on every container start — safe to run unconditionally since

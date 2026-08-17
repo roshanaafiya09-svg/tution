@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Script from 'next/script';
 import posthog from 'posthog-js';
 import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
+import { safeRedirectPath } from '@/lib/safe-redirect';
 import { Button, Field, Input, InlineError, Card } from '@/components/ui';
 import type { Me } from '@/lib/types';
 
@@ -35,7 +36,10 @@ function decodeJwtSubject(accessToken: string): string | null {
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get('next');
+  // `next` comes straight off the URL — anyone can link to
+  // /login?next=<anything>, so it's only ever trusted as a same-origin
+  // path, never handed to router.replace() raw.
+  const next = safeRedirectPath(searchParams.get('next'));
 
   const [phase, setPhase] = useState<Phase>('identify');
   const [kind, setKind] = useState<IdentifierKind>('email');
