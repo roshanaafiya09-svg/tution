@@ -12,6 +12,8 @@ import {
 import { JwtAuthGuard } from '../../identity/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../identity/auth/guards/roles.guard';
 import { Roles } from '../../identity/auth/decorators/roles.decorator';
+import { CurrentUser } from '../../identity/auth/decorators/current-user.decorator';
+import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
 import { AcademyAdminService } from './academy-admin.service';
 import { UpsertAcademyDto } from './dto/upsert-academy.dto';
 import { AcademyImageUploadUrlDto } from './dto/academy-image-upload-url.dto';
@@ -47,10 +49,11 @@ export class AcademyAdminController {
 
   @Post(':id/verification-status')
   setVerificationStatus(
+    @CurrentUser() user: AccessTokenPayload,
     @Param('id') id: string,
     @Body('status') status: 'pending' | 'verified' | 'rejected',
   ) {
-    return this.academyAdminService.setVerificationStatus(id, status);
+    return this.academyAdminService.setVerificationStatus(user.sub, id, status);
   }
 
   @Post(':id/logo-upload-url')

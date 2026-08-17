@@ -6,6 +6,7 @@ import { StorageModule } from '../../../common/storage/storage.module';
 import { AcademyMembershipsModule } from '../academy-memberships/academy-memberships.module';
 import { AcademyReviewsModule } from '../academy-reviews/academy-reviews.module';
 import { NotificationsModule } from '../../notifications/notifications.module';
+import { TrustModule } from '../../trust/trust.module';
 import { AcademiesController } from './academies.controller';
 import { AcademyAdminController } from './academy-admin.controller';
 import { AcademiesService } from './academies.service';
@@ -45,6 +46,7 @@ import { AcademyContactRequestsRepository } from './academy-contact-requests.rep
     AcademyMembershipsModule,
     AcademyReviewsModule,
     NotificationsModule,
+    TrustModule,
   ],
   controllers: [AcademiesController, AcademyAdminController],
   providers: [

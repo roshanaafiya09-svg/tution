@@ -16,6 +16,7 @@ import {
   Settings,
   ChevronDown,
   LogOut,
+  ShieldCheck,
 } from 'lucide-react';
 import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
 import type { Me } from '@/lib/types';
@@ -43,6 +44,7 @@ const MANAGE_GROUPS = [
     label: 'Academy',
     items: [
       { href: '/academy/profile', label: 'Academy Profile', icon: Building2 },
+      { href: '/academy/verification', label: 'Verification', icon: ShieldCheck },
       { href: '/academy/photos', label: 'Photos', icon: Images },
       { href: '/academy/reviews', label: 'Reviews', icon: Star },
     ],

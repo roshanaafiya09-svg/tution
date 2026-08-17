@@ -11,6 +11,7 @@ import { AcademyPhotosRepository } from './academy-photos.repository';
 import { AcademyMembershipsRepository } from '../academy-memberships/academy-memberships.repository';
 import { AcademyContactRequestsRepository } from './academy-contact-requests.repository';
 import { UsersRepository } from '../../identity/users/users.repository';
+import { AuditLogService } from '../../trust/audit/audit-log.service';
 import {
   identifierType,
   normalizeIdentifier,
@@ -48,6 +49,7 @@ export class AcademyAdminService {
     private readonly academyMembershipsRepository: AcademyMembershipsRepository,
     private readonly academyContactRequestsRepository: AcademyContactRequestsRepository,
     private readonly usersRepository: UsersRepository,
+    private readonly auditLog: AuditLogService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
   ) {}
 
@@ -69,11 +71,24 @@ export class AcademyAdminService {
     return updated;
   }
 
-  setVerificationStatus(
+  async setVerificationStatus(
+    actorId: string,
     id: string,
     status: 'pending' | 'verified' | 'rejected',
   ) {
-    return this.academiesRepository.setVerificationStatus(id, status);
+    const updated = await this.academiesRepository.setVerificationStatus(
+      id,
+      status,
+    );
+    await this.auditLog.record({
+      actorId,
+      actorRole: 'superadmin',
+      action: 'academy.verification_status.set',
+      entity: 'academies',
+      entityId: id,
+      diff: { status },
+    });
+    return updated;
   }
 
   async createLogoUploadUrl(academyId: string, dto: AcademyImageUploadUrlDto) {

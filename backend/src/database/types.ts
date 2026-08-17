@@ -687,6 +687,30 @@ export interface AcademyPhotosTable {
   created_at: GeneratedTimestamp;
 }
 
+export type AcademyKycStatus =
+  'pending' | 'under_review' | 'verified' | 'rejected' | 'needs_manual_review';
+
+/** One row per submission attempt (migration 0032) — a rejection then a
+ *  resubmission is two rows, not one row overwritten, so the review
+ *  history survives. `academies.verification_status` (the existing
+ *  3-state enum gating discovery) is only ever synced from a terminal
+ *  status here — this table is where the fuller KYC state machine and
+ *  evidence actually live. */
+export interface AcademyKycVerificationsTable {
+  id: string;
+  academy_id: string;
+  status: Generated<AcademyKycStatus>;
+  consent_record_id: string | null;
+  provider: string | null;
+  provider_verification_id: string | null;
+  result_code: string | null;
+  reason: string | null;
+  reviewed_by: string | null;
+  reviewed_at: Timestamp | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
 /** Separate rating system from `reviews` (teacher ratings) — an
  *  academy's trust signal never mixes with an individual teacher's. */
 export interface AcademyReviewsTable {
@@ -789,5 +813,6 @@ export interface DB {
   academy_photos: AcademyPhotosTable;
   academy_reviews: AcademyReviewsTable;
   academy_contact_requests: AcademyContactRequestsTable;
+  academy_kyc_verifications: AcademyKycVerificationsTable;
   academy_membership_requests: AcademyMembershipRequestsTable;
 }

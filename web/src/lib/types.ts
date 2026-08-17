@@ -461,6 +461,25 @@ export interface AcademyOwnerProfile {
   location: { city: string; areaLabel: string | null; lat: number; lng: number } | null;
 }
 
+/** The richer KYC state machine (academy_kyc_verifications) — distinct
+ *  from AcademyVerificationStatus above, which stays the existing
+ *  3-state field gating discovery/the profile badge and is only ever
+ *  synced from a terminal state here. */
+export type AcademyKycStatus =
+  | 'not_started'
+  | 'pending'
+  | 'under_review'
+  | 'verified'
+  | 'rejected'
+  | 'needs_manual_review';
+
+export interface AcademyKycVerificationStatus {
+  status: AcademyKycStatus;
+  reason: string | null;
+  submittedAt: string | null;
+  reviewedAt: string | null;
+}
+
 export interface AcademyOwnerStats {
   verificationStatus: AcademyVerificationStatus;
   teacherCount: number;

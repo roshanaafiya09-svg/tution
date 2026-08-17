@@ -38,6 +38,8 @@ const STATUS_STYLES: Record<string, string> = {
   not_started: 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400',
   due_soon: 'bg-warning-bg text-warning dark:bg-warning/15 dark:text-warning-dark',
   overdue: 'bg-error-bg text-error dark:bg-error/15 dark:text-error-dark',
+  under_review: 'bg-info-bg text-info dark:bg-info/15 dark:text-info-dark',
+  needs_manual_review: 'bg-warning-bg text-warning dark:bg-warning/15 dark:text-warning-dark',
 };
 
 const DOT_STYLES: Record<string, string> = {
@@ -53,6 +55,8 @@ const DOT_STYLES: Record<string, string> = {
   failed: 'bg-error',
   overdue: 'bg-error',
   due_soon: 'bg-warning',
+  under_review: 'bg-info',
+  needs_manual_review: 'bg-warning',
 };
 
 export function StatusBadge({ status, className }: { status: string; className?: string }) {
