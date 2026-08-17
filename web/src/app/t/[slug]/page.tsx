@@ -31,12 +31,15 @@ function initials(name: string | null) {
   return name.split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase();
 }
 
+type PageParams = Promise<{ slug: string }>;
+
 export async function generateMetadata({
   params,
 }: {
-  params: { slug: string };
+  params: PageParams;
 }): Promise<Metadata> {
-  const page = await getTutorPage(params.slug);
+  const { slug } = await params;
+  const page = await getTutorPage(slug);
   if (!page) return { title: 'Tutor not found — Scholar' };
   return {
     title: `${page.profile.displayName ?? 'Tutor'}${page.profile.headline ? ` — ${page.profile.headline}` : ''} | Scholar`,
@@ -44,8 +47,9 @@ export async function generateMetadata({
   };
 }
 
-export default async function TutorProfilePage({ params }: { params: { slug: string } }) {
-  const page = await getTutorPage(params.slug);
+export default async function TutorProfilePage({ params }: { params: PageParams }) {
+  const { slug } = await params;
+  const page = await getTutorPage(slug);
   if (!page) notFound();
 
   const { profile, location, offerings, proofOfTeaching, reviews } = page;

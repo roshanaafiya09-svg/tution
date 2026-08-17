@@ -6,6 +6,11 @@ import animate from "tailwindcss-animate";
 // Single source of truth: shared/design-tokens/tokens.json (see docs/design-system.md).
 // Read via fs instead of `import ... .json` so it resolves the same way
 // regardless of which loader Tailwind uses to evaluate this config.
+// This path deliberately lives outside web/ (mobile/ reads the same
+// file) — Turbopack's project-root sandboxing refuses to resolve a
+// fs path that "leaves the filesystem root" here, so package.json's
+// dev/build scripts pass --webpack (Next 16 still ships webpack as an
+// explicit opt-out for exactly this case; see next.config.mjs).
 const tokens = JSON.parse(
   fs.readFileSync(
     path.resolve(__dirname, "../shared/design-tokens/tokens.json"),
