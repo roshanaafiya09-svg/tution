@@ -12,18 +12,22 @@ jest.mock('../../../database/database.module', () => ({
 
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { AcademyVerificationService } from './academy-verification.service';
+import { KycProviderUnavailableError } from './providers/setu-kyc.provider';
 import type { AcademyVerificationRepository } from './academy-verification.repository';
 import type { AcademiesRepository } from '../academies/academies.repository';
 import type { ConsentService } from '../../trust/consent/consent.service';
 import type { AuditLogService } from '../../trust/audit/audit-log.service';
+import type { KycProvider } from './providers/kyc-provider.interface';
 
 /**
- * Covers the Phase 1 state machine: NOT_STARTED -> (consent + start) ->
- * pending -> reviewer decision -> a terminal state, plus the two
- * invariants the brief calls out explicitly — a caller can never set
- * their own 'verified' status, and academies.verification_status (the
- * existing 3-state field gating discovery) only ever syncs from a
- * terminal outcome, never from under_review/needs_manual_review.
+ * Covers the state machine: NOT_STARTED -> (consent + start, which now
+ * runs an automated PAN + optional GSTIN check against the KYC
+ * provider) -> verified or needs_manual_review -> reviewer decision ->
+ * a terminal state. Two invariants the brief calls out explicitly are
+ * exercised throughout: a caller can never set their own 'verified'
+ * status directly, and academies.verification_status (the existing
+ * 3-state field gating discovery) only ever syncs from a terminal
+ * outcome, never from under_review/needs_manual_review.
  */
 function buildService(overrides: {
   findByOwnerUserId?: jest.Mock;
@@ -33,9 +37,12 @@ function buildService(overrides: {
   create?: jest.Mock;
   findById?: jest.Mock;
   review?: jest.Mock;
+  recordAutomatedResult?: jest.Mock;
   listQueue?: jest.Mock;
   consentRecord?: jest.Mock;
   auditRecord?: jest.Mock;
+  verifyPan?: jest.Mock;
+  verifyGstin?: jest.Mock;
 }) {
   const findByOwnerUserId =
     overrides.findByOwnerUserId ??
@@ -62,6 +69,13 @@ function buildService(overrides: {
       .mockImplementation((id: string, status: string) =>
         Promise.resolve({ id, status }),
       );
+  const recordAutomatedResult =
+    overrides.recordAutomatedResult ??
+    jest
+      .fn()
+      .mockImplementation((id: string, result: { status: string }) =>
+        Promise.resolve({ id, status: result.status }),
+      );
   const listQueue = overrides.listQueue ?? jest.fn();
   const repository = {
     findLatestForAcademy,
@@ -69,6 +83,7 @@ function buildService(overrides: {
     create,
     findById,
     review,
+    recordAutomatedResult,
     listQueue,
   } as unknown as AcademyVerificationRepository;
 
@@ -82,11 +97,33 @@ function buildService(overrides: {
     overrides.auditRecord ?? jest.fn().mockResolvedValue(undefined);
   const auditLog = { record: auditRecord } as unknown as AuditLogService;
 
+  const verifyPan =
+    overrides.verifyPan ??
+    jest.fn().mockResolvedValue({
+      verified: true,
+      fullName: 'Test Owner',
+      resultCode: 'verified',
+    });
+  const verifyGstin =
+    overrides.verifyGstin ??
+    jest.fn().mockResolvedValue({
+      verified: true,
+      active: true,
+      legalName: 'Test Academy Pvt Ltd',
+      resultCode: 'verified',
+    });
+  const kycProvider = {
+    name: 'mock',
+    verifyPan,
+    verifyGstin,
+  } as unknown as KycProvider;
+
   const service = new AcademyVerificationService(
     repository,
     academiesRepository,
     consentService,
     auditLog,
+    kycProvider,
   );
 
   return {
@@ -98,9 +135,12 @@ function buildService(overrides: {
     create,
     findById,
     review,
+    recordAutomatedResult,
     listQueue,
     consentRecord,
     auditRecord,
+    verifyPan,
+    verifyGstin,
   };
 }
 
@@ -142,9 +182,13 @@ describe('AcademyVerificationService.getMyStatus', () => {
 });
 
 describe('AcademyVerificationService.start', () => {
-  const dto = { consent: true as const, policyVersion: '2026-01' };
+  const dto = {
+    consent: true as const,
+    policyVersion: '2026-01',
+    pan: 'ABCDE1234F',
+  };
 
-  it('records consent, creates a submission, and audit-logs it', async () => {
+  it('records consent, creates a submission, and audit-logs the start', async () => {
     const { service, consentRecord, create, auditRecord } = buildService({});
 
     await service.start('owner_1', dto, '1.2.3.4', 'test-agent');
@@ -165,7 +209,7 @@ describe('AcademyVerificationService.start', () => {
   });
 
   it('refuses a second submission while one is already open', async () => {
-    const { service, create, consentRecord } = buildService({
+    const { service, create, consentRecord, verifyPan } = buildService({
       hasOpenSubmission: jest.fn().mockResolvedValue(true),
     });
 
@@ -175,6 +219,98 @@ describe('AcademyVerificationService.start', () => {
     // Never even gets to recording consent for a submission it won't create.
     expect(consentRecord).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
+    expect(verifyPan).not.toHaveBeenCalled();
+  });
+
+  it('auto-verifies and syncs academies.verification_status when PAN alone (no GSTIN) checks out', async () => {
+    const {
+      service,
+      recordAutomatedResult,
+      setVerificationStatus,
+      verifyGstin,
+    } = buildService({});
+
+    await service.start('owner_1', dto, null, null);
+
+    expect(verifyGstin).not.toHaveBeenCalled();
+    expect(recordAutomatedResult).toHaveBeenCalledWith(
+      'submission_1',
+      expect.objectContaining({ status: 'verified', provider: 'mock' }),
+    );
+    expect(setVerificationStatus).toHaveBeenCalledWith('academy_1', 'verified');
+  });
+
+  it('requires GSTIN to also verify when one is supplied, even if PAN passed', async () => {
+    const { service, recordAutomatedResult, setVerificationStatus } =
+      buildService({
+        verifyGstin: jest.fn().mockResolvedValue({
+          verified: false,
+          active: false,
+          legalName: null,
+          resultCode: 'not_found',
+        }),
+      });
+
+    await service.start(
+      'owner_1',
+      { ...dto, gstin: '29ABCDE1234F1Z5' },
+      null,
+      null,
+    );
+
+    expect(recordAutomatedResult).toHaveBeenCalledWith(
+      'submission_1',
+      expect.objectContaining({ status: 'needs_manual_review' }),
+    );
+    expect(setVerificationStatus).not.toHaveBeenCalled();
+  });
+
+  it('flags needs_manual_review, never rejected, when PAN fails to verify', async () => {
+    const { service, recordAutomatedResult, setVerificationStatus } =
+      buildService({
+        verifyPan: jest.fn().mockResolvedValue({
+          verified: false,
+          fullName: null,
+          resultCode: 'not_found',
+        }),
+      });
+
+    await service.start('owner_1', dto, null, null);
+
+    expect(recordAutomatedResult).toHaveBeenCalledWith(
+      'submission_1',
+      expect.objectContaining({ status: 'needs_manual_review' }),
+    );
+    expect(setVerificationStatus).not.toHaveBeenCalled();
+  });
+
+  it('flags needs_manual_review, not an error, when the provider is unreachable', async () => {
+    const { service, recordAutomatedResult } = buildService({
+      verifyPan: jest
+        .fn()
+        .mockRejectedValue(new KycProviderUnavailableError('down')),
+    });
+
+    const result = await service.start('owner_1', dto, null, null);
+
+    expect(result).toBeDefined();
+    expect(recordAutomatedResult).toHaveBeenCalledWith(
+      'submission_1',
+      expect.objectContaining({
+        status: 'needs_manual_review',
+        resultCode: 'provider_unavailable',
+      }),
+    );
+  });
+
+  it('does not swallow a genuinely unexpected error from the provider', async () => {
+    const { service } = buildService({
+      verifyPan: jest.fn().mockRejectedValue(new Error('boom')),
+    });
+
+    await expect(service.start('owner_1', dto, null, null)).rejects.toThrow(
+      'boom',
+    );
   });
 });
 

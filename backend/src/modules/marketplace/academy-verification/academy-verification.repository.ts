@@ -10,6 +10,14 @@ export interface NewAcademyKycVerification {
   consentRecordId: string | null;
 }
 
+export interface AutomatedResult {
+  status: 'verified' | 'needs_manual_review';
+  provider: string;
+  providerVerificationId: string | null;
+  resultCode: string;
+  reason: string | null;
+}
+
 const OPEN_STATUSES: AcademyKycStatus[] = ['pending', 'under_review'];
 
 @Injectable()
@@ -99,6 +107,27 @@ export class AcademyVerificationRepository {
         reason,
         reviewed_by: reviewerId,
         reviewed_at: new Date(),
+      })
+      .where('id', '=', id)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
+
+  /** Records the outcome of the automated PAN/GSTIN check — deliberately
+   *  a separate method from review(): reviewed_by/reviewed_at stay null
+   *  here, since no human made this decision, and the queue (listQueue,
+   *  filtered to OPEN_STATUSES) already excludes 'verified' so an
+   *  auto-approved submission doesn't show up asking for a review that
+   *  already happened. */
+  recordAutomatedResult(id: string, result: AutomatedResult) {
+    return this.db
+      .updateTable('academy_kyc_verifications')
+      .set({
+        status: result.status,
+        provider: result.provider,
+        provider_verification_id: result.providerVerificationId,
+        result_code: result.resultCode,
+        reason: result.reason,
       })
       .where('id', '=', id)
       .returningAll()

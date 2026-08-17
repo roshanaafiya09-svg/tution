@@ -16,6 +16,7 @@ import {
   embeddingsConfig,
   razorpayConfig,
   marketplaceConfig,
+  setuConfig,
 } from './config/configuration';
 import { validateEnv } from './config/env.validation';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -95,6 +96,7 @@ if (process.env.NODE_ENV !== 'production') {
         embeddingsConfig,
         razorpayConfig,
         marketplaceConfig,
+        setuConfig,
       ],
     }),
     // Coarse, generous global safety net — not a substitute for

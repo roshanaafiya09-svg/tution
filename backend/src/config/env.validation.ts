@@ -116,6 +116,18 @@ export const envSchema = z.object({
   // model. See razorpayConfig's comment in configuration.ts. ---
   PLATFORM_FEE_PERCENT: z.coerce.number().min(0).max(100).default(0),
 
+  // --- Setu (Academy KYC — PAN + GSTIN verification) — optional; falls
+  // back to a mock KYC provider so the verification flow is fully
+  // testable before a real Setu account exists. See setuConfig's
+  // comment in configuration.ts for the per-product-instance-id
+  // override shape. ---
+  SETU_CLIENT_ID: z.string().optional(),
+  SETU_CLIENT_SECRET: z.string().optional(),
+  SETU_PRODUCT_INSTANCE_ID: z.string().optional(),
+  SETU_PAN_PRODUCT_INSTANCE_ID: z.string().optional(),
+  SETU_GSTIN_PRODUCT_INSTANCE_ID: z.string().optional(),
+  SETU_WEBHOOK_SECRET: z.string().optional(),
+
   // --- Marketplace (blueprint §5/§10 Phase 4): the 1:1 booking take
   // rate (blueprint gives 15-20%, unset — defaults to the upper bound,
   // same resolution as parent premium's ₹149 pricing) and the density

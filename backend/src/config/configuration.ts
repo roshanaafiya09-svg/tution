@@ -102,6 +102,28 @@ export const razorpayConfig = registerAs('razorpay', () => ({
   platformFeePercent: Number(process.env.PLATFORM_FEE_PERCENT ?? '0'),
 }));
 
+// Setu (Academy KYC — PAN + GSTIN verification, see the Academy
+// Identity Verification research report). Same env-gated shape as
+// every other provider here: unset -> mock KYC provider, set -> real
+// Setu calls. PAN and GSTIN are separate products in Setu's own Bridge
+// console and may be provisioned with distinct product-instance ids;
+// the per-product vars override the shared one only if set, so a
+// single-product-instance Setu account still works with just
+// SETU_PRODUCT_INSTANCE_ID.
+export const setuConfig = registerAs('setu', () => ({
+  clientId: process.env.SETU_CLIENT_ID,
+  clientSecret: process.env.SETU_CLIENT_SECRET,
+  panProductInstanceId:
+    process.env.SETU_PAN_PRODUCT_INSTANCE_ID ??
+    process.env.SETU_PRODUCT_INSTANCE_ID,
+  gstinProductInstanceId:
+    process.env.SETU_GSTIN_PRODUCT_INSTANCE_ID ??
+    process.env.SETU_PRODUCT_INSTANCE_ID,
+  // Provisioned for the DigiLocker/Aadhaar phase (async, webhook-driven)
+  // — unused by the synchronous PAN/GSTIN calls this phase implements.
+  webhookSecret: process.env.SETU_WEBHOOK_SECRET,
+}));
+
 export const marketplaceConfig = registerAs('marketplace', () => ({
   // Blueprint §5/§10 Phase 4: 1:1 booking take rate, 15-20% range left
   // unset — shipped at the upper bound, same resolution as parent

@@ -8,12 +8,16 @@ import {
   Button,
   CardSkeleton,
   ErrorState,
+  Field,
   InlineError,
+  Input,
   StatusBadge,
 } from '@/components/ui';
 import { AcademyCard, AcademyPageIntro } from '@/components/academy';
 
 const POLICY_VERSION = '1.0';
+const PAN_FORMAT = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+const GSTIN_FORMAT = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z][Z][0-9A-Z]$/;
 
 const REQUIRED_STEPS = [
   {
@@ -66,6 +70,8 @@ export default function AcademyVerificationPage() {
   const [loadError, setLoadError] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pan, setPan] = useState('');
+  const [gstin, setGstin] = useState('');
 
   const load = useCallback(async () => {
     setLoadError(false);
@@ -83,11 +89,24 @@ export default function AcademyVerificationPage() {
 
   async function startVerification() {
     setError(null);
+    const normalizedPan = pan.trim().toUpperCase();
+    if (!PAN_FORMAT.test(normalizedPan)) {
+      setError('Enter a valid PAN (e.g. ABCDE1234F).');
+      return;
+    }
+    const normalizedGstin = gstin.trim().toUpperCase();
+    if (normalizedGstin && !GSTIN_FORMAT.test(normalizedGstin)) {
+      setError('Enter a valid 15-character GSTIN, or leave it blank.');
+      return;
+    }
+
     setStarting(true);
     try {
       await api.post('/academy/verification/start', {
         consent: true,
         policyVersion: POLICY_VERSION,
+        pan: normalizedPan,
+        gstin: normalizedGstin || undefined,
       });
       await load();
     } catch (err) {
@@ -166,7 +185,29 @@ export default function AcademyVerificationPage() {
 
         {canStart && (
           <AcademyCard>
-            <p className="font-display text-lg font-semibold text-neutral-900 dark:text-neutral-50">Consent</p>
+            <p className="font-display text-lg font-semibold text-neutral-900 dark:text-neutral-50">Owner &amp; academy details</p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <Field label="Owner's PAN" required hint="Used to verify your identity.">
+                <Input
+                  value={pan}
+                  onChange={(e) => setPan(e.target.value.toUpperCase())}
+                  placeholder="ABCDE1234F"
+                  maxLength={10}
+                  className="uppercase"
+                />
+              </Field>
+              <Field label="Academy's GSTIN" hint="Optional — verifies your academy as a registered business.">
+                <Input
+                  value={gstin}
+                  onChange={(e) => setGstin(e.target.value.toUpperCase())}
+                  placeholder="29ABCDE1234F1Z5"
+                  maxLength={15}
+                  className="uppercase"
+                />
+              </Field>
+            </div>
+
+            <p className="mt-5 font-display text-lg font-semibold text-neutral-900 dark:text-neutral-50">Consent</p>
             <p className="mt-2 text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
               Your identity information and verification documents may be securely processed by our identity-verification
               partner for the purpose of verifying your identity. Please review Scholar&apos;s Privacy Policy and the
