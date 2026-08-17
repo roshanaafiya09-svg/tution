@@ -28,6 +28,7 @@ function buildService(overrides: {
   checkOtp?: jest.Mock;
   updateEmail?: jest.Mock;
   consumeOtp?: jest.Mock;
+  revokeAllSessions?: jest.Mock;
 }) {
   const otpService = {
     requestOtp: overrides.requestOtp ?? jest.fn().mockResolvedValue(undefined),
@@ -42,10 +43,12 @@ function buildService(overrides: {
       overrides.updateEmail ?? jest.fn().mockResolvedValue(undefined),
   } as unknown as UsersRepository;
 
-  const tokensService = {} as unknown as TokensService;
+  const revokeAllSessions =
+    overrides.revokeAllSessions ?? jest.fn().mockResolvedValue(undefined);
+  const tokensService = { revokeAllSessions } as unknown as TokensService;
 
   const service = new AuthService(otpService, usersRepository, tokensService);
-  return { service, otpService, usersRepository };
+  return { service, otpService, usersRepository, revokeAllSessions };
 }
 
 describe('AuthService.requestEmailUpdate', () => {
@@ -98,30 +101,42 @@ describe('AuthService.confirmEmailUpdate', () => {
     expect(updateEmail).not.toHaveBeenCalled();
   });
 
-  it('writes the email and consumes the OTP once verification passes', async () => {
+  it('writes the email, consumes the OTP, and revokes every other session once verification passes', async () => {
     const checkOtp = jest.fn().mockResolvedValue(undefined);
     const updateEmail = jest.fn().mockResolvedValue(undefined);
     const consumeOtp = jest.fn().mockResolvedValue(undefined);
-    const { service } = buildService({ checkOtp, updateEmail, consumeOtp });
+    const { service, revokeAllSessions } = buildService({
+      checkOtp,
+      updateEmail,
+      consumeOtp,
+    });
 
     await service.confirmEmailUpdate('me', 'Victim@Example.com', '123456');
 
     expect(checkOtp).toHaveBeenCalledWith('victim@example.com', '123456');
     expect(updateEmail).toHaveBeenCalledWith('me', 'victim@example.com');
     expect(consumeOtp).toHaveBeenCalledWith('victim@example.com');
+    // A stolen access token used to reach this endpoint must not leave
+    // an attacker's other sessions alive after the change.
+    expect(revokeAllSessions).toHaveBeenCalledWith('me');
   });
 
-  it('does not consume the OTP if the email write fails (e.g. a race conflict)', async () => {
+  it('does not consume the OTP or revoke sessions if the email write fails (e.g. a race conflict)', async () => {
     const checkOtp = jest.fn().mockResolvedValue(undefined);
     const updateEmail = jest
       .fn()
       .mockRejectedValue(new ConflictException('already taken'));
     const consumeOtp = jest.fn();
-    const { service } = buildService({ checkOtp, updateEmail, consumeOtp });
+    const { service, revokeAllSessions } = buildService({
+      checkOtp,
+      updateEmail,
+      consumeOtp,
+    });
 
     await expect(
       service.confirmEmailUpdate('me', 'victim@example.com', '123456'),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(consumeOtp).not.toHaveBeenCalled();
+    expect(revokeAllSessions).not.toHaveBeenCalled();
   });
 });

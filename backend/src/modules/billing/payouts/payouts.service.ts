@@ -36,22 +36,28 @@ export class PayoutsService {
     const to = new Date(`${periodEnd}T00:00:00.000Z`);
     to.setUTCDate(to.getUTCDate() + 1); // periodEnd is inclusive
     if (to <= from) {
-      throw new BadRequestException('periodEnd must be on or after periodStart');
+      throw new BadRequestException(
+        'periodEnd must be on or after periodStart',
+      );
     }
 
-    const capturable = await this.paymentsRepository.listUnpaidOutCapturedForTutor(
-      tutorId,
-      from,
-      to,
-    );
+    const capturable =
+      await this.paymentsRepository.listUnpaidOutCapturedForTutor(
+        tutorId,
+        from,
+        to,
+      );
     if (capturable.length === 0) {
       throw new BadRequestException('Nothing to pay out for this period');
     }
 
     const currency = capturable[0].currency;
     const grossMinor = capturable.reduce((sum, p) => sum + p.amount_minor, 0);
-    const platformFeePercent = this.config.get<number>('razorpay.platformFeePercent') ?? 0;
-    const platformFeeMinor = Math.round((grossMinor * platformFeePercent) / 100);
+    const platformFeePercent =
+      this.config.get<number>('razorpay.platformFeePercent') ?? 0;
+    const platformFeeMinor = Math.round(
+      (grossMinor * platformFeePercent) / 100,
+    );
     const payoutMinor = grossMinor - platformFeeMinor;
 
     const payout = await this.repository.create(
@@ -65,7 +71,8 @@ export class PayoutsService {
     await this.paymentsRepository.assignPayout(paymentIds, payout.id);
 
     try {
-      const account = await this.payoutAccountsRepository.findByTutorId(tutorId);
+      const account =
+        await this.payoutAccountsRepository.findByTutorId(tutorId);
       const { payoutId } = await this.provider.initiatePayout({
         amountMinor: payoutMinor,
         currency,
@@ -96,17 +103,35 @@ export class PayoutsService {
     }
   }
 
-  /** Dev/test path — see PayoutsProvider.simulateComplete. */
+  /** Dev/test path — see PayoutsProvider.simulateComplete. The real
+   *  provider already rejects this, but that's contingent on Razorpay
+   *  keys actually being configured — this explicit environment check is
+   *  defense-in-depth so a production deploy that's ops-misconfigured to
+   *  be missing those keys (and so silently gets MockPayoutsProvider,
+   *  which always succeeds) still can't have a tutor mark their own
+   *  payout "paid" with no money moving. */
   async simulateComplete(tutorId: string, payoutId: string) {
+    this.assertNotProduction();
     const payout = await this.repository.findById(payoutId);
     if (!payout) throw new NotFoundException('Payout not found');
-    if (payout.tutor_id !== tutorId) throw new ForbiddenException('Not your payout');
+    if (payout.tutor_id !== tutorId)
+      throw new ForbiddenException('Not your payout');
     if (payout.status !== 'processing' || !payout.provider_payout_id) {
-      throw new BadRequestException(`Payout is ${payout.status}, not processing`);
+      throw new BadRequestException(
+        `Payout is ${payout.status}, not processing`,
+      );
     }
 
     await this.provider.simulateComplete(payout.provider_payout_id);
     return this.repository.markPaid(payout.id);
+  }
+
+  private assertNotProduction(): void {
+    if (this.config.get<string>('app.nodeEnv') === 'production') {
+      throw new BadRequestException(
+        'Payout completion happens via the real payouts provider in production, not this endpoint.',
+      );
+    }
   }
 
   listForTutor(tutorId: string) {

@@ -9,6 +9,7 @@ import {
   ACCESS_TOKEN_TTL_SECONDS,
   TokensService,
 } from '../identity/auth/tokens.service';
+import { AuditLogService } from '../trust/audit/audit-log.service';
 import type { UserRole } from '../../database/types';
 
 const VIEWABLE_ROLES = ['tutor', 'student', 'parent'] as const;
@@ -20,6 +21,7 @@ export class AdminService {
     private readonly adminRepository: AdminRepository,
     private readonly usersRepository: UsersRepository,
     private readonly tokensService: TokensService,
+    private readonly auditLog: AuditLogService,
   ) {}
 
   async listTeachers(q?: string) {
@@ -72,6 +74,21 @@ export class AdminService {
       viewableRole,
     );
 
+    // Blueprint §9: "every admin action writes an immutable audit-log
+    // entry" — a superadmin viewing another user's dashboard/PII is
+    // exactly that, and previously left no trace anywhere except the
+    // `actorId` claim inside the (never-persisted) impersonation JWT
+    // itself. Logged after the token is actually minted, not before, so
+    // this only ever records impersonation that genuinely happened.
+    await this.auditLog.record({
+      actorId: adminId,
+      actorRole: 'superadmin',
+      action: 'admin.impersonate',
+      entity: 'users',
+      entityId: targetUserId,
+      diff: { viewedAsRole: viewableRole },
+    });
+
     return {
       accessToken,
       expiresIn: ACCESS_TOKEN_TTL_SECONDS,
@@ -106,6 +123,19 @@ export class AdminService {
 
     const roles = await this.usersRepository.getRoles(targetUserId);
     this.assertNotSuperAdmin(roles);
+
+    // Logged before the hard delete, not after — the row (and anything
+    // that could reference it) won't exist once hardDelete runs, and an
+    // irreversible action like this one needs its audit trail written
+    // regardless of exactly when in the process something might fail.
+    await this.auditLog.record({
+      actorId: adminId,
+      actorRole: 'superadmin',
+      action: 'admin.user.delete',
+      entity: 'users',
+      entityId: targetUserId,
+      diff: { roles },
+    });
 
     await this.tokensService.revokeAllSessions(targetUserId);
     await this.usersRepository.hardDelete(targetUserId);

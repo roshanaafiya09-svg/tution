@@ -139,7 +139,13 @@ export class AuthService {
   /**
    * Step 2 — only writes users.email once the code sent to the NEW
    * address has been verified, i.e. once the caller has demonstrated
-   * they actually control it.
+   * they actually control it. Every refresh-token session for this
+   * account is then revoked (mirrors the account-deletion and
+   * refresh-reuse-detection treatment of other security-sensitive
+   * moments): if the access token used to reach this endpoint was
+   * itself stolen, the legitimate owner regains exclusive control by
+   * simply logging back in with the now-confirmed email, instead of an
+   * attacker's other sessions silently surviving the change.
    */
   async confirmEmailUpdate(
     userId: string,
@@ -150,5 +156,6 @@ export class AuthService {
     await this.otpService.checkOtp(email, code);
     await this.usersRepository.updateEmail(userId, email);
     await this.otpService.consumeOtp(email);
+    await this.tokensService.revokeAllSessions(userId);
   }
 }

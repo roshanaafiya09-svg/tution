@@ -28,6 +28,7 @@ import type { ParentPremiumService } from '../parent-premium/parent-premium.serv
 import type { BookingsService } from '../../marketplace/bookings/bookings.service';
 import type { AnalyticsService } from '../../analytics/analytics.service';
 import type { PaymentsProvider } from './payments-provider.interface';
+import type { ConfigService } from '@nestjs/config';
 
 /**
  * Covers the webhook idempotency fix: Razorpay delivers webhooks
@@ -102,6 +103,11 @@ function buildService(overrides: {
     name: 'mock',
     verifyWebhook,
   } as unknown as PaymentsProvider;
+  // Not 'production' — simulateCapture's assertNotProduction guard (see
+  // payments.service.ts) isn't what these idempotency tests are about;
+  // handleWebhook doesn't call it at all, but simulateCapture-adjacent
+  // tests elsewhere would need this to resolve to a non-prod value.
+  const config = { get: () => 'test' } as unknown as ConfigService;
 
   const service = new PaymentsService(
     repository,
@@ -111,6 +117,7 @@ function buildService(overrides: {
     parentPremiumService,
     bookingsService,
     analytics,
+    config,
     provider,
   );
 
@@ -134,6 +141,7 @@ const CAPTURED_WEBHOOK_RESULT = {
   providerOrderId: 'order_1',
   providerPaymentId: 'pay_1',
   status: 'captured' as const,
+  amountMinor: 5000,
 };
 
 describe('PaymentsService.handleWebhook — capture idempotency', () => {
@@ -244,6 +252,7 @@ describe('PaymentsService.handleWebhook — capture idempotency', () => {
       verifyWebhook: jest.fn().mockReturnValue({
         ...CAPTURED_WEBHOOK_RESULT,
         providerOrderId: 'order_2',
+        amountMinor: 49900,
       }),
     });
 
@@ -277,6 +286,7 @@ describe('PaymentsService.handleWebhook — capture idempotency', () => {
       verifyWebhook: jest.fn().mockReturnValue({
         ...CAPTURED_WEBHOOK_RESULT,
         providerOrderId: 'order_3',
+        amountMinor: 100000,
       }),
     });
 
@@ -307,5 +317,31 @@ describe('PaymentsService.handleWebhook — capture idempotency', () => {
 
     expect(markFailed).toHaveBeenCalledTimes(1);
     expect(result).toEqual(alreadyCaptured);
+  });
+
+  it('rejects a captured event whose amount does not match what the payment was created for', async () => {
+    const payment = {
+      id: 'payment_5',
+      fee_ledger_id: 'fee_5',
+      subscription_id: null,
+      parent_subscription_id: null,
+      booking_id: null,
+      plan_id: null,
+      amount_minor: 5000,
+      payer_id: 'student_5',
+    };
+
+    const { service, markCaptured, recordPayment } = buildService({
+      findByProviderOrderId: jest.fn().mockResolvedValue(payment),
+      verifyWebhook: jest.fn().mockReturnValue({
+        ...CAPTURED_WEBHOOK_RESULT,
+        amountMinor: 1, // attacker/misconfigured retry reporting a different amount
+      }),
+    });
+
+    await expect(service.handleWebhook('{}', 'sig')).rejects.toThrow(/amount/i);
+    // Must never reach the atomic capture step, let alone credit anything.
+    expect(markCaptured).not.toHaveBeenCalled();
+    expect(recordPayment).not.toHaveBeenCalled();
   });
 });

@@ -31,7 +31,9 @@ export class RazorpayPaymentsProvider implements PaymentsProvider {
     const keySecret = this.config.get<string>('razorpay.keySecret');
     this.webhookSecret = this.config.get<string>('razorpay.webhookSecret');
     this.client =
-      keyId && keySecret ? new Razorpay({ key_id: keyId, key_secret: keySecret }) : null;
+      keyId && keySecret
+        ? new Razorpay({ key_id: keyId, key_secret: keySecret })
+        : null;
   }
 
   async createOrder(params: CreateOrderParams): Promise<{ orderId: string }> {
@@ -67,7 +69,10 @@ export class RazorpayPaymentsProvider implements PaymentsProvider {
     return { refundId: refund.id };
   }
 
-  verifyWebhook(rawBody: string, signature: string): WebhookVerificationResult | null {
+  verifyWebhook(
+    rawBody: string,
+    signature: string,
+  ): WebhookVerificationResult | null {
     if (!this.webhookSecret) {
       this.logger.error(
         'RAZORPAY_WEBHOOK_SECRET is unset — rejecting webhook, signature cannot be verified',
@@ -75,7 +80,11 @@ export class RazorpayPaymentsProvider implements PaymentsProvider {
       return null;
     }
 
-    const valid = Razorpay.validateWebhookSignature(rawBody, signature, this.webhookSecret);
+    const valid = Razorpay.validateWebhookSignature(
+      rawBody,
+      signature,
+      this.webhookSecret,
+    );
     if (!valid) {
       this.logger.warn('Webhook signature verification failed — rejecting');
       return null;
@@ -83,15 +92,30 @@ export class RazorpayPaymentsProvider implements PaymentsProvider {
 
     const payload = JSON.parse(rawBody) as {
       event?: string;
-      payload?: { payment?: { entity?: { id?: string; order_id?: string } } };
+      payload?: {
+        payment?: {
+          entity?: {
+            id?: string;
+            order_id?: string;
+            amount?: number;
+          };
+        };
+      };
     };
     const paymentEntity = payload.payload?.payment?.entity;
-    if (!paymentEntity?.id || !paymentEntity?.order_id) return null;
+    if (
+      !paymentEntity?.id ||
+      !paymentEntity?.order_id ||
+      typeof paymentEntity.amount !== 'number'
+    ) {
+      return null;
+    }
 
     return {
       providerOrderId: paymentEntity.order_id,
       providerPaymentId: paymentEntity.id,
       status: payload.event === 'payment.captured' ? 'captured' : 'failed',
+      amountMinor: paymentEntity.amount,
     };
   }
 }

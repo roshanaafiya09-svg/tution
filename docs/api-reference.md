@@ -18,7 +18,7 @@ For request/response shapes see the DTOs under each module's `dto/` folder — t
 | POST | `/auth/google` | Google Sign-In (web), verifies ID token |
 | GET | `/auth/me` | Get current authenticated user |
 | POST | `/auth/contact` | Step 1 of setting/updating own `email` (an alternate login identifier) — sends an OTP to the new address. Nothing is written yet |
-| POST | `/auth/contact/verify` | Step 2 — verifies the OTP sent to the new address (`email` + `code`), then applies the change. Two-step so a signed-in account can't claim an email it doesn't control. Cannot set `telegram_chat_id` — that only ever comes from Telegram itself |
+| POST | `/auth/contact/verify` | Step 2 — verifies the OTP sent to the new address (`email` + `code`), then applies the change and revokes every refresh-token session for the account (caller must log in again on every device but this one's still-live access token). Two-step so a signed-in account can't claim an email it doesn't control. Cannot set `telegram_chat_id` — that only ever comes from Telegram itself |
 
 **Telegram linking.** A Telegram bot can't message anyone who hasn't messaged it first, so every account connects once before it can receive codes. `link/start` deliberately refuses identifiers that already have an account: otherwise anyone could enter someone else's phone/email, attach their own Telegram, and receive that account's login codes. Accounts predating Telegram sign-in must be connected out-of-band. See handover.md §6.7.
 

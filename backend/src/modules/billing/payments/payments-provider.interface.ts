@@ -12,6 +12,12 @@ export interface WebhookVerificationResult {
   providerOrderId: string;
   providerPaymentId: string;
   status: 'captured' | 'failed';
+  /** The amount Razorpay says it captured, straight off the signed
+   *  payload — PaymentsService cross-checks this against the payment
+   *  row's own amount_minor before crediting anything, so a captured
+   *  event can never settle a fee/subscription/booking for more (or
+   *  less) than what was actually charged. */
+  amountMinor: number;
 }
 
 export interface PaymentsProvider {
@@ -30,7 +36,10 @@ export interface PaymentsProvider {
    *  extracts the order/payment ids + outcome. Returns null on a bad
    *  signature — callers must treat that as "reject the request", never
    *  as "no signature configured, allow it through". */
-  verifyWebhook(rawBody: string, signature: string): WebhookVerificationResult | null;
+  verifyWebhook(
+    rawBody: string,
+    signature: string,
+  ): WebhookVerificationResult | null;
 
   /** Refunds a captured payment (blueprint §10 Phase 4 booking
    *  cancellations). Unlike simulateCapture, a real Razorpay refund is a

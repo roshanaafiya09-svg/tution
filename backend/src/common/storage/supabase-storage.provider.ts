@@ -56,6 +56,7 @@ export class SupabaseStorageProvider implements StorageProvider {
   async createPresignedUpload(
     objectKey: string,
     mime: string,
+    sizeBytes?: number,
   ): Promise<PresignedUpload> {
     const uploadUrl = await getSignedUrl(
       this.client,
@@ -63,11 +64,16 @@ export class SupabaseStorageProvider implements StorageProvider {
         Bucket: this.bucket,
         Key: objectKey,
         ContentType: mime,
+        ...(sizeBytes !== undefined ? { ContentLength: sizeBytes } : {}),
       }),
       { expiresIn: DEFAULT_UPLOAD_EXPIRY_SECONDS },
     );
 
-    return { uploadUrl, objectKey, headers: { 'Content-Type': mime } };
+    const headers: Record<string, string> = { 'Content-Type': mime };
+    if (sizeBytes !== undefined) {
+      headers['Content-Length'] = String(sizeBytes);
+    }
+    return { uploadUrl, objectKey, headers };
   }
 
   createDownloadUrl(

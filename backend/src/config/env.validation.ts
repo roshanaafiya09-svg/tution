@@ -133,6 +133,23 @@ export const envSchema = z.object({
 
 export type EnvConfig = z.infer<typeof envSchema>;
 
+// The exact placeholder strings from .env.example — a config that still
+// has these means someone copied the file without generating a real
+// secret. Length alone wouldn't catch this (both placeholders happen to
+// clear the 32-char minimum above).
+const EXAMPLE_ACCESS_SECRET = 'replace-with-a-random-32+-char-secret';
+const EXAMPLE_REFRESH_SECRET =
+  'replace-with-a-different-random-32+-char-secret';
+
+/** A 32+ char string of one repeated character (or a short repeating
+ *  pattern) clears the length check but has near-zero real entropy —
+ *  cheap enough to brute-force that the length requirement is moot.
+ *  Not a full entropy calculation, just enough to reject the obviously
+ *  degenerate case. */
+function hasMinimalVariety(secret: string): boolean {
+  return new Set(secret).size >= 8;
+}
+
 export function validateEnv(config: Record<string, unknown>): EnvConfig {
   // A stray leading/trailing space or newline from a dashboard copy-paste
   // (Render, Vercel, etc.) turns a valid URL into a same-message "Invalid
@@ -151,5 +168,37 @@ export function validateEnv(config: Record<string, unknown>): EnvConfig {
       .join('\n');
     throw new Error(`Invalid environment configuration:\n${issues}`);
   }
+
+  const { JWT_ACCESS_SECRET, JWT_REFRESH_SECRET } = parsed.data;
+  const secretIssues: string[] = [];
+  if (JWT_ACCESS_SECRET === JWT_REFRESH_SECRET) {
+    secretIssues.push(
+      'JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must not be the same value — a leaked access token secret would also forge refresh tokens.',
+    );
+  }
+  if (
+    JWT_ACCESS_SECRET === EXAMPLE_ACCESS_SECRET ||
+    JWT_REFRESH_SECRET === EXAMPLE_REFRESH_SECRET
+  ) {
+    secretIssues.push(
+      'JWT_ACCESS_SECRET/JWT_REFRESH_SECRET still hold the placeholder value from .env.example — generate real secrets (e.g. `openssl rand -base64 48`).',
+    );
+  }
+  if (!hasMinimalVariety(JWT_ACCESS_SECRET)) {
+    secretIssues.push(
+      'JWT_ACCESS_SECRET has too little character variety to be a real random secret.',
+    );
+  }
+  if (!hasMinimalVariety(JWT_REFRESH_SECRET)) {
+    secretIssues.push(
+      'JWT_REFRESH_SECRET has too little character variety to be a real random secret.',
+    );
+  }
+  if (secretIssues.length > 0) {
+    throw new Error(
+      `Invalid environment configuration:\n${secretIssues.map((m) => `  - ${m}`).join('\n')}`,
+    );
+  }
+
   return parsed.data;
 }

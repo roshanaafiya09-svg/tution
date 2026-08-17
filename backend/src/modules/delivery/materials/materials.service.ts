@@ -62,6 +62,7 @@ export class MaterialsService {
     const upload = await this.storage.createPresignedUpload(
       objectKey,
       dto.mime,
+      dto.sizeBytes,
     );
     return { material, upload };
   }

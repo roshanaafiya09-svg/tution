@@ -5,6 +5,12 @@ import { REDIS_CONNECTION } from '../../../database/redis.module';
 interface StoredRefreshToken {
   userId: string;
   deviceLabel?: string;
+  /** Set by revoke() instead of deleting the key outright — keeps a
+   *  record, until the token's original TTL naturally expires, that
+   *  this jti belonged to a real session and was legitimately rotated
+   *  or revoked. Lets a later reuse attempt be told apart from "this
+   *  jti never existed" — see TokensService.verifyRefreshToken. */
+  revoked?: boolean;
 }
 
 @Injectable()
@@ -39,16 +45,33 @@ export class RefreshTokenRepository {
   }
 
   async findActiveByJti(jti: string): Promise<StoredRefreshToken | null> {
+    const stored = await this.findAnyByJti(jti);
+    return stored && !stored.revoked ? stored : null;
+  }
+
+  /** Same lookup as findActiveByJti, but doesn't filter out a tombstoned
+   *  (revoked) entry — only meant for reuse detection in
+   *  TokensService.verifyRefreshToken, never as a substitute for
+   *  findActiveByJti elsewhere. */
+  async findAnyByJti(jti: string): Promise<StoredRefreshToken | null> {
     const raw = await this.redis.get(this.tokenKey(jti));
     return raw ? (JSON.parse(raw) as StoredRefreshToken) : null;
   }
 
+  /** Tombstones rather than deletes — see StoredRefreshToken.revoked for
+   *  why. KEEPTTL preserves whatever's left of the original 30-day
+   *  expiry set at create(), same pattern OtpRepository.incrementAttempts
+   *  already uses for the same reason (extend a record's life without
+   *  resetting its clock). */
   async revoke(jti: string): Promise<void> {
     const stored = await this.findActiveByJti(jti);
-    await this.redis.del(this.tokenKey(jti));
-    if (stored) {
-      await this.redis.srem(this.userIndexKey(stored.userId), jti);
-    }
+    if (!stored) return;
+    await this.redis.set(
+      this.tokenKey(jti),
+      JSON.stringify({ ...stored, revoked: true }),
+      'KEEPTTL',
+    );
+    await this.redis.srem(this.userIndexKey(stored.userId), jti);
   }
 
   async revokeAllForUser(userId: string): Promise<void> {

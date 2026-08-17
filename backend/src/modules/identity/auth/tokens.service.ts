@@ -86,7 +86,16 @@ export class TokensService {
     );
   }
 
-  /** Verifies the refresh JWT and that its jti is still active (not rotated/revoked). */
+  /** Verifies the refresh JWT and that its jti is still active (not
+   *  rotated/revoked). A jti that's inactive but tombstoned as
+   *  belonging to this exact user is the textbook signal a refresh
+   *  token was stolen — rotation makes each one single-use, so seeing
+   *  an already-rotated one presented again means someone other than
+   *  whoever legitimately rotated it is also holding it. That's treated
+   *  as a compromise: every session for this user is revoked
+   *  immediately rather than just rejecting this one request, forcing a
+   *  genuine re-login everywhere instead of leaving the thief's
+   *  already-obtained session live. */
   async verifyRefreshToken(
     token: string,
   ): Promise<{ userId: string; jti: string }> {
@@ -102,13 +111,20 @@ export class TokensService {
     const stored = await this.refreshTokenRepository.findActiveByJti(
       payload.jti,
     );
-    if (!stored || stored.userId !== payload.sub) {
-      throw new UnauthorizedException(
-        'Refresh token has been revoked or rotated',
-      );
+    if (stored && stored.userId === payload.sub) {
+      return { userId: payload.sub, jti: payload.jti };
     }
 
-    return { userId: payload.sub, jti: payload.jti };
+    const tombstoned = await this.refreshTokenRepository.findAnyByJti(
+      payload.jti,
+    );
+    if (tombstoned?.revoked && tombstoned.userId === payload.sub) {
+      await this.refreshTokenRepository.revokeAllForUser(payload.sub);
+    }
+
+    throw new UnauthorizedException(
+      'Refresh token has been revoked or rotated',
+    );
   }
 
   /** Rotation: the old jti is revoked and a fresh refresh token issued. */

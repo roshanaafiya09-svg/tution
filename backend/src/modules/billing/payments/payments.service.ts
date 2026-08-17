@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PaymentsRepository } from './payments.repository';
 import { FeesRepository } from '../fees/fees.repository';
 import { ParentLinksRepository } from '../../parents/parent-links.repository';
@@ -54,6 +55,7 @@ export class PaymentsService {
     private readonly parentPremiumService: ParentPremiumService,
     private readonly bookingsService: BookingsService,
     private readonly analytics: AnalyticsService,
+    private readonly config: ConfigService,
     @Inject(PAYMENTS_PROVIDER) private readonly provider: PaymentsProvider,
   ) {}
 
@@ -238,8 +240,15 @@ export class PaymentsService {
   }
 
   /** Dev/test path — see PaymentsProvider.simulateCapture. The real
-   *  provider rejects this; production capture is webhook-driven. */
+   *  provider already rejects this, but that's contingent on Razorpay
+   *  keys actually being configured — this explicit environment check
+   *  is defense-in-depth so a production deploy that's ops-misconfigured
+   *  to be missing those keys (and so silently gets MockPaymentsProvider,
+   *  which always succeeds) still can't have any authenticated user mark
+   *  their own payment "paid" with no money moving. Production capture
+   *  is webhook-driven, full stop. */
   async simulateCapture(user: AccessTokenPayload, paymentId: string) {
+    this.assertNotProduction();
     const payment = await this.repository.findById(paymentId);
     if (!payment) throw new NotFoundException('Payment not found');
     if (payment.payer_id !== user.sub) {
@@ -272,6 +281,17 @@ export class PaymentsService {
         'Provider reported payment.failed',
       );
       return failed ?? (await this.repository.findById(payment.id)) ?? payment;
+    }
+
+    // The signature only proves the payload came from Razorpay, not
+    // that it's the payload for *this* order — cross-check the amount
+    // it reports capturing against what this payment row was actually
+    // created for, so a captured event can never settle a fee/
+    // subscription/booking for a different amount than was charged.
+    if (result.amountMinor !== payment.amount_minor) {
+      throw new BadRequestException(
+        `Webhook amount ${result.amountMinor} does not match payment ${payment.id}'s expected ${payment.amount_minor}`,
+      );
     }
     return this.settleCapture(payment, result.providerPaymentId);
   }
@@ -430,5 +450,13 @@ export class PaymentsService {
       if (link?.status === 'active') return;
     }
     throw new ForbiddenException('You cannot pay this fee');
+  }
+
+  private assertNotProduction(): void {
+    if (this.config.get<string>('app.nodeEnv') === 'production') {
+      throw new BadRequestException(
+        'Payment capture happens via the Razorpay webhook in production, not this endpoint.',
+      );
+    }
   }
 }
