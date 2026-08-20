@@ -6,7 +6,6 @@ import { Users, Search, MoreVertical, UserPlus, CalendarClock, ClipboardCheck, A
 import { api, formatMinor } from '@/lib/api';
 import type { Batch, Curriculum, GradeLevel, Subject, Session, FeeEntry, Enrollment } from '@/lib/types';
 import {
-  EmptyState,
   StatusBadge,
   Button,
   Field,
@@ -22,7 +21,7 @@ import {
   DropdownMenuItem,
   useToast,
 } from '@/components/ui';
-import { TeacherPageHeader, AcademicCard } from '@/components/dashboard';
+import { TeacherPageHeader, AcademicCard, EmptyPanel } from '@/components/dashboard';
 
 function currentPeriod(): string {
   const now = new Date();
@@ -191,8 +190,12 @@ export default function BatchesPage() {
       <TeacherPageHeader
         eyebrow="Your teaching spaces"
         title="Batches"
-        description="Each batch is a group you teach on a schedule."
-        action={<Button onClick={() => setShowForm(!showForm)}>{showForm ? 'Cancel' : 'New batch'}</Button>}
+        description="Each batch is a group you teach on a schedule — students, sessions, attendance, materials and fees all live inside it."
+        action={
+          <Button size="sm" onClick={() => setShowForm(!showForm)}>
+            {showForm ? 'Cancel' : 'New batch'}
+          </Button>
+        }
       />
 
       {showForm && (
@@ -286,27 +289,17 @@ export default function BatchesPage() {
           </div>
         )
       ) : batches.length === 0 ? (
-        <div className="space-y-6">
-          <EmptyState
-            icon={Users}
-            title="No batches yet"
-            description="Create your first batch to organise students, schedules, materials, attendance, and fees in one place."
-            action={
-              <Button size="sm" onClick={() => setShowForm(true)}>
-                + Create your first batch
-              </Button>
-            }
-          />
-          <AcademicCard>
-            <p className="text-sm font-semibold text-neutral-700 dark:text-neutral-200">What happens next?</p>
-            <ol className="mt-3 space-y-2 text-sm text-neutral-500 dark:text-neutral-400">
-              <li>1. Create a batch</li>
-              <li>2. Add students — share the invite link that appears on the batch page</li>
-              <li>3. Set the schedule from the batch&apos;s Sessions tab</li>
-              <li>4. Share the invite link on WhatsApp to bring your students in</li>
-            </ol>
-          </AcademicCard>
-        </div>
+        <EmptyPanel
+          icon={Users}
+          title="Your teaching starts here"
+          description="Create your first batch to organise students, schedules, materials, attendance and fees in one place. Students join with an invite link you share on WhatsApp."
+          steps={['Create batch', 'Add students', 'Schedule classes', 'Start teaching']}
+          action={
+            <Button size="sm" onClick={() => setShowForm(true)}>
+              Create batch
+            </Button>
+          }
+        />
       ) : (
         <>
           {batches.length > 1 && (

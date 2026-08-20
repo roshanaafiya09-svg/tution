@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { MessagesSquare, Search } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { ThreadSummary } from '@/lib/types';
-import { Card, EmptyState, CardSkeleton, ErrorState, Input, Button } from '@/components/ui';
+import { Card, CardSkeleton, ErrorState, Input, Button } from '@/components/ui';
+import { EmptyPanel } from './empty-panel';
 import { cn } from '@/lib/cn';
 
 /** Self-contained conversation list — fetches its own threads so it can be
@@ -69,10 +70,10 @@ export function ConversationList({
       )}
 
       {threads.length === 0 ? (
-        <EmptyState
+        <EmptyPanel
           icon={MessagesSquare}
           title="No conversations yet"
-          description="Open a batch and start a conversation from a student's row in the Students tab."
+          description="Messages with students and their parents are monitored and grouped per batch. Start one from a student's row in a batch."
           action={
             <Link href="/dashboard/batches">
               <Button variant="secondary" size="sm">

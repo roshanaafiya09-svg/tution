@@ -32,7 +32,6 @@ import type {
 } from '@/lib/types';
 import {
   CardTitle,
-  EmptyState,
   StatusBadge,
   Button,
   Field,
@@ -44,7 +43,15 @@ import {
   ErrorState,
   useToast,
 } from '@/components/ui';
-import { TeacherPageHeader, AcademicCard, StudentCard, ResourceCard, TimelineItem } from '@/components/dashboard';
+import {
+  TeacherPageHeader,
+  AcademicCard,
+  EmptyPanel,
+  StudentCard,
+  ResourceCard,
+  TabNav,
+  TimelineItem,
+} from '@/components/dashboard';
 
 type Tab = 'students' | 'sessions' | 'materials' | 'homework' | 'announcements' | 'attendance';
 
@@ -111,22 +118,7 @@ export default function BatchDetailPage() {
         back={{ href: '/dashboard/batches', label: 'All batches' }}
       />
 
-      <div className="mb-6 mt-8 flex gap-1 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => selectTab(t.id)}
-            className={`-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-              tab === t.id
-                ? 'border-brand-600 text-brand-700 dark:border-brand-400 dark:text-brand-200'
-                : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-100'
-            }`}
-          >
-            <t.icon className="h-4 w-4" aria-hidden />
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <TabNav tabs={TABS} value={tab} onChange={selectTab} className="mb-6 mt-6" label="Batch sections" />
 
       {tab === 'students' && <StudentsTab batchId={id} />}
       {tab === 'sessions' && <SessionsTab batchId={id} />}
@@ -217,7 +209,7 @@ function StudentsTab({ batchId }: { batchId: string }) {
       {students === null ? (
         <CardSkeleton />
       ) : students.length === 0 ? (
-        <EmptyState
+        <EmptyPanel
           icon={Users}
           title="No students yet"
           description="Share the invite link above — students appear here as soon as they join."
@@ -379,7 +371,7 @@ function SessionsTab({ batchId }: { batchId: string }) {
       {sessions === null ? (
         <CardSkeleton />
       ) : sessions.length === 0 ? (
-        <EmptyState
+        <EmptyPanel
           icon={CalendarDays}
           title="No sessions scheduled"
           description="Schedule a class — recurring sessions are created in one go."
@@ -446,7 +438,7 @@ function AttendanceTab({ batchId }: { batchId: string }) {
 
   if (rows.length === 0) {
     return (
-      <EmptyState
+      <EmptyPanel
         icon={ClipboardCheck}
         title="No attendance marked yet"
         description="Mark attendance from a session to see history here."
@@ -600,7 +592,7 @@ function MaterialsTab({ batchId }: { batchId: string }) {
       {materials === null ? (
         <CardSkeleton />
       ) : materials.length === 0 ? (
-        <EmptyState
+        <EmptyPanel
           icon={FileText}
           title="No materials yet"
           description="Upload notes, worksheets, or past papers."
@@ -755,7 +747,7 @@ function HomeworkTab({ batchId }: { batchId: string }) {
       {assignments === null ? (
         <CardSkeleton />
       ) : assignments.length === 0 ? (
-        <EmptyState
+        <EmptyPanel
           icon={ClipboardList}
           title="No homework set"
           description="Students are notified as soon as you set it."
@@ -850,7 +842,7 @@ function AnnouncementsTab({ batchId }: { batchId: string }) {
       {announcements === null ? (
         <CardSkeleton />
       ) : announcements.length === 0 ? (
-        <EmptyState
+        <EmptyPanel
           icon={Megaphone}
           title="No announcements"
           description="Anything you send here reaches every student."

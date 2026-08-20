@@ -1,26 +1,27 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { CalendarClock, CalendarOff, X } from 'lucide-react';
+import Link from 'next/link';
+import { CalendarClock, CalendarDays, CalendarOff, Plus, Sun, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AvailabilityRule, AvailabilityException } from '@/lib/types';
 import {
-  EmptyState,
   Button,
-  Field,
-  Input,
-  Select,
-  InlineError,
+  buttonVariants,
   CardSkeleton,
-  ErrorState,
   ConfirmDialog,
-  StatCard,
   Dialog,
   DialogContent,
   DialogFooter,
+  ErrorState,
+  Field,
+  InlineError,
+  Input,
+  Select,
   useToast,
 } from '@/components/ui';
-import { TeacherPageHeader, AcademicCard } from '@/components/dashboard';
+import { TeacherPageHeader, AcademicCard, EmptyPanel, MetricCard, SectionHeader } from '@/components/dashboard';
+import { cn } from '@/lib/cn';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 // Display order for the weekly grid — Monday first, matching how tutors think about a teaching week.
@@ -82,6 +83,11 @@ export default function AvailabilityPage() {
     void load();
   }, [load]);
 
+  function openRuleForm(weekday?: number) {
+    if (weekday !== undefined) setRuleForm((f) => ({ ...f, weekday: String(weekday) }));
+    setShowRuleForm(true);
+  }
+
   async function createRule() {
     setSavingRule(true);
     setError(null);
@@ -135,87 +141,162 @@ export default function AvailabilityPage() {
   }
 
   const totalHours = rules ? rules.reduce((sum, r) => sum + ruleHours(r), 0) : 0;
+  const daysCovered = rules ? new Set(rules.map((r) => r.weekday)).size : 0;
+  const upcomingExceptions = (exceptions ?? []).filter((e) => e.date.slice(0, 10) >= today());
 
   return (
-    <div>
+    <div className="space-y-5">
       <TeacherPageHeader
-        eyebrow="Teaching profile"
+        eyebrow="Teaching"
         title="Availability"
-        description="When you're generally free to teach — batches and sessions should fit inside these windows."
+        description="The hours you're generally willing to teach. Students booking 1:1 sessions can only pick times inside these windows."
+        action={
+          <Button size="sm" onClick={() => openRuleForm()}>
+            <Plus className="h-3.5 w-3.5" aria-hidden />
+            Add window
+          </Button>
+        }
       />
 
-      {error && (
-        <div className="mb-4 mt-8">
-          <InlineError>{error}</InlineError>
-        </div>
-      )}
+      {error && <InlineError>{error}</InlineError>}
 
-      <div className="mt-8">
+      <div className="flex flex-wrap items-start gap-3 rounded-xl border border-brand-200/70 bg-brand-50/40 px-4 py-3 dark:border-brand-500/25 dark:bg-brand-500/[0.07]">
+        <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-brand-600 dark:text-brand-300" aria-hidden />
+        <div className="min-w-0 flex-1 text-sm">
+          <p className="font-medium text-neutral-800 dark:text-neutral-100">
+            General availability, not your actual schedule
+          </p>
+          <p className="mt-0.5 text-neutral-600 dark:text-neutral-300">
+            This page says <em>when you could teach</em>. Real classes and bookings — the ones with students
+            attached — live in the Calendar.
+          </p>
+        </div>
+        <Link href="/dashboard/calendar" className={buttonVariants({ variant: 'secondary', size: 'sm' })}>
+          <CalendarDays className="h-3.5 w-3.5" aria-hidden />
+          Open calendar
+        </Link>
+      </div>
+
       {loadError ? (
-        <ErrorState description="Could not load your availability. Check your connection and try again." onRetry={() => void load()} />
+        <ErrorState
+          description="Could not load your availability. Check your connection and try again."
+          onRetry={() => void load()}
+        />
       ) : rules === null || exceptions === null ? (
-        <div className="space-y-6">
-          <CardSkeleton />
-          <CardSkeleton />
+        <div className="space-y-4">
+          <CardSkeleton className="h-24 rounded-2xl" />
+          <CardSkeleton className="h-48 rounded-2xl" />
         </div>
       ) : (
         <>
-          <div className="mb-6 grid gap-4 sm:grid-cols-3">
-            <StatCard
+          <div className="grid gap-3 sm:grid-cols-3">
+            <MetricCard
               icon={CalendarClock}
-              label="Available this week"
-              value={`${totalHours % 1 === 0 ? totalHours : totalHours.toFixed(1)} hours`}
+              label="Hours per week"
+              value={totalHours % 1 === 0 ? totalHours : totalHours.toFixed(1)}
+              hint={`${rules.length} window${rules.length === 1 ? '' : 's'}`}
+            />
+            <MetricCard
+              icon={Sun}
+              label="Days covered"
+              value={`${daysCovered}/7`}
+              hint={daysCovered === 0 ? 'No days set yet' : 'Weekly pattern'}
+              tone={daysCovered === 0 ? 'warning' : 'brand'}
+            />
+            <MetricCard
+              icon={CalendarOff}
+              label="Upcoming exceptions"
+              value={upcomingExceptions.length}
+              hint="Days off and one-off extra hours"
+              tone="neutral"
             />
           </div>
 
-          <div className="mb-4 flex items-end justify-between gap-4">
-            <div>
-              <p className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-brand-500 dark:text-brand-300">
-                Every week
-              </p>
-              <h2 className="font-display text-xl font-semibold text-neutral-900 dark:text-neutral-50">
-                Weekly schedule
-              </h2>
-            </div>
-            <Button onClick={() => setShowRuleForm(true)}>Add rule</Button>
-          </div>
+          <SectionHeader
+            eyebrow="Every week"
+            title="General availability"
+            className="mb-0 pt-2"
+          />
 
-          <AcademicCard className="mb-8 divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
-            {DISPLAY_ORDER.map((weekday) => {
-              const dayRules = rules.filter((r) => r.weekday === weekday);
-              return (
-                <div key={weekday} className="flex flex-wrap items-center gap-3 px-6 py-3">
-                  <p className="w-24 shrink-0 text-sm font-medium text-neutral-900 dark:text-neutral-50">
-                    {WEEKDAYS[weekday]}
-                  </p>
-                  {dayRules.length === 0 ? (
-                    <p className="text-sm text-neutral-400 dark:text-neutral-500">Unavailable</p>
-                  ) : (
-                    <div className="flex flex-1 flex-wrap gap-2">
-                      {dayRules.map((rule) => (
-                        <span
-                          key={rule.id}
-                          className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 py-1 pl-3 pr-1.5 text-xs font-medium text-brand-700 dark:bg-brand-500/15 dark:text-brand-200"
-                        >
-                          {rule.start_time.slice(0, 5)} – {rule.end_time.slice(0, 5)}
-                          <button
-                            type="button"
-                            onClick={() => setRuleToDelete(rule)}
-                            aria-label={`Remove ${WEEKDAYS[rule.weekday]} ${rule.start_time.slice(0, 5)}–${rule.end_time.slice(0, 5)}`}
-                            className="rounded-full p-0.5 text-brand-500 transition-colors hover:bg-brand-100 hover:text-brand-800 dark:text-brand-300 dark:hover:bg-brand-500/20"
-                          >
-                            <X className="h-3 w-3" aria-hidden />
-                          </button>
+          {rules.length === 0 ? (
+            <EmptyPanel
+              icon={CalendarClock}
+              title="No weekly availability yet"
+              description="Add the time windows you're normally free to teach. Students see these when booking, and your calendar shades them so you can plan around them."
+              steps={['Add a window', 'Repeat weekly', 'Students book inside it', 'Add exceptions as needed']}
+              action={
+                <Button size="sm" onClick={() => openRuleForm()}>
+                  Add your first window
+                </Button>
+              }
+            />
+          ) : (
+            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-7 lg:gap-2">
+              {DISPLAY_ORDER.map((weekday) => {
+                const dayRules = rules
+                  .filter((r) => r.weekday === weekday)
+                  .sort((a, b) => a.start_time.localeCompare(b.start_time));
+                const dayHours = dayRules.reduce((sum, r) => sum + ruleHours(r), 0);
+                return (
+                  <div
+                    key={weekday}
+                    className={cn(
+                      'flex min-h-[8rem] flex-col rounded-xl border p-3 transition-colors',
+                      dayRules.length > 0
+                        ? 'border-neutral-200/70 bg-white dark:border-neutral-800/80 dark:bg-surface'
+                        : 'border-dashed border-neutral-200 bg-neutral-50/60 dark:border-neutral-800 dark:bg-neutral-900/40',
+                    )}
+                  >
+                    <p className="flex items-baseline justify-between gap-2">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-500 dark:text-neutral-400">
+                        <span className="lg:hidden">{WEEKDAYS[weekday]}</span>
+                        <span className="hidden lg:inline">{WEEKDAYS[weekday].slice(0, 3)}</span>
+                      </span>
+                      {dayHours > 0 && (
+                        <span className="text-[11px] tabular-nums text-neutral-400 dark:text-neutral-500">
+                          {dayHours % 1 === 0 ? dayHours : dayHours.toFixed(1)}h
                         </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </AcademicCard>
+                      )}
+                    </p>
 
-          <div className="mb-4 flex items-end justify-between gap-4">
+                    <div className="mt-2 flex flex-1 flex-wrap content-start gap-1.5">
+                      {dayRules.length === 0 ? (
+                        <span className="text-xs text-neutral-400 dark:text-neutral-500">Unavailable</span>
+                      ) : (
+                        dayRules.map((rule) => (
+                          <span
+                            key={rule.id}
+                            className="inline-flex items-center gap-1 rounded-md bg-brand-50 py-1 pl-2 pr-1 text-[11px] font-medium tabular-nums text-brand-700 dark:bg-brand-500/15 dark:text-brand-200"
+                          >
+                            {rule.start_time.slice(0, 5)}–{rule.end_time.slice(0, 5)}
+                            <button
+                              type="button"
+                              onClick={() => setRuleToDelete(rule)}
+                              aria-label={`Remove ${WEEKDAYS[rule.weekday]} ${rule.start_time.slice(0, 5)}–${rule.end_time.slice(0, 5)}`}
+                              className="rounded p-0.5 text-brand-500 transition-colors hover:bg-brand-100 hover:text-brand-800 dark:text-brand-300 dark:hover:bg-brand-500/25"
+                            >
+                              <X className="h-3 w-3" aria-hidden />
+                            </button>
+                          </span>
+                        ))
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => openRuleForm(weekday)}
+                      className="mt-2 flex items-center gap-1 text-[11px] font-medium text-neutral-400 transition-colors hover:text-brand-600 dark:text-neutral-500 dark:hover:text-brand-300"
+                    >
+                      <Plus className="h-3 w-3" aria-hidden />
+                      Add
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-end justify-between gap-3 pt-3">
             <div>
               <p className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-brand-500 dark:text-brand-300">
                 One-off changes
@@ -224,57 +305,84 @@ export default function AvailabilityPage() {
                 Exceptions
               </h2>
             </div>
-            <Button onClick={() => setShowExceptionForm(true)}>Add exception</Button>
+            <Button variant="secondary" size="sm" onClick={() => setShowExceptionForm(true)}>
+              <Plus className="h-3.5 w-3.5" aria-hidden />
+              Add exception
+            </Button>
           </div>
 
           {exceptions.length === 0 ? (
-            <EmptyState
+            <EmptyPanel
               icon={CalendarOff}
               title="No exceptions"
-              description="Days off or extra availability will show up here."
+              description="Holidays, days off, or extra hours you're adding just once override your weekly pattern for that date."
+              action={
+                <Button variant="secondary" size="sm" onClick={() => setShowExceptionForm(true)}>
+                  Add an exception
+                </Button>
+              }
             />
           ) : (
-            <AcademicCard className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
-              {exceptions.map((exception) => (
-                <div key={exception.id} className="flex items-center justify-between px-6 py-3">
-                  <div>
-                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
-                      {new Date(exception.date).toLocaleDateString('en-IN', {
-                        weekday: 'short',
-                        day: 'numeric',
-                        month: 'short',
-                      })}
-                    </p>
-                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                      {exception.is_available
-                        ? `Available ${exception.start_time?.slice(0, 5)}–${exception.end_time?.slice(0, 5)}`
-                        : 'Day off'}
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setExceptionToDelete(exception)}
-                    aria-label="Remove exception"
-                  >
-                    <X className="h-4 w-4" aria-hidden />
-                  </Button>
-                </div>
-              ))}
+            <AcademicCard className="p-0">
+              <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                {exceptions.map((exception) => (
+                  <li key={exception.id} className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span
+                        className={cn(
+                          'flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
+                          exception.is_available
+                            ? 'bg-success-bg text-success dark:bg-success/15 dark:text-success-dark'
+                            : 'bg-neutral-100 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-500',
+                        )}
+                        aria-hidden
+                      >
+                        {exception.is_available ? (
+                          <Sun className="h-4 w-4" />
+                        ) : (
+                          <CalendarOff className="h-4 w-4" />
+                        )}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                          {new Date(exception.date).toLocaleDateString('en-IN', {
+                            weekday: 'short',
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })}
+                        </p>
+                        <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
+                          {exception.is_available
+                            ? `Extra availability ${exception.start_time?.slice(0, 5) ?? ''}–${exception.end_time?.slice(0, 5) ?? ''}`
+                            : 'Day off — no bookings taken'}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setExceptionToDelete(exception)}
+                      aria-label="Remove exception"
+                    >
+                      <X className="h-4 w-4" aria-hidden />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
             </AcademicCard>
           )}
         </>
       )}
-      </div>
 
       <Dialog open={showRuleForm} onOpenChange={setShowRuleForm}>
-        <DialogContent title="Add a weekly rule" description="This time window repeats every week until you remove it.">
+        <DialogContent
+          title="Add a weekly window"
+          description="This time window repeats every week until you remove it."
+        >
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Day">
-              <Select
-                value={ruleForm.weekday}
-                onChange={(e) => setRuleForm({ ...ruleForm, weekday: e.target.value })}
-              >
+              <Select value={ruleForm.weekday} onChange={(e) => setRuleForm({ ...ruleForm, weekday: e.target.value })}>
                 {WEEKDAYS.map((day, i) => (
                   <option key={day} value={i}>
                     {day}
@@ -309,14 +417,17 @@ export default function AvailabilityPage() {
               Cancel
             </Button>
             <Button onClick={() => void createRule()} disabled={savingRule} loading={savingRule}>
-              {savingRule ? 'Saving…' : 'Save rule'}
+              {savingRule ? 'Saving…' : 'Save window'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={showExceptionForm} onOpenChange={setShowExceptionForm}>
-        <DialogContent title="Add an exception" description="A one-off change to your usual schedule — a holiday, a single unavailable date, or extra hours you're adding just once.">
+        <DialogContent
+          title="Add an exception"
+          description="A one-off change to your usual week — a holiday, a single unavailable date, or extra hours you're adding just once."
+        >
           <div className="grid gap-3 sm:grid-cols-2 sm:items-end">
             <Field label="Date">
               <Input
@@ -328,9 +439,7 @@ export default function AvailabilityPage() {
             <Field label="Type">
               <Select
                 value={exceptionForm.isAvailable ? 'available' : 'off'}
-                onChange={(e) =>
-                  setExceptionForm({ ...exceptionForm, isAvailable: e.target.value === 'available' })
-                }
+                onChange={(e) => setExceptionForm({ ...exceptionForm, isAvailable: e.target.value === 'available' })}
               >
                 <option value="off">Day off — e.g. a holiday</option>
                 <option value="available">Extra availability — e.g. one-off extra hours</option>
@@ -370,7 +479,7 @@ export default function AvailabilityPage() {
         open={ruleToDelete !== null}
         onOpenChange={(open) => !open && setRuleToDelete(null)}
         onConfirm={() => (ruleToDelete ? deleteRule(ruleToDelete.id) : Promise.resolve())}
-        title="Remove this availability rule?"
+        title="Remove this availability window?"
         description={
           ruleToDelete
             ? `You'll no longer be marked as generally free on ${WEEKDAYS[ruleToDelete.weekday]}s ${ruleToDelete.start_time.slice(0, 5)}–${ruleToDelete.end_time.slice(0, 5)}. This won't affect batches or sessions already scheduled.`

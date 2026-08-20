@@ -6,7 +6,6 @@ import { api, formatMinor } from '@/lib/api';
 import { payForOrder } from '@/lib/razorpay';
 import type { PaymentOrder, Payout, SubscriptionPlan, SubscriptionRecap } from '@/lib/types';
 import {
-  EmptyState,
   StatusBadge,
   Button,
   InlineError,
@@ -16,7 +15,7 @@ import {
   ConfirmDialog,
   useToast,
 } from '@/components/ui';
-import { TeacherPageHeader, AcademicCard, SectionHeader } from '@/components/dashboard';
+import { TeacherPageHeader, AcademicCard, EmptyPanel, SectionHeader } from '@/components/dashboard';
 
 export default function BillingPage() {
   const toast = useToast();
@@ -186,7 +185,7 @@ export default function BillingPage() {
 
           <SectionHeader title="Payouts" />
           {payouts === null || payouts.length === 0 ? (
-            <EmptyState
+            <EmptyPanel
               icon={Landmark}
               title="No payouts yet"
               description="Payouts appear here once students pay fees online and a payout run settles them to you."

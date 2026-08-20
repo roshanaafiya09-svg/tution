@@ -16,5 +16,17 @@ export { SessionCard } from './session-card';
 export { StudentCard } from './student-card';
 export { ProgressRing } from './progress-ring';
 export { TeacherEmptyState } from './teacher-empty-state';
+export { EmptyPanel } from './empty-panel';
+export { TabNav, type TabItem } from './tab-nav';
+export { MetricCard } from './metric-card';
+export { CompletenessCard, type CompletenessItem } from './completeness-card';
 export { OnboardingChecklist } from './onboarding-checklist';
 export { ConversationList } from './conversation-list';
+export {
+  TEACHER_NAV,
+  TEACHER_NAV_FOOTER,
+  isNavItemActive,
+  teacherPageTitle,
+  type TeacherNavItem,
+  type TeacherNavGroup,
+} from './teacher-nav';

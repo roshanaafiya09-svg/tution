@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Paperclip, ExternalLink } from 'lucide-react';
 import { api } from '@/lib/api';
-import { EmptyState, StatusBadge, Button, Field, Input, PageLoading } from '@/components/ui';
-import { TeacherPageHeader, AcademicCard } from '@/components/dashboard';
+import { StatusBadge, Button, Field, Input, PageLoading } from '@/components/ui';
+import { TeacherPageHeader, AcademicCard, EmptyPanel } from '@/components/dashboard';
 
 interface Submission {
   id: string;
@@ -68,7 +68,7 @@ export default function AssignmentSubmissionsPage() {
       {submissions === null ? (
         <PageLoading />
       ) : submissions.length === 0 ? (
-        <EmptyState
+        <EmptyPanel
           icon={Paperclip}
           title="No submissions yet"
           description="Submissions appear here as students upload their work."

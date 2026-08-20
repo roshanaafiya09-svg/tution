@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Download, Trash2, Check, AlertTriangle } from 'lucide-react';
 import { api, tokenStore } from '@/lib/api';
 import type { TutorProfile } from '@/lib/types';
@@ -116,9 +117,23 @@ export default function ProfilePage() {
 
   return (
     <div>
-      <TeacherPageHeader eyebrow="Account" title="Profile" description="This is what parents and students see." />
+      <TeacherPageHeader
+        eyebrow="Account"
+        title="Account"
+        description="Your name and basic details, plus your data export and account deletion controls."
+      />
 
       <div className="mt-8">
+        <p className="mb-4 text-sm text-neutral-500 dark:text-neutral-400">
+          Your full public listing — photo, qualifications, teaching mode, and methodology — lives on your{' '}
+          <Link
+            href="/dashboard/teacher-profile"
+            className="font-medium text-brand-600 hover:underline dark:text-brand-300"
+          >
+            Teacher Profile
+          </Link>
+          .
+        </p>
       {loadError ? (
         <ErrorState description="Could not load your profile. Check your connection and try again." onRetry={load} />
       ) : profile === undefined ? (

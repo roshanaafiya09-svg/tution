@@ -5,8 +5,8 @@ import { useParams } from 'next/navigation';
 import { UserCheck } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AttendanceRow } from '@/lib/types';
-import { EmptyState, StatusBadge, Button, CardSkeleton, ErrorState, useToast } from '@/components/ui';
-import { TeacherPageHeader, AcademicCard, StudentCard } from '@/components/dashboard';
+import { StatusBadge, Button, CardSkeleton, ErrorState, useToast } from '@/components/ui';
+import { TeacherPageHeader, AcademicCard, EmptyPanel, StudentCard } from '@/components/dashboard';
 
 const STATUSES = ['present', 'late', 'absent'] as const;
 
@@ -49,7 +49,7 @@ export default function SessionAttendancePage() {
         ) : rows === null ? (
           <CardSkeleton />
         ) : rows.length === 0 ? (
-          <EmptyState
+          <EmptyPanel
             icon={UserCheck}
             title="No attendance recorded yet"
             description="Attendance appears here as students join the class."
