@@ -1,11 +1,13 @@
 import { Type } from 'class-transformer';
 import {
+  IsEmail,
   IsIn,
   IsInt,
   IsLatitude,
   IsLongitude,
   IsOptional,
   IsString,
+  IsUrl,
   Max,
   MaxLength,
   Min,
@@ -77,4 +79,19 @@ export class UpsertAcademyDto {
   @Type(() => Number)
   @IsLongitude()
   lng?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  contactPhone?: string;
+
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(200)
+  contactEmail?: string;
+
+  @IsOptional()
+  @IsUrl()
+  @MaxLength(300)
+  websiteUrl?: string;
 }

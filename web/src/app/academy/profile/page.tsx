@@ -1,12 +1,25 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { MapPin, Pencil } from 'lucide-react';
+import { Globe, Mail, MapPin, Pencil, Phone } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { AcademyOwnerProfile, TeachingMode } from '@/lib/types';
-import { Button, CardSkeleton, ErrorState, Field, InlineError, Input, Select, StatusBadge, Textarea, useToast } from '@/components/ui';
-import { AcademyCard, AcademyPageIntro } from '@/components/academy';
+import type { AcademyAcademicInfo, AcademyOwnerProfile, TeachingMode } from '@/lib/types';
+import {
+  Badge,
+  Button,
+  CardSkeleton,
+  ErrorState,
+  Field,
+  InlineError,
+  Input,
+  Select,
+  StatusBadge,
+  Textarea,
+  useToast,
+} from '@/components/ui';
+import { AcademyCard, AcademyPageIntro, AcademySectionHeader } from '@/components/academy';
 import { academyInitials } from '@/lib/academies';
+import { useAcademyDashboard } from '@/components/academy-shell';
 
 interface FormState {
   name: string;
@@ -21,6 +34,9 @@ interface FormState {
   areaLabel: string;
   lat: string;
   lng: string;
+  contactPhone: string;
+  contactEmail: string;
+  websiteUrl: string;
 }
 
 const EMPTY_FORM: FormState = {
@@ -36,6 +52,9 @@ const EMPTY_FORM: FormState = {
   areaLabel: '',
   lat: '',
   lng: '',
+  contactPhone: '',
+  contactEmail: '',
+  websiteUrl: '',
 };
 
 function toForm(profile: AcademyOwnerProfile): FormState {
@@ -52,7 +71,28 @@ function toForm(profile: AcademyOwnerProfile): FormState {
     areaLabel: profile.location?.areaLabel ?? '',
     lat: profile.location?.lat != null ? String(profile.location.lat) : '',
     lng: profile.location?.lng != null ? String(profile.location.lng) : '',
+    contactPhone: profile.contactPhone ?? '',
+    contactEmail: profile.contactEmail ?? '',
+    websiteUrl: profile.websiteUrl ?? '',
   };
+}
+
+/** Fields that count toward "Academy Profile — NN% complete" — purely a
+ *  frontend nudge, no backend field for it. Logo/cover are checked
+ *  separately from the rest since they're uploaded, not typed. */
+function completionPercent(profile: AcademyOwnerProfile): number {
+  const checks = [
+    !!profile.name,
+    !!profile.tagline,
+    !!profile.description,
+    !!profile.logoUrl,
+    !!profile.coverUrl,
+    !!profile.location,
+    !!profile.contactPhone || !!profile.contactEmail,
+    !!profile.teachingMode,
+  ];
+  const complete = checks.filter(Boolean).length;
+  return Math.round((complete / checks.length) * 100);
 }
 
 const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -60,7 +100,9 @@ const MAX_IMAGE_MB = 5;
 
 export default function AcademyProfilePage() {
   const toast = useToast();
+  const { hasAcademy, markAcademyCreated } = useAcademyDashboard();
   const [profile, setProfile] = useState<AcademyOwnerProfile | null | undefined>(undefined);
+  const [academicInfo, setAcademicInfo] = useState<AcademyAcademicInfo | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -70,14 +112,19 @@ export default function AcademyProfilePage() {
   const [uploadingCover, setUploadingCover] = useState(false);
 
   const load = useCallback(async () => {
+    if (hasAcademy === false) return;
     setLoadError(false);
     try {
-      const res = await api.get<AcademyOwnerProfile>('/academy/me');
+      const [res, academicRes] = await Promise.all([
+        api.get<AcademyOwnerProfile>('/academy/me'),
+        api.get<AcademyAcademicInfo>('/academy/me/academic-info').catch(() => null),
+      ]);
       setProfile(res);
+      setAcademicInfo(academicRes);
     } catch {
       setLoadError(true);
     }
-  }, []);
+  }, [hasAcademy]);
 
   useEffect(() => {
     void load();
@@ -106,6 +153,9 @@ export default function AcademyProfilePage() {
         areaLabel: form.areaLabel || undefined,
         lat: form.lat ? Number(form.lat) : undefined,
         lng: form.lng ? Number(form.lng) : undefined,
+        contactPhone: form.contactPhone || undefined,
+        contactEmail: form.contactEmail || undefined,
+        websiteUrl: form.websiteUrl || undefined,
       });
       await load();
       setEditing(false);
@@ -144,6 +194,17 @@ export default function AcademyProfilePage() {
     }
   }
 
+  if (hasAcademy === false) {
+    return (
+      <CreateAcademyCard
+        onCreated={() => {
+          markAcademyCreated();
+          void load();
+        }}
+      />
+    );
+  }
+
   if (loadError) {
     return (
       <ErrorState
@@ -162,12 +223,14 @@ export default function AcademyProfilePage() {
     );
   }
 
+  const percentComplete = profile ? completionPercent(profile) : 0;
+
   return (
     <div>
       <AcademyPageIntro
         eyebrow="Academy Dashboard"
         title="Academy Profile"
-        description="This is what teachers and families see on Find an Academy."
+        description={`This is what teachers and families see on Find an Academy. ${percentComplete}% complete.`}
         action={
           !editing && profile ? (
             <Button variant="secondary" size="sm" onClick={startEditing}>
@@ -177,6 +240,20 @@ export default function AcademyProfilePage() {
           ) : undefined
         }
       />
+
+      {profile && !editing && (
+        <div className="mt-4 h-1.5 max-w-md overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
+          <div
+            className="h-full rounded-full bg-brand-500 transition-all dark:bg-brand-400"
+            style={{ width: `${percentComplete}%` }}
+            role="progressbar"
+            aria-valuenow={percentComplete}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Academy profile completeness"
+          />
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 mt-8">
@@ -240,6 +317,9 @@ export default function AcademyProfilePage() {
               </div>
             </div>
 
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">
+              Basic information
+            </p>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Academy name" required>
                 <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -287,6 +367,12 @@ export default function AcademyProfilePage() {
                   <Textarea value={form.certifications} onChange={(e) => setForm({ ...form, certifications: e.target.value })} rows={2} />
                 </Field>
               </div>
+            </div>
+
+            <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">
+              Location
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
               <Field label="City">
                 <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
               </Field>
@@ -301,6 +387,23 @@ export default function AcademyProfilePage() {
               </Field>
             </div>
 
+            <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">
+              Contact information
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Phone">
+                <Input value={form.contactPhone} onChange={(e) => setForm({ ...form, contactPhone: e.target.value })} placeholder="+91 98765 43210" />
+              </Field>
+              <Field label="Email">
+                <Input type="email" value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} placeholder="hello@youracademy.com" />
+              </Field>
+              <div className="sm:col-span-2">
+                <Field label="Website" hint="Include https://">
+                  <Input value={form.websiteUrl} onChange={(e) => setForm({ ...form, websiteUrl: e.target.value })} placeholder="https://youracademy.com" />
+                </Field>
+              </div>
+            </div>
+
             <div className="mt-5 flex gap-2">
               <Button onClick={() => void save()} disabled={saving || !form.name} loading={saving}>
                 {saving ? 'Saving…' : 'Save profile'}
@@ -311,49 +414,162 @@ export default function AcademyProfilePage() {
             </div>
           </AcademyCard>
         ) : (
-          <AcademyCard>
-            <div className="flex flex-wrap items-start gap-5">
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-50 font-display text-xl font-semibold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
-                {profile.logoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={profile.logoUrl} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  academyInitials(profile.name)
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-display text-2xl font-semibold text-neutral-900 dark:text-neutral-50">{profile.name}</p>
-                  <StatusBadge status={profile.verificationStatus} />
+          <>
+            <AcademyCard>
+              <div className="flex flex-wrap items-start gap-5">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-50 font-display text-xl font-semibold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
+                  {profile.logoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={profile.logoUrl} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    academyInitials(profile.name)
+                  )}
                 </div>
-                {profile.tagline && <p className="mt-1 text-neutral-600 dark:text-neutral-400">{profile.tagline}</p>}
-                {profile.location && (
-                  <p className="mt-1.5 flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-500">
-                    <MapPin className="h-3.5 w-3.5" aria-hidden />
-                    {profile.location.areaLabel ? `${profile.location.areaLabel}, ` : ''}
-                    {profile.location.city}
-                  </p>
-                )}
-              </div>
-            </div>
-            {profile.description && (
-              <p className="mt-6 whitespace-pre-line leading-relaxed text-neutral-700 dark:text-neutral-300">{profile.description}</p>
-            )}
-            {[
-              ['Teaching methodology', profile.methodology],
-              ['Achievements', profile.achievements],
-              ['Certifications', profile.certifications],
-            ]
-              .filter(([, value]) => value)
-              .map(([label, value]) => (
-                <div key={label} className="mt-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">{label}</p>
-                  <p className="mt-1 whitespace-pre-line text-sm text-neutral-700 dark:text-neutral-300">{value}</p>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-display text-2xl font-semibold text-neutral-900 dark:text-neutral-50">{profile.name}</p>
+                    <StatusBadge status={profile.verificationStatus} />
+                  </div>
+                  {profile.tagline && <p className="mt-1 text-neutral-600 dark:text-neutral-400">{profile.tagline}</p>}
+                  {profile.location && (
+                    <p className="mt-1.5 flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-500">
+                      <MapPin className="h-3.5 w-3.5" aria-hidden />
+                      {profile.location.areaLabel ? `${profile.location.areaLabel}, ` : ''}
+                      {profile.location.city}
+                    </p>
+                  )}
                 </div>
-              ))}
-          </AcademyCard>
+              </div>
+              {profile.description && (
+                <p className="mt-6 whitespace-pre-line leading-relaxed text-neutral-700 dark:text-neutral-300">{profile.description}</p>
+              )}
+              {[
+                ['Teaching methodology', profile.methodology],
+                ['Achievements', profile.achievements],
+                ['Certifications', profile.certifications],
+              ]
+                .filter(([, value]) => value)
+                .map(([label, value]) => (
+                  <div key={label} className="mt-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">{label}</p>
+                    <p className="mt-1 whitespace-pre-line text-sm text-neutral-700 dark:text-neutral-300">{value}</p>
+                  </div>
+                ))}
+
+              {(profile.contactPhone || profile.contactEmail || profile.websiteUrl) && (
+                <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 border-t border-neutral-100 pt-4 text-sm dark:border-neutral-800">
+                  {profile.contactPhone && (
+                    <span className="flex items-center gap-1.5 text-neutral-600 dark:text-neutral-400">
+                      <Phone className="h-3.5 w-3.5 text-neutral-400" aria-hidden />
+                      {profile.contactPhone}
+                    </span>
+                  )}
+                  {profile.contactEmail && (
+                    <span className="flex items-center gap-1.5 text-neutral-600 dark:text-neutral-400">
+                      <Mail className="h-3.5 w-3.5 text-neutral-400" aria-hidden />
+                      {profile.contactEmail}
+                    </span>
+                  )}
+                  {profile.websiteUrl && (
+                    <a
+                      href={profile.websiteUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-1.5 text-brand-600 hover:underline dark:text-brand-300"
+                    >
+                      <Globe className="h-3.5 w-3.5" aria-hidden />
+                      {profile.websiteUrl.replace(/^https?:\/\//, '')}
+                    </a>
+                  )}
+                </div>
+              )}
+            </AcademyCard>
+
+            <AcademySectionHeader title="Academic Information" className="mt-8" />
+            <AcademyCard>
+              <p className="mb-3 text-xs text-neutral-400 dark:text-neutral-500">
+                Derived from what your active teachers currently teach — add subjects from each teacher&apos;s own profile.
+              </p>
+              {!academicInfo || academicInfo.subjects.length === 0 ? (
+                <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                  No subjects yet — once your teachers add subjects to their own profiles, they&apos;ll show up here.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {academicInfo.subjects.map((s) => (
+                    <Badge key={s.subjectId} variant="neutral">
+                      {s.name} · Grades {s.gradeMin}–{s.gradeMax}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </AcademyCard>
+          </>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Self-serve signup's bootstrap step (see login-form.tsx's 'academy'-role
+ *  signup and AcademyShell) — a fresh `academy`-role account has no
+ *  `academies` row yet. This is the only place in the Academy Dashboard
+ *  that ever renders the creation form — every other page shows
+ *  `AcademySetupRequired` instead (see academy-shell.tsx). Posts straight
+ *  to POST /academy/me (AcademyOwnerService.createMyAcademy) — everything
+ *  else about the academy (description, subjects, location, photos...)
+ *  is filled in afterward, right here on this page. */
+function CreateAcademyCard({ onCreated }: { onCreated: () => void }) {
+  const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    setError(null);
+    setSaving(true);
+    try {
+      await api.post('/academy/me', { name: name.trim() });
+      onCreated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create your academy.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div>
+      <AcademyPageIntro
+        eyebrow="Academy Dashboard"
+        title="Set up your academy"
+        description="Give your academy a name to get started — you can add a description, subjects, location, and photos afterward, right here."
+      />
+      <AcademyCard className="mt-8 max-w-md p-7">
+        <Field label="Academy name" required>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Bright Future Academy"
+            autoFocus
+            maxLength={200}
+          />
+        </Field>
+
+        {error && (
+          <div className="mt-3">
+            <InlineError>{error}</InlineError>
+          </div>
+        )}
+
+        <Button
+          className="mt-5 w-full sm:w-auto"
+          onClick={() => void submit()}
+          disabled={saving || !name.trim()}
+          loading={saving}
+        >
+          {saving ? 'Creating…' : 'Create Academy Profile'}
+        </Button>
+      </AcademyCard>
     </div>
   );
 }

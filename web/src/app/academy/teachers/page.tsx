@@ -5,9 +5,10 @@ import { UserMinus, UserCheck, UserX, Users } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AcademyActiveTeacher, AcademyPendingRequest, AcademyRemovedTeacher } from '@/lib/types';
 import { Button, CardSkeleton, ConfirmDialog, EmptyState, ErrorState, StatusBadge, useToast } from '@/components/ui';
-import { AcademyCard, AcademyPageIntro } from '@/components/academy';
+import { AcademyCard, AcademyPageIntro, AcademySetupRequired } from '@/components/academy';
 import { academyInitials } from '@/lib/academies';
 import { cn } from '@/lib/cn';
+import { useAcademyDashboard } from '@/components/academy-shell';
 
 type Tab = 'active' | 'pending' | 'removed';
 
@@ -19,6 +20,7 @@ const TABS: { key: Tab; label: string }[] = [
 
 export default function AcademyTeachersPage() {
   const toast = useToast();
+  const { hasAcademy } = useAcademyDashboard();
   const [tab, setTab] = useState<Tab>('active');
   const [active, setActive] = useState<AcademyActiveTeacher[] | null>(null);
   const [pending, setPending] = useState<AcademyPendingRequest[] | null>(null);
@@ -29,6 +31,7 @@ export default function AcademyTeachersPage() {
   >(null);
 
   const load = useCallback(async () => {
+    if (hasAcademy === false) return;
     setLoadError(false);
     try {
       const [activeRes, pendingRes, removedRes] = await Promise.all([
@@ -42,7 +45,7 @@ export default function AcademyTeachersPage() {
     } catch {
       setLoadError(true);
     }
-  }, []);
+  }, [hasAcademy]);
 
   useEffect(() => {
     void load();
@@ -61,6 +64,17 @@ export default function AcademyTeachersPage() {
       toast({ title: `${confirmTarget.name} removed from your academy`, variant: 'success' });
     }
     await load();
+  }
+
+  if (hasAcademy === false) {
+    return (
+      <div>
+        <AcademyPageIntro eyebrow="Academy Dashboard" title="Teachers" description="Manage teacher membership requests and your active roster." />
+        <div className="mt-8">
+          <AcademySetupRequired pageLabel="Teacher management" />
+        </div>
+      </div>
+    );
   }
 
   if (loadError) {

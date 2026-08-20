@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { BatchesRepository } from './batches.repository';
 import type { CreateBatchDto } from './dto/create-batch.dto';
+import type { UpdateBatchDto } from './dto/update-batch.dto';
 import { AnalyticsService } from '../../analytics/analytics.service';
 
 @Injectable()
@@ -53,6 +54,11 @@ export class BatchesService {
   async archive(tutorId: string, batchId: string) {
     await this.getOwnedBatch(tutorId, batchId);
     return this.repository.archive(batchId);
+  }
+
+  async update(tutorId: string, batchId: string, dto: UpdateBatchDto) {
+    await this.getOwnedBatch(tutorId, batchId);
+    return this.repository.update(batchId, dto);
   }
 
   async listEnrollments(tutorId: string, batchId: string) {

@@ -6,6 +6,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../identity/auth/guards/jwt-auth.guard';
@@ -14,8 +15,10 @@ import { Roles } from '../../identity/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../identity/auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
 import { AcademyOwnerService } from './academy-owner.service';
+import { AcademyOwnerBatchesService } from './academy-owner-batches.service';
 import { UpsertAcademyDto } from '../academies/dto/upsert-academy.dto';
 import { AcademyImageUploadUrlDto } from '../academies/dto/academy-image-upload-url.dto';
+import { ReorderAcademyPhotosDto } from '../academies/dto/reorder-academy-photos.dto';
 
 /**
  * Self-serve Academy Dashboard — class-level guard mirrors
@@ -28,7 +31,38 @@ import { AcademyImageUploadUrlDto } from '../academies/dto/academy-image-upload-
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('academy')
 export class AcademyOwnerController {
-  constructor(private readonly academyOwnerService: AcademyOwnerService) {}
+  constructor(
+    private readonly academyOwnerService: AcademyOwnerService,
+    private readonly academyOwnerBatchesService: AcademyOwnerBatchesService,
+  ) {}
+
+  /** Every student currently enrolled across the academy's active
+   *  teachers' batches — Classes -> Students, not a top-level nav item
+   *  per the spec (students belong under Classes, not their own section). */
+  @Get('me/students')
+  listStudents(@CurrentUser() user: AccessTokenPayload) {
+    return this.academyOwnerBatchesService.listStudentsAcrossAcademy(user.sub);
+  }
+
+  /** Powers Today's "Classes happening today"/"Upcoming Classes" — a
+   *  window of sessions across every active member tutor. Defaults to a
+   *  14-day-ahead window, same default as the tutor-facing /sessions/me. */
+  @Get('me/sessions')
+  listSessions(
+    @CurrentUser() user: AccessTokenPayload,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const start = from ? new Date(from) : new Date();
+    const end = to
+      ? new Date(to)
+      : new Date(start.getTime() + 14 * 24 * 60 * 60 * 1000);
+    return this.academyOwnerBatchesService.listSessionsAcrossAcademy(
+      user.sub,
+      start,
+      end,
+    );
+  }
 
   @Get('me')
   getMe(@CurrentUser() user: AccessTokenPayload) {
@@ -48,6 +82,11 @@ export class AcademyOwnerController {
   @Get('me/stats')
   getStats(@CurrentUser() user: AccessTokenPayload) {
     return this.academyOwnerService.getStats(user.sub);
+  }
+
+  @Get('me/academic-info')
+  getAcademicInfo(@CurrentUser() user: AccessTokenPayload) {
+    return this.academyOwnerService.getAcademicInfo(user.sub);
   }
 
   @Put('me/profile')
@@ -93,6 +132,14 @@ export class AcademyOwnerController {
     @Param('photoId') photoId: string,
   ) {
     return this.academyOwnerService.removePhoto(user.sub, photoId);
+  }
+
+  @Put('me/photos/order')
+  reorderPhotos(
+    @CurrentUser() user: AccessTokenPayload,
+    @Body() dto: ReorderAcademyPhotosDto,
+  ) {
+    return this.academyOwnerService.reorderPhotos(user.sub, dto.photoIds);
   }
 
   @Get('me/teachers/active')

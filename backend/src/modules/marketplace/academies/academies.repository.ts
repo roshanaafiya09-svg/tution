@@ -13,6 +13,9 @@ export interface UpsertAcademyInput {
   achievements?: string | null;
   certifications?: string | null;
   teachingMode?: 'online' | 'offline' | 'both' | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
+  websiteUrl?: string | null;
 }
 
 export interface AcademyOfferingSearchFilters {
@@ -91,6 +94,9 @@ export class AcademiesRepository {
         achievements: input.achievements ?? null,
         certifications: input.certifications ?? null,
         teaching_mode: input.teachingMode ?? null,
+        contact_phone: input.contactPhone ?? null,
+        contact_email: input.contactEmail ?? null,
+        website_url: input.websiteUrl ?? null,
       })
       .returningAll()
       .executeTakeFirstOrThrow();
@@ -108,6 +114,9 @@ export class AcademiesRepository {
         achievements: input.achievements ?? null,
         certifications: input.certifications ?? null,
         teaching_mode: input.teachingMode ?? null,
+        contact_phone: input.contactPhone ?? null,
+        contact_email: input.contactEmail ?? null,
+        website_url: input.websiteUrl ?? null,
       })
       .where('id', '=', id)
       .returningAll()

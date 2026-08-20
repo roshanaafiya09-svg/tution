@@ -1,30 +1,33 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Images, Trash2, Upload } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Images, Star, Trash2, Upload } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AcademyPhoto } from '@/lib/types';
 import { CardSkeleton, ConfirmDialog, EmptyState, ErrorState, useToast } from '@/components/ui';
-import { AcademyPageIntro } from '@/components/academy';
+import { AcademyPageIntro, AcademySetupRequired } from '@/components/academy';
+import { useAcademyDashboard } from '@/components/academy-shell';
 
 const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_IMAGE_MB = 5;
 
 export default function AcademyPhotosPage() {
   const toast = useToast();
+  const { hasAcademy } = useAcademyDashboard();
   const [photos, setPhotos] = useState<AcademyPhoto[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<AcademyPhoto | null>(null);
 
   const load = useCallback(async () => {
+    if (hasAcademy === false) return;
     setLoadError(false);
     try {
       setPhotos(await api.get<AcademyPhoto[]>('/academy/me/photos'));
     } catch {
       setLoadError(true);
     }
-  }, []);
+  }, [hasAcademy]);
 
   useEffect(() => {
     void load();
@@ -63,6 +66,21 @@ export default function AcademyPhotosPage() {
     toast({ title: 'Photo removed', variant: 'success' });
   }
 
+  async function move(index: number, direction: -1 | 1) {
+    if (!photos) return;
+    const target = index + direction;
+    if (target < 0 || target >= photos.length) return;
+    const reordered = [...photos];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    setPhotos(reordered);
+    try {
+      await api.put('/academy/me/photos/order', { photoIds: reordered.map((p) => p.id) });
+    } catch {
+      toast({ title: 'Could not reorder photos. Try again.', variant: 'error' });
+      await load();
+    }
+  }
+
   return (
     <div>
       <AcademyPageIntro
@@ -70,26 +88,30 @@ export default function AcademyPhotosPage() {
         title="Photos"
         description="Photos shown on your public academy profile."
         action={
-          <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-brand-600 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-700 aria-disabled:pointer-events-none aria-disabled:opacity-60 dark:bg-brand-500 dark:hover:bg-brand-400">
-            <Upload className="h-3.5 w-3.5" aria-hidden />
-            {uploading ? 'Uploading…' : 'Upload photo'}
-            <input
-              type="file"
-              accept={ALLOWED_MIMES.join(',')}
-              disabled={uploading}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) void uploadPhoto(file);
-                e.target.value = '';
-              }}
-              className="sr-only"
-            />
-          </label>
+          hasAcademy === false ? undefined : (
+            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-brand-600 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-700 aria-disabled:pointer-events-none aria-disabled:opacity-60 dark:bg-brand-500 dark:hover:bg-brand-400">
+              <Upload className="h-3.5 w-3.5" aria-hidden />
+              {uploading ? 'Uploading…' : 'Upload photo'}
+              <input
+                type="file"
+                accept={ALLOWED_MIMES.join(',')}
+                disabled={uploading}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void uploadPhoto(file);
+                  e.target.value = '';
+                }}
+                className="sr-only"
+              />
+            </label>
+          )
         }
       />
 
       <div className="mt-8">
-        {loadError ? (
+        {hasAcademy === false ? (
+          <AcademySetupRequired pageLabel="Photos" />
+        ) : loadError ? (
           <ErrorState description="Could not load photos. Check your connection and try again." onRetry={() => void load()} />
         ) : photos === null ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -101,10 +123,16 @@ export default function AcademyPhotosPage() {
           <EmptyState icon={Images} title="No photos yet" description="Upload photos to showcase your academy on Find an Academy." />
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {photos.map((p) => (
+            {photos.map((p, index) => (
               <div key={p.id} className="group relative aspect-video overflow-hidden rounded-xl bg-neutral-100 dark:bg-neutral-800">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={p.url} alt={p.caption ?? ''} className="h-full w-full object-cover" />
+                {index === 0 && (
+                  <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-neutral-950/60 px-2 py-1 text-xs font-medium text-white">
+                    <Star className="h-3 w-3 fill-accent-400 text-accent-400" aria-hidden />
+                    Cover
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={() => setDeleteTarget(p)}
@@ -113,6 +141,26 @@ export default function AcademyPhotosPage() {
                 >
                   <Trash2 className="h-3.5 w-3.5" aria-hidden />
                 </button>
+                <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 bg-gradient-to-t from-neutral-950/70 to-transparent px-2 py-2 opacity-0 transition-opacity group-hover:opacity-100">
+                  <button
+                    type="button"
+                    onClick={() => void move(index, -1)}
+                    disabled={index === 0}
+                    aria-label="Move earlier"
+                    className="flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-neutral-700 transition-colors hover:bg-white disabled:pointer-events-none disabled:opacity-40"
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void move(index, 1)}
+                    disabled={index === photos.length - 1}
+                    aria-label="Move later"
+                    className="flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-neutral-700 transition-colors hover:bg-white disabled:pointer-events-none disabled:opacity-40"
+                  >
+                    <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                </div>
               </div>
             ))}
           </div>

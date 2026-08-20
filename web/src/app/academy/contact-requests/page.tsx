@@ -5,20 +5,23 @@ import { MessageCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { ContactRequest } from '@/lib/types';
 import { Badge, CardSkeleton, EmptyState, ErrorState } from '@/components/ui';
-import { AcademyCard, AcademyPageIntro } from '@/components/academy';
+import { AcademyCard, AcademyPageIntro, AcademySetupRequired } from '@/components/academy';
+import { useAcademyDashboard } from '@/components/academy-shell';
 
 export default function AcademyContactRequestsPage() {
+  const { hasAcademy } = useAcademyDashboard();
   const [requests, setRequests] = useState<ContactRequest[] | null>(null);
   const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
+    if (hasAcademy === false) return;
     setLoadError(false);
     try {
       setRequests(await api.get<ContactRequest[]>('/academy/me/contact-requests'));
     } catch {
       setLoadError(true);
     }
-  }, []);
+  }, [hasAcademy]);
 
   useEffect(() => {
     void load();
@@ -38,7 +41,9 @@ export default function AcademyContactRequestsPage() {
       />
 
       <div className="mt-8">
-        {loadError ? (
+        {hasAcademy === false ? (
+          <AcademySetupRequired pageLabel="Contact requests" />
+        ) : loadError ? (
           <ErrorState description="Could not load contact requests. Check your connection and try again." onRetry={() => void load()} />
         ) : requests === null ? (
           <div className="grid gap-4 sm:grid-cols-2">

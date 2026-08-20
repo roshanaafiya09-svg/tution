@@ -13,7 +13,8 @@ import {
   Input,
   StatusBadge,
 } from '@/components/ui';
-import { AcademyCard, AcademyPageIntro } from '@/components/academy';
+import { AcademyCard, AcademyPageIntro, AcademySetupRequired } from '@/components/academy';
+import { useAcademyDashboard } from '@/components/academy-shell';
 
 const POLICY_VERSION = '1.0';
 const PAN_FORMAT = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
@@ -66,6 +67,7 @@ function StatusHeadline({ status }: { status: AcademyKycVerificationStatus['stat
 }
 
 export default function AcademyVerificationPage() {
+  const { hasAcademy } = useAcademyDashboard();
   const [status, setStatus] = useState<AcademyKycVerificationStatus | null | undefined>(undefined);
   const [loadError, setLoadError] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -74,6 +76,7 @@ export default function AcademyVerificationPage() {
   const [gstin, setGstin] = useState('');
 
   const load = useCallback(async () => {
+    if (hasAcademy === false) return;
     setLoadError(false);
     try {
       const res = await api.get<AcademyKycVerificationStatus>('/academy/verification/me');
@@ -81,7 +84,7 @@ export default function AcademyVerificationPage() {
     } catch {
       setLoadError(true);
     }
-  }, []);
+  }, [hasAcademy]);
 
   useEffect(() => {
     void load();
@@ -114,6 +117,21 @@ export default function AcademyVerificationPage() {
     } finally {
       setStarting(false);
     }
+  }
+
+  if (hasAcademy === false) {
+    return (
+      <div>
+        <AcademyPageIntro
+          eyebrow="Academy Dashboard"
+          title="Verification"
+          description="Confirming your identity helps keep Scholar safe and prevents fake academies from listing."
+        />
+        <div className="mt-8">
+          <AcademySetupRequired pageLabel="Verification" />
+        </div>
+      </div>
+    );
   }
 
   if (loadError) {

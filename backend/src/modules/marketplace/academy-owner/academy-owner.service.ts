@@ -16,6 +16,7 @@ import { AcademyReviewsService } from '../academy-reviews/academy-reviews.servic
 import { BatchesRepository } from '../../scheduling/batches/batches.repository';
 import { BookingsService } from '../bookings/bookings.service';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { TutorSubjectsRepository } from '../../catalog/tutor-subjects/tutor-subjects.repository';
 import { STORAGE_PROVIDER } from '../../../common/storage/storage-provider.interface';
 import type { StorageProvider } from '../../../common/storage/storage-provider.interface';
 import { randomSlugSuffix, slugify } from '../../identity/profiles/slug.util';
@@ -64,6 +65,7 @@ export class AcademyOwnerService {
     private readonly batchesRepository: BatchesRepository,
     private readonly bookingsService: BookingsService,
     private readonly notificationsService: NotificationsService,
+    private readonly tutorSubjectsRepository: TutorSubjectsRepository,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
   ) {}
 
@@ -125,6 +127,9 @@ export class AcademyOwnerService {
       certifications: academy.certifications,
       teachingMode: academy.teaching_mode,
       verificationStatus: academy.verification_status,
+      contactPhone: academy.contact_phone,
+      contactEmail: academy.contact_email,
+      websiteUrl: academy.website_url,
       logoUrl,
       coverUrl,
       location: location
@@ -167,6 +172,42 @@ export class AcademyOwnerService {
         .length,
       rating: summary,
     };
+  }
+
+  /** Read-only, derived from active members' tutor_subjects — per
+   *  migration 0030's own doc comment, "subjects/classes offered by an
+   *  academy are deliberately NOT a table", same pattern used for public
+   *  academy search. Backs Academy Profile's "Academic Information"
+   *  panel; there is no editable academy-level subjects field. */
+  async getAcademicInfo(ownerUserId: string) {
+    const academy = await this.resolveOwnAcademy(ownerUserId);
+    const activeTeachers =
+      await this.academyMembershipsRepository.listActiveForAcademy(academy.id);
+    const rows = await this.tutorSubjectsRepository.listForTutors(
+      activeTeachers.map((t) => t.tutor_id),
+    );
+
+    const bySubject = new Map<
+      string,
+      { subjectId: string; name: string; gradeMin: number; gradeMax: number }
+    >();
+    for (const row of rows) {
+      const name = row.subject_name_i18n.en;
+      const existing = bySubject.get(row.subject_id);
+      if (existing) {
+        existing.gradeMin = Math.min(existing.gradeMin, row.grade_min);
+        existing.gradeMax = Math.max(existing.gradeMax, row.grade_max);
+      } else {
+        bySubject.set(row.subject_id, {
+          subjectId: row.subject_id,
+          name,
+          gradeMin: row.grade_min,
+          gradeMax: row.grade_max,
+        });
+      }
+    }
+
+    return { subjects: Array.from(bySubject.values()) };
   }
 
   async updateProfile(ownerUserId: string, dto: UpsertAcademyDto) {
@@ -259,6 +300,33 @@ export class AcademyOwnerService {
       dto.mime,
     );
     return { upload, photoId: photo.id };
+  }
+
+  /** Reorders the academy's photo gallery — `photoIds` is the complete
+   *  new order (index 0 becomes the cover photo). Validates every id
+   *  belongs to this academy and that the set is unchanged before writing
+   *  anything, so a partial/mismatched list never leaves sort_order in a
+   *  half-applied state. */
+  async reorderPhotos(ownerUserId: string, photoIds: string[]) {
+    const academy = await this.resolveOwnAcademy(ownerUserId);
+    const existing = await this.academyPhotosRepository.listForAcademy(
+      academy.id,
+    );
+    const existingIds = new Set(existing.map((p) => p.id));
+    if (
+      photoIds.length !== existing.length ||
+      !photoIds.every((id) => existingIds.has(id))
+    ) {
+      throw new BadRequestException(
+        "The photo list does not match your academy's current photos",
+      );
+    }
+    await Promise.all(
+      photoIds.map((id, index) =>
+        this.academyPhotosRepository.setSortOrder(id, index),
+      ),
+    );
+    return this.listPhotos(ownerUserId);
   }
 
   async removePhoto(ownerUserId: string, photoId: string): Promise<void> {

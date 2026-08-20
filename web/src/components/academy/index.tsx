@@ -6,3 +6,4 @@ export { AcademyCard, type AcademyCardProps } from './academy-card';
 export { AcademySectionHeader } from './academy-section-header';
 export { AcademyPageIntro } from './academy-page-intro';
 export { AcademyHero, type DayPeriod } from './academy-hero';
+export { AcademySetupRequired } from './academy-setup-required';

@@ -644,6 +644,9 @@ export interface AcademiesTable {
   cover_object_key: string | null;
   verification_status: Generated<'pending' | 'verified' | 'rejected'>;
   owner_user_id: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  website_url: string | null;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
 }

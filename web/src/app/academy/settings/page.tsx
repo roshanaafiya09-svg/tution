@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ShieldCheck } from 'lucide-react';
+import { Building2, CircleUser, ShieldCheck } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { AcademyOwnerProfile, Me } from '@/lib/types';
+import type { AcademyOwnerProfile } from '@/lib/types';
 import { CardSkeleton, ErrorState, StatusBadge } from '@/components/ui';
-import { AcademyCard, AcademyPageIntro, AcademySectionHeader } from '@/components/academy';
+import { AcademyCard, AcademyPageIntro, AcademySectionHeader, AcademySetupRequired } from '@/components/academy';
+import { useAcademyDashboard } from '@/components/academy-shell';
 
 const VERIFICATION_COPY: Record<string, string> = {
   verified: 'Your academy is verified and appears in Find an Academy search results.',
@@ -15,23 +16,19 @@ const VERIFICATION_COPY: Record<string, string> = {
 };
 
 export default function AcademySettingsPage() {
-  const [me, setMe] = useState<Me | null>(null);
+  const { hasAcademy } = useAcademyDashboard();
   const [profile, setProfile] = useState<AcademyOwnerProfile | null>(null);
   const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
+    if (hasAcademy === false) return;
     setLoadError(false);
     try {
-      const [meRes, profileRes] = await Promise.all([
-        api.get<Me>('/auth/me'),
-        api.get<AcademyOwnerProfile>('/academy/me'),
-      ]);
-      setMe(meRes);
-      setProfile(profileRes);
+      setProfile(await api.get<AcademyOwnerProfile>('/academy/me'));
     } catch {
       setLoadError(true);
     }
-  }, []);
+  }, [hasAcademy]);
 
   useEffect(() => {
     void load();
@@ -39,36 +36,21 @@ export default function AcademySettingsPage() {
 
   return (
     <div>
-      <AcademyPageIntro eyebrow="Academy Dashboard" title="Settings" description="Account and verification details." />
+      <AcademyPageIntro eyebrow="Academy Dashboard" title="Settings" description="Verification, profile, and account shortcuts." />
 
       <div className="mt-8">
-        {loadError ? (
+        {hasAcademy === false ? (
+          <AcademySetupRequired pageLabel="Settings" />
+        ) : loadError ? (
           <ErrorState description="Could not load your settings. Check your connection and try again." onRetry={() => void load()} />
-        ) : !me || !profile ? (
+        ) : !profile ? (
           <div className="grid gap-4 sm:grid-cols-2">
             <CardSkeleton />
             <CardSkeleton />
           </div>
         ) : (
           <>
-            <AcademySectionHeader title="Account" />
-            <AcademyCard className="mb-8">
-              <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-                <div className="flex justify-between">
-                  <dt className="text-neutral-500 dark:text-neutral-400">Login email</dt>
-                  <dd className="text-neutral-900 dark:text-neutral-100">{me.email ?? '—'}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-neutral-500 dark:text-neutral-400">Login phone</dt>
-                  <dd className="text-neutral-900 dark:text-neutral-100">{me.phoneE164}</dd>
-                </div>
-              </dl>
-              <p className="mt-3 text-xs text-neutral-400 dark:text-neutral-500">
-                Academy accounts are created by our team — contact support to change your login details.
-              </p>
-            </AcademyCard>
-
-            <AcademySectionHeader title="Verification" className="mt-8" />
+            <AcademySectionHeader title="Verification" />
             <AcademyCard className="mb-8 flex items-start gap-3">
               <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-brand-500 dark:text-brand-300" aria-hidden />
               <div>
@@ -76,18 +58,41 @@ export default function AcademySettingsPage() {
                 <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
                   {VERIFICATION_COPY[profile.verificationStatus]}
                 </p>
+                <Link
+                  href="/academy/verification"
+                  className="mt-2 inline-block text-sm font-medium text-brand-600 hover:underline dark:text-brand-300"
+                >
+                  Manage verification
+                </Link>
               </div>
             </AcademyCard>
 
-            <AcademySectionHeader title="Public profile" className="mt-8" />
-            <AcademyCard>
-              <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                Manage what appears on your public profile from{' '}
-                <Link href="/academy/profile" className="font-medium text-brand-600 hover:underline dark:text-brand-300">
-                  Academy Profile
-                </Link>
-                .
-              </p>
+            <AcademySectionHeader title="Shortcuts" className="mt-8" />
+            <AcademyCard className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
+              <Link
+                href="/academy/profile"
+                className="flex items-center gap-3 px-5 py-4 transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-900"
+              >
+                <Building2 className="h-4 w-4 shrink-0 text-neutral-400" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">Academy Profile</p>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    Manage what appears on your public profile — description, subjects, location, photos.
+                  </p>
+                </div>
+              </Link>
+              <Link
+                href="/academy/account"
+                className="flex items-center gap-3 px-5 py-4 transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-900"
+              >
+                <CircleUser className="h-4 w-4 shrink-0 text-neutral-400" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">Account</p>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    Login details, data export, and account deletion.
+                  </p>
+                </div>
+              </Link>
             </AcademyCard>
           </>
         )}

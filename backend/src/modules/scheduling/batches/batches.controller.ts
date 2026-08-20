@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -15,6 +16,7 @@ import { CurrentUser } from '../../identity/auth/decorators/current-user.decorat
 import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
 import { BatchesService } from './batches.service';
 import { CreateBatchDto } from './dto/create-batch.dto';
+import { UpdateBatchDto } from './dto/update-batch.dto';
 
 @Controller('batches')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -58,6 +60,16 @@ export class BatchesController {
   @Roles('tutor')
   archive(@CurrentUser() user: AccessTokenPayload, @Param('id') id: string) {
     return this.batchesService.archive(user.sub, id);
+  }
+
+  @Patch(':id')
+  @Roles('tutor')
+  update(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id') id: string,
+    @Body() dto: UpdateBatchDto,
+  ) {
+    return this.batchesService.update(user.sub, id, dto);
   }
 
   @Get(':id/students')

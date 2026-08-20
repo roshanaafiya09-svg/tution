@@ -91,6 +91,38 @@ export class SessionsRepository {
       .execute();
   }
 
+  /** Multi-tutor sibling of listForTutorBetween — the Academy Dashboard's
+   *  "classes today"/"upcoming classes" span every active member tutor,
+   *  not just one. Also selects tutor_id (the single-tutor version
+   *  doesn't need it) so the UI can attribute each session to its
+   *  teacher. */
+  listForTutorsBetween(tutorIds: string[], from: Date, to: Date) {
+    return this.db
+      .selectFrom('class_sessions')
+      .innerJoin('batches', 'batches.id', 'class_sessions.batch_id')
+      .select([
+        'class_sessions.id',
+        'class_sessions.batch_id',
+        'class_sessions.tutor_id',
+        'class_sessions.scheduled_start_utc',
+        'class_sessions.timezone',
+        'class_sessions.duration_min',
+        'class_sessions.meeting_url',
+        'class_sessions.status',
+        'batches.title as batch_title',
+        'batches.subject_id',
+      ])
+      .where(
+        'class_sessions.tutor_id',
+        'in',
+        tutorIds.length ? tutorIds : ['00000000-0000-0000-0000-000000000000'],
+      )
+      .where('class_sessions.scheduled_start_utc', '>=', from)
+      .where('class_sessions.scheduled_start_utc', '<', to)
+      .orderBy('class_sessions.scheduled_start_utc')
+      .execute();
+  }
+
   /** Upcoming sessions across every batch a student is enrolled in. */
   listForStudentBetween(studentId: string, from: Date, to: Date) {
     return this.db

@@ -39,6 +39,30 @@ export class TutorSubjectsRepository {
       .execute();
   }
 
+  /** Subjects taught across a set of tutors, joined with subject names —
+   *  backs the Academy Profile "Academic Information" panel, which is
+   *  derived from active members' tutor_subjects rather than a table of
+   *  its own (same pattern as AcademiesRepository.searchAcademyOfferings).
+   *  Empty-array guard mirrors that method's dummy-UUID convention so the
+   *  `in (...)` clause stays valid. */
+  listForTutors(tutorIds: string[]) {
+    return this.db
+      .selectFrom('tutor_subjects')
+      .innerJoin('subjects', 'subjects.id', 'tutor_subjects.subject_id')
+      .select([
+        'subjects.id as subject_id',
+        'subjects.name_i18n as subject_name_i18n',
+        'tutor_subjects.grade_min',
+        'tutor_subjects.grade_max',
+      ])
+      .where(
+        'tutor_subjects.tutor_id',
+        'in',
+        tutorIds.length ? tutorIds : ['00000000-0000-0000-0000-000000000000'],
+      )
+      .execute();
+  }
+
   create(tutorId: string, dto: CreateTutorSubjectDto) {
     return this.db
       .insertInto('tutor_subjects')

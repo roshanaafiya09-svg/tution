@@ -4,6 +4,7 @@ import { KYSELY_CONNECTION } from '../../../database/database.module';
 import type { DB } from '../../../database/types';
 import { newId } from '../../../database/id';
 import type { CreateBatchDto } from './dto/create-batch.dto';
+import type { UpdateBatchDto } from './dto/update-batch.dto';
 
 @Injectable()
 export class BatchesRepository {
@@ -47,6 +48,24 @@ export class BatchesRepository {
     return this.db
       .updateTable('batches')
       .set({ status: 'archived' })
+      .where('id', '=', id)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
+
+  update(id: string, dto: UpdateBatchDto) {
+    return this.db
+      .updateTable('batches')
+      .set({
+        ...(dto.title !== undefined && { title: dto.title }),
+        ...(dto.subjectId !== undefined && { subject_id: dto.subjectId }),
+        ...(dto.gradeLevelId !== undefined && {
+          grade_level_id: dto.gradeLevelId,
+        }),
+        ...(dto.capacity !== undefined && { capacity: dto.capacity }),
+        ...(dto.feeMinor !== undefined && { fee_minor: dto.feeMinor }),
+        ...(dto.feePeriod !== undefined && { fee_period: dto.feePeriod }),
+      })
       .where('id', '=', id)
       .returningAll()
       .executeTakeFirstOrThrow();
@@ -210,6 +229,89 @@ export class BatchesRepository {
    *  active member tutor. Also selects tutor_id (the single-tutor
    *  version doesn't, since it's redundant there) so the UI can
    *  attribute each batch to the teacher running it. */
+  /** Every batch (any status) across a set of tutors, with a live
+   *  enrolled count — the Academy Dashboard's "every batch across my
+   *  teachers" list. Unlike listOpenWithSeatsForTutors, this isn't
+   *  filtered to active/open batches, so an academy admin can see (and
+   *  re-activate) archived ones too. */
+  listForTutors(tutorIds: string[]) {
+    return this.db
+      .selectFrom('batches')
+      .leftJoin('enrollments', (join) =>
+        join
+          .onRef('enrollments.batch_id', '=', 'batches.id')
+          .on('enrollments.status', '=', 'active'),
+      )
+      .select((eb) => [
+        'batches.id',
+        'batches.tutor_id',
+        'batches.title',
+        'batches.subject_id',
+        'batches.grade_level_id',
+        'batches.capacity',
+        'batches.fee_minor',
+        'batches.currency',
+        'batches.fee_period',
+        'batches.status',
+        'batches.created_at',
+        eb.fn.count('enrollments.id').as('enrolled_count'),
+      ])
+      .where(
+        'batches.tutor_id',
+        'in',
+        tutorIds.length ? tutorIds : ['00000000-0000-0000-0000-000000000000'],
+      )
+      .groupBy([
+        'batches.id',
+        'batches.tutor_id',
+        'batches.title',
+        'batches.subject_id',
+        'batches.grade_level_id',
+        'batches.capacity',
+        'batches.fee_minor',
+        'batches.currency',
+        'batches.fee_period',
+        'batches.status',
+        'batches.created_at',
+      ])
+      .orderBy('batches.created_at', 'desc')
+      .execute();
+  }
+
+  /** Every active enrollment across a set of tutors' batches, joined with
+   *  the student's identity and batch title — backs the Academy
+   *  Dashboard's Students page (Classes -> Students). */
+  listEnrollmentsForTutors(tutorIds: string[]) {
+    return this.db
+      .selectFrom('enrollments')
+      .innerJoin('batches', 'batches.id', 'enrollments.batch_id')
+      .innerJoin('users', 'users.id', 'enrollments.student_id')
+      .leftJoin(
+        'profiles_student',
+        'profiles_student.user_id',
+        'enrollments.student_id',
+      )
+      .select([
+        'enrollments.id as enrollment_id',
+        'enrollments.student_id',
+        'enrollments.status',
+        'enrollments.joined_at',
+        'batches.id as batch_id',
+        'batches.title as batch_title',
+        'batches.tutor_id',
+        'users.phone_e164',
+        'profiles_student.display_name',
+      ])
+      .where(
+        'batches.tutor_id',
+        'in',
+        tutorIds.length ? tutorIds : ['00000000-0000-0000-0000-000000000000'],
+      )
+      .where('enrollments.status', '=', 'active')
+      .orderBy('enrollments.joined_at', 'desc')
+      .execute();
+  }
+
   listOpenWithSeatsForTutors(tutorIds: string[]) {
     return this.db
       .selectFrom('batches')

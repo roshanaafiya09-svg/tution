@@ -49,6 +49,8 @@ import { AttendanceRepository } from './attendance/attendance.repository';
   exports: [
     BatchesService,
     BatchesRepository,
+    InvitesService,
+    SessionsService,
     SessionsRepository,
     AttendanceRepository,
   ],

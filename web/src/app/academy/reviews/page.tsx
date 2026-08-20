@@ -5,14 +5,17 @@ import { Star } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AcademyOwnerProfile, Review, ReviewSummary } from '@/lib/types';
 import { CardSkeleton, EmptyState, ErrorState } from '@/components/ui';
-import { AcademyCard, AcademyPageIntro } from '@/components/academy';
+import { AcademyCard, AcademyPageIntro, AcademySetupRequired } from '@/components/academy';
+import { useAcademyDashboard } from '@/components/academy-shell';
 
 export default function AcademyReviewsPage() {
+  const { hasAcademy } = useAcademyDashboard();
   const [reviews, setReviews] = useState<Review[] | null>(null);
   const [summary, setSummary] = useState<ReviewSummary | null>(null);
   const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
+    if (hasAcademy === false) return;
     setLoadError(false);
     try {
       const profile = await api.get<AcademyOwnerProfile>('/academy/me');
@@ -24,7 +27,7 @@ export default function AcademyReviewsPage() {
     } catch {
       setLoadError(true);
     }
-  }, []);
+  }, [hasAcademy]);
 
   useEffect(() => {
     void load();
@@ -41,7 +44,9 @@ export default function AcademyReviewsPage() {
       <AcademyPageIntro eyebrow="Academy Dashboard" title="Reviews" description="What students say about your academy." />
 
       <div className="mt-8">
-        {loadError ? (
+        {hasAcademy === false ? (
+          <AcademySetupRequired pageLabel="Reviews" />
+        ) : loadError ? (
           <ErrorState description="Could not load reviews. Check your connection and try again." onRetry={() => void load()} />
         ) : reviews === null || summary === null ? (
           <div className="grid gap-4 sm:grid-cols-2">

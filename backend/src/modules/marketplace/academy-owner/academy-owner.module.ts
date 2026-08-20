@@ -7,8 +7,11 @@ import { AcademiesModule } from '../academies/academies.module';
 import { AcademyMembershipsModule } from '../academy-memberships/academy-memberships.module';
 import { AcademyReviewsModule } from '../academy-reviews/academy-reviews.module';
 import { NotificationsModule } from '../../notifications/notifications.module';
+import { CatalogModule } from '../../catalog/catalog.module';
 import { AcademyOwnerController } from './academy-owner.controller';
 import { AcademyOwnerService } from './academy-owner.service';
+import { AcademyOwnerBatchesController } from './academy-owner-batches.controller';
+import { AcademyOwnerBatchesService } from './academy-owner-batches.service';
 
 /**
  * The self-serve Academy Dashboard (migration 0031) — closes the gap
@@ -30,8 +33,9 @@ import { AcademyOwnerService } from './academy-owner.service';
     BookingsModule,
     StorageModule,
     NotificationsModule,
+    CatalogModule,
   ],
-  controllers: [AcademyOwnerController],
-  providers: [AcademyOwnerService],
+  controllers: [AcademyOwnerController, AcademyOwnerBatchesController],
+  providers: [AcademyOwnerService, AcademyOwnerBatchesService],
 })
 export class AcademyOwnerModule {}

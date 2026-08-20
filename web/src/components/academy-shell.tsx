@@ -1,23 +1,10 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import posthog from 'posthog-js';
-import {
-  Home,
-  Users,
-  MessageCircle,
-  Building2,
-  Images,
-  Star,
-  CalendarClock,
-  GraduationCap,
-  Settings,
-  ChevronDown,
-  LogOut,
-  ShieldCheck,
-} from 'lucide-react';
+import { LogOut, Menu, Settings, Building2 } from 'lucide-react';
 import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
 import type { Me } from '@/lib/types';
 import { NotificationsBell } from '@/components/notifications-bell';
@@ -30,44 +17,38 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuLabel,
 } from '@/components/ui';
+import {
+  AcademySidebar,
+  AcademySidebarDrawer,
+  SIDEBAR_WIDTH_COLLAPSED,
+  SIDEBAR_WIDTH_EXPANDED,
+} from '@/components/dashboard/academy-sidebar';
+import { academyPageTitle } from '@/components/dashboard/academy-nav';
 
-const NAV = [
-  { href: '/academy', label: 'Overview', icon: Home },
-  { href: '/academy/teachers', label: 'Teachers', icon: Users },
-  { href: '/academy/contact-requests', label: 'Contact Requests', icon: MessageCircle },
-];
+const COLLAPSE_KEY = 'scholar.academySidebarCollapsed';
 
-const MANAGE_GROUPS = [
-  {
-    label: 'Academy',
-    items: [
-      { href: '/academy/profile', label: 'Academy Profile', icon: Building2 },
-      { href: '/academy/verification', label: 'Verification', icon: ShieldCheck },
-      { href: '/academy/photos', label: 'Photos', icon: Images },
-      { href: '/academy/reviews', label: 'Reviews', icon: Star },
-    ],
-  },
-  {
-    label: 'Classes',
-    items: [
-      { href: '/academy/batches', label: 'Batches', icon: CalendarClock },
-      { href: '/academy/students', label: 'Students', icon: GraduationCap },
-    ],
-  },
-  {
-    label: 'Account',
-    items: [{ href: '/academy/settings', label: 'Settings', icon: Settings }],
-  },
-];
+/** Tracks a media query as React state. The shell only renders once
+ *  `/auth/me` has resolved, so there's no server render to mismatch. */
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(false);
 
-const MANAGE_NAV = MANAGE_GROUPS.flatMap((group) => group.items);
+  useEffect(() => {
+    const list = window.matchMedia(query);
+    setMatches(list.matches);
+    const onChange = (event: MediaQueryListEvent) => setMatches(event.matches);
+    list.addEventListener('change', onChange);
+    return () => list.removeEventListener('change', onChange);
+  }, [query]);
 
-/** Lets the Overview page (the only page that can create the academy —
- *  see CreateAcademyCard in app/academy/page.tsx) tell this shell the
- *  academy now exists, so the other-pages nav-guard below stops bouncing
- *  navigation back to /academy. */
+  return matches;
+}
+
+/** Lets any page know whether the account has an `academies` row yet,
+ *  without forcing a redirect — see this file's nav-guard doc comment
+ *  below. Pages other than Today/Academy Profile render
+ *  `<AcademySetupRequired />` in place of their normal content while this
+ *  is `false`, instead of hitting an API that can only 404. */
 const AcademyDashboardContext = createContext<{
   hasAcademy: boolean | null;
   markAcademyCreated: () => void;
@@ -82,27 +63,46 @@ export function useAcademyDashboard() {
 }
 
 /**
- * Self-serve Academy Dashboard shell — a 5th hand-rolled shell alongside
- * DashboardShell/ParentShell/StudentShell/AdminShell (this codebase has
- * no shared generic shell abstraction to extend; each role's shell is
- * its own component by established convention). Client-side gate is
- * convenience only — the real enforcement is the backend's
- * @Roles('academy') on every /academy/* endpoint, resolved server-side
- * from owner_user_id, never a client-supplied academy id.
+ * Self-serve Academy Dashboard shell — same structure, sidebar component,
+ * and page-container layout as `DashboardShell` (Teacher Portal); only the
+ * nav config (`AcademySidebar`) and account-menu items differ, per the
+ * Navigation, Routing & UX Update spec. Client-side gate is convenience
+ * only — the real enforcement is the backend's @Roles('academy') on every
+ * /academy/* endpoint, resolved server-side from owner_user_id, never a
+ * client-supplied academy id.
  */
 export function AcademyShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [collapsedPref, setCollapsedPref] = useState(false);
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
+  const isTabletUp = useMediaQuery('(min-width: 768px)');
+  const collapsed = isDesktop ? collapsedPref : true;
+
   // null = still checking, false = signed-up academy user with no
   // `academies` row yet (fresh self-serve signup — see login-form.tsx),
-  // true = normal case. The Overview page (/academy) is the only page
-  // that knows how to render itself in the `false` case (a "set up your
-  // academy" prompt, fetched independently there) — every other page
-  // under /academy/* assumes a real academy row exists, so this shell
-  // bounces those back to the overview until one does.
+  // true = normal case. No page is ever bounced back to /academy for
+  // this — see AcademySetupRequired's doc comment for why.
   const [hasAcademy, setHasAcademy] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    setCollapsedPref(window.localStorage.getItem(COLLAPSE_KEY) === '1');
+  }, []);
+
+  const toggleCollapsed = useCallback(() => {
+    setCollapsedPref((current) => {
+      window.localStorage.setItem(COLLAPSE_KEY, current ? '0' : '1');
+      return !current;
+    });
+  }, []);
+
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     if (!tokenStore.access) {
@@ -138,15 +138,6 @@ export function AcademyShell({ children }: { children: React.ReactNode }) {
       });
   }, [router]);
 
-  // A fresh academy account with no academies row yet can only usefully
-  // render the Overview page (which prompts it to set one up) — every
-  // other page under /academy/* would just 404 against the backend.
-  useEffect(() => {
-    if (hasAcademy === false && pathname !== '/academy') {
-      router.replace('/academy');
-    }
-  }, [hasAcademy, pathname, router]);
-
   function signOut() {
     const refreshToken = tokenStore.refresh;
     tokenStore.clear();
@@ -165,7 +156,7 @@ export function AcademyShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!me || hasAcademy === null || (hasAcademy === false && pathname !== '/academy')) {
+  if (!me || hasAcademy === null) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <PageLoading />
@@ -173,147 +164,95 @@ export function AcademyShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const manageActive = MANAGE_NAV.some((item) => pathname.startsWith(item.href));
   const profileActive = pathname.startsWith('/academy/profile');
+  const pageTitle = academyPageTitle(pathname);
 
   return (
     <AcademyDashboardContext.Provider value={{ hasAcademy, markAcademyCreated: () => setHasAcademy(true) }}>
       <div className="min-h-screen bg-background">
-        <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/85 backdrop-blur supports-[backdrop-filter]:bg-white/70 dark:border-neutral-800 dark:bg-neutral-950/80">
-          <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-            <div className="flex items-center gap-8">
-              <Link
-                href="/academy"
-                className="font-display text-xl font-semibold italic text-brand-800 dark:text-brand-200"
+        <AcademySidebar collapsed={collapsed} onToggleCollapse={toggleCollapsed} canToggle={isDesktop} />
+        <AcademySidebarDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+
+        <div
+          className="flex min-h-screen flex-col transition-[padding] duration-base"
+          style={{
+            paddingLeft: isTabletUp ? (collapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED) : undefined,
+          }}
+        >
+          <header className="sticky top-0 z-30 border-b border-neutral-200/70 bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70 dark:border-neutral-800/80">
+            <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
+              <button
+                type="button"
+                onClick={() => setDrawerOpen(true)}
+                aria-label="Open navigation"
+                className="-ml-1 rounded-md p-2 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 focus-visible:outline-none focus-visible:shadow-focus-ring md:hidden dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
               >
-                Scholar
-              </Link>
-              <nav className="hidden items-center gap-1 md:flex">
-                {NAV.map((item) => {
-                  const active = item.href === '/academy' ? pathname === item.href : pathname.startsWith(item.href);
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      aria-current={active ? 'page' : undefined}
-                      className={cn(
-                        'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                        active
-                          ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'
-                          : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
-                      )}
-                    >
-                      <item.icon className="h-3.5 w-3.5" aria-hidden />
-                      {item.label}
-                    </Link>
-                  );
-                })}
+                <Menu className="h-5 w-5" aria-hidden />
+              </button>
+
+              <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                <Link
+                  href="/academy"
+                  className="hidden shrink-0 font-display text-sm italic text-neutral-400 transition-colors hover:text-neutral-600 sm:block dark:text-neutral-500 dark:hover:text-neutral-300"
+                >
+                  Scholar
+                </Link>
+                <span className="hidden shrink-0 text-sm text-neutral-300 sm:block dark:text-neutral-700" aria-hidden>
+                  /
+                </span>
+                <h1 className="min-w-0 truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">
+                  {pageTitle}
+                </h1>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-1">
+                <NotificationsBell />
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
                       className={cn(
-                        'flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:shadow-focus-ring',
-                        manageActive
-                          ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'
-                          : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
+                        'ml-1 flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-focus-ring',
+                        profileActive
+                          ? 'bg-brand-600 text-white dark:bg-brand-500 dark:text-neutral-950'
+                          : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700',
                       )}
+                      aria-label="Account menu"
                     >
-                      Manage
-                      <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+                      {me.phoneE164.slice(-2)}
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="min-w-[14rem]">
-                    {MANAGE_GROUPS.map((group, i) => (
-                      <div key={group.label}>
-                        {i > 0 && <DropdownMenuSeparator />}
-                        <DropdownMenuLabel>{group.label}</DropdownMenuLabel>
-                        {group.items.map((item) => {
-                          const active = pathname.startsWith(item.href);
-                          return (
-                            <DropdownMenuItem key={item.href} asChild>
-                              <Link
-                                href={item.href}
-                                className={cn(
-                                  active && 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200',
-                                )}
-                              >
-                                <item.icon
-                                  className={cn('h-4 w-4', active ? 'text-brand-600 dark:text-brand-300' : 'text-neutral-400')}
-                                  aria-hidden
-                                />
-                                {item.label}
-                              </Link>
-                            </DropdownMenuItem>
-                          );
-                        })}
-                      </div>
-                    ))}
+                  <DropdownMenuContent className="min-w-[14rem]">
+                    <div className="px-2.5 py-1.5 text-xs text-neutral-400 dark:text-neutral-500">Signed in as</div>
+                    <div className="px-2.5 pb-2 text-sm font-medium text-neutral-800 dark:text-neutral-100">
+                      {me.email ?? me.phoneE164}
+                    </div>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href="/academy/profile">
+                        <Building2 className="h-4 w-4 text-neutral-400" aria-hidden />
+                        Academy Profile
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/academy/settings">
+                        <Settings className="h-4 w-4 text-neutral-400" aria-hidden />
+                        Settings
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onSelect={signOut} className="text-error dark:text-error-dark">
+                      <LogOut className="h-4 w-4" aria-hidden />
+                      Sign out
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-              </nav>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <NotificationsBell />
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    className={cn(
-                      'ml-1 flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-focus-ring',
-                      profileActive
-                        ? 'bg-brand-600 text-white dark:bg-brand-500 dark:text-neutral-950'
-                        : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700',
-                    )}
-                    aria-label="Account menu"
-                  >
-                    {me.phoneE164.slice(-2)}
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="min-w-[14rem]">
-                  <div className="px-2.5 py-1.5 text-xs text-neutral-400 dark:text-neutral-500">Signed in as</div>
-                  <div className="px-2.5 pb-2 text-sm font-medium text-neutral-800 dark:text-neutral-100">
-                    {me.email ?? me.phoneE164}
-                  </div>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link href="/academy/profile">
-                      <Building2 className="h-4 w-4 text-neutral-400" aria-hidden />
-                      Academy Profile
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={signOut} className="text-error dark:text-error-dark">
-                    <LogOut className="h-4 w-4" aria-hidden />
-                    Sign out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
-          <nav className="flex items-center gap-1 overflow-x-auto border-t border-neutral-100 px-4 py-1.5 md:hidden dark:border-neutral-800">
-            {[...NAV, ...MANAGE_NAV].map((item) => {
-              const active = item.href === '/academy' ? pathname === item.href : pathname.startsWith(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={active ? 'page' : undefined}
-                  className={cn(
-                    'flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                    active
-                      ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'
-                      : 'text-neutral-600 dark:text-neutral-400',
-                  )}
-                >
-                  <item.icon className="h-3.5 w-3.5" aria-hidden />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-        </header>
+          </header>
 
-        <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+          <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</main>
+        </div>
       </div>
     </AcademyDashboardContext.Provider>
   );

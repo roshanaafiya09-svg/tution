@@ -426,6 +426,66 @@ export interface AcademyPhoto {
   id: string;
   url: string;
   caption: string | null;
+  sortOrder: number;
+}
+
+/** Academy Dashboard's own batch-management shape (owner-side CRUD) —
+ *  distinct from AcademyBatch below, which is the public "available
+ *  batches" shape used by Find an Academy. */
+export interface AcademyManagedBatch {
+  id: string;
+  tutorId: string;
+  tutorDisplayName: string | null;
+  title: string;
+  subjectId: string;
+  gradeLevelId: string;
+  capacity: number;
+  feeMinor: number;
+  currency: string;
+  feePeriod: 'monthly' | 'quarterly' | 'one_time';
+  status: 'active' | 'archived';
+  enrolledCount: number;
+  createdAt: string;
+}
+
+export interface AcademyManagedSession {
+  id: string;
+  batch_id: string;
+  scheduled_start_utc: string;
+  timezone: string;
+  duration_min: number;
+  meeting_url: string | null;
+  status: 'scheduled' | 'completed' | 'cancelled';
+}
+
+/** Cross-academy session shape (camelCase, teacher/subject attributed) —
+ *  distinct from AcademyManagedSession, which is scoped to one batch's
+ *  detail page and returns the raw class_sessions row. Backs Today's
+ *  "Classes happening today"/"Upcoming Classes". */
+export interface AcademyTodaySession {
+  id: string;
+  batchId: string;
+  batchTitle: string;
+  subjectId: string;
+  tutorId: string;
+  tutorDisplayName: string | null;
+  scheduledStartUtc: string;
+  timezone: string;
+  durationMin: number;
+  status: 'scheduled' | 'completed' | 'cancelled';
+}
+
+export interface AcademyManagedEnrollment {
+  enrollmentId: string;
+  studentId: string;
+  displayName: string | null;
+  phoneE164: string;
+  status: 'active' | 'left';
+  joinedAt: string;
+  batchId: string;
+  batchTitle: string;
+  tutorId: string;
+  tutorDisplayName: string | null;
 }
 
 export interface AcademyBatch {
@@ -456,9 +516,18 @@ export interface AcademyOwnerProfile {
   certifications: string | null;
   teachingMode: TeachingMode | null;
   verificationStatus: AcademyVerificationStatus;
+  contactPhone: string | null;
+  contactEmail: string | null;
+  websiteUrl: string | null;
   logoUrl: string | null;
   coverUrl: string | null;
   location: { city: string; areaLabel: string | null; lat: number; lng: number } | null;
+}
+
+/** Derived from active members' tutor_subjects, not an editable field —
+ *  see AcademyOwnerService.getAcademicInfo's doc comment. */
+export interface AcademyAcademicInfo {
+  subjects: { subjectId: string; name: string; gradeMin: number; gradeMax: number }[];
 }
 
 /** The richer KYC state machine (academy_kyc_verifications) — distinct

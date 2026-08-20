@@ -48,4 +48,13 @@ export class AcademyPhotosRepository {
   remove(id: string) {
     return this.db.deleteFrom('academy_photos').where('id', '=', id).execute();
   }
+
+  setSortOrder(id: string, sortOrder: number) {
+    return this.db
+      .updateTable('academy_photos')
+      .set({ sort_order: sortOrder })
+      .where('id', '=', id)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
 }
