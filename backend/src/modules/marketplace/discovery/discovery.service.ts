@@ -24,6 +24,42 @@ const CANDIDATE_POOL_CAP = 50;
 const DEFAULT_RESULT_LIMIT = 20;
 const DEFAULT_RADIUS_KM = 15;
 
+interface RankedTutorLike {
+  proofOfTeachingScore: number;
+  rating: { average: number | null };
+  yearsExperience: number | null;
+  offerings: { hourlyRateMinor: number }[];
+  createdAt: Date | string;
+}
+
+function minHourlyRateMinor(tutor: RankedTutorLike): number {
+  const fees = tutor.offerings.map((o) => o.hourlyRateMinor);
+  return fees.length ? Math.min(...fees) : Number.POSITIVE_INFINITY;
+}
+
+/** Find a Teacher's sort dropdown. Every mode is derived from data already
+ *  fetched for the search response — no extra queries, just swapping the
+ *  comparator before `.slice()`. `recommended` (the default) keeps the
+ *  existing Proof-of-Teaching ranking untouched. */
+function sortComparator(
+  sort: SearchTutorsDto['sort'],
+): (a: RankedTutorLike, b: RankedTutorLike) => number {
+  switch (sort) {
+    case 'rating':
+      return (a, b) => (b.rating.average ?? 0) - (a.rating.average ?? 0);
+    case 'experience':
+      return (a, b) => (b.yearsExperience ?? 0) - (a.yearsExperience ?? 0);
+    case 'fee':
+      return (a, b) => minHourlyRateMinor(a) - minHourlyRateMinor(b);
+    case 'recent':
+      return (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    case 'recommended':
+    default:
+      return (a, b) => b.proofOfTeachingScore - a.proofOfTeachingScore;
+  }
+}
+
 /**
  * Discovery search + ranking + the public SEO tutor page (blueprint §10
  * Phase 4). Ranks by the Proof-of-Teaching score built in an earlier
@@ -109,6 +145,12 @@ export class DiscoveryService {
           location: location
             ? { city: location.city, areaLabel: location.area_label }
             : null,
+          // Every candidate here already passed searchOfferings' own
+          // `verification_status = 'verified'` filter — a constant, not a
+          // fresh query.
+          verified: true,
+          yearsExperience: first.years_experience,
+          createdAt: first.tutor_created_at,
           proofOfTeachingScore: pot.score,
           studentsTaught: pot.studentsTaught,
           rating: summary,
@@ -131,7 +173,7 @@ export class DiscoveryService {
         ? ranked.filter((r) => (r.rating.average ?? 0) >= query.minRating!)
         : ranked;
 
-    filtered.sort((a, b) => b.proofOfTeachingScore - a.proofOfTeachingScore);
+    filtered.sort(sortComparator(query.sort));
 
     return {
       gateOpen,

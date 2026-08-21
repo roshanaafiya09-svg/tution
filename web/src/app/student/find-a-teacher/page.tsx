@@ -2,12 +2,20 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Star, Info, Search, SearchX, SlidersHorizontal } from 'lucide-react';
+import { Star, Info, Languages, Search, SearchX, SlidersHorizontal } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
-import type { Curriculum, DiscoverySearchResponse, Subject } from '@/lib/types';
+import type { Curriculum, DiscoverySearchResponse, DiscoverySortMode, Subject } from '@/lib/types';
 import { buildTutorSearchParams, tutorInitials } from '@/lib/discovery';
-import { CardSkeleton, ErrorState, EmptyState, Field, Input, Select } from '@/components/ui';
+import { CardSkeleton, ErrorState, EmptyState, Field, Input, Select, StatusBadge } from '@/components/ui';
 import { AcademicCard, PageIntro, SectionHeader } from '@/components/student';
+
+const SORT_OPTIONS: { value: DiscoverySortMode; label: string }[] = [
+  { value: 'recommended', label: 'Recommended' },
+  { value: 'rating', label: 'Highest Rated' },
+  { value: 'experience', label: 'Most Experienced' },
+  { value: 'fee', label: 'Lowest Fee' },
+  { value: 'recent', label: 'Recently Joined' },
+];
 
 export default function StudentFindATeacherPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -21,6 +29,7 @@ export default function StudentFindATeacherPage() {
   const [minExperience, setMinExperience] = useState('');
   const [feeMaxMinor, setFeeMaxMinor] = useState('');
   const [minRating, setMinRating] = useState('');
+  const [sort, setSort] = useState<DiscoverySortMode>('recommended');
   const [results, setResults] = useState<DiscoverySearchResponse | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -42,12 +51,13 @@ export default function StudentFindATeacherPage() {
       minExperience,
       feeMaxMinor,
       minRating,
+      sort: sort === 'recommended' ? '' : sort,
     });
     void api
       .get<DiscoverySearchResponse>(`/marketplace/discovery/tutors?${params.toString()}`)
       .then(setResults)
       .catch(() => setLoadError(true));
-  }, [subjectId, curriculumId, grade, language, teachingMode, minExperience, feeMaxMinor, minRating, retryCount]);
+  }, [subjectId, curriculumId, grade, language, teachingMode, minExperience, feeMaxMinor, minRating, sort, retryCount]);
 
   const filtered =
     results && query.trim()
@@ -170,7 +180,20 @@ export default function StudentFindATeacherPage() {
           </AcademicCard>
         )}
 
-        <SectionHeader title="Teachers" />
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+          <SectionHeader title="Teachers" className="mb-0" />
+          <div className="w-44">
+            <Field label="Sort by">
+              <Select value={sort} onChange={(e) => setSort(e.target.value as DiscoverySortMode)}>
+                {SORT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+        </div>
 
         {loadError ? (
           <ErrorState
@@ -201,9 +224,12 @@ export default function StudentFindATeacherPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
-                        <p className="font-medium text-neutral-900 dark:text-neutral-50">
-                          {tutor.displayName ?? 'Teacher'}
-                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-medium text-neutral-900 dark:text-neutral-50">
+                            {tutor.displayName ?? 'Teacher'}
+                          </p>
+                          {tutor.verified && <StatusBadge status="verified" />}
+                        </div>
                         {tutor.rating.average !== null && (
                           <span className="flex shrink-0 items-center gap-1 text-sm font-medium text-neutral-700 dark:text-neutral-300">
                             <Star className="h-3.5 w-3.5 fill-accent-400 text-accent-400" aria-hidden />
@@ -215,8 +241,22 @@ export default function StudentFindATeacherPage() {
                         <p className="text-sm text-neutral-500 dark:text-neutral-400">{tutor.headline}</p>
                       )}
                       <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
-                        {[tutor.teachingMode, tutor.location?.city].filter(Boolean).join(' · ')}
+                        {[
+                          tutor.teachingMode,
+                          tutor.location?.city,
+                          tutor.yearsExperience != null
+                            ? `${tutor.yearsExperience} yr${tutor.yearsExperience === 1 ? '' : 's'} exp`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
                       </p>
+                      {tutor.languages.length > 0 && (
+                        <p className="mt-1 flex items-center gap-1 text-xs text-neutral-400 dark:text-neutral-500">
+                          <Languages className="h-3 w-3" aria-hidden />
+                          {tutor.languages.slice(0, 3).join(', ')}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">

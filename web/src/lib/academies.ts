@@ -1,4 +1,4 @@
-import type { TeachingMode } from './types';
+import type { AcademySortMode, TeachingMode } from './types';
 
 /**
  * Mirrors discovery.ts exactly, applied to GET /marketplace/academies
@@ -11,6 +11,7 @@ export interface AcademySearchFilters {
   grade?: string;
   teachingMode?: TeachingMode | '';
   minRating?: string;
+  sort?: AcademySortMode | '';
 }
 
 export function buildAcademySearchParams(
@@ -22,6 +23,7 @@ export function buildAcademySearchParams(
   if (filters.grade) params.set('grade', filters.grade);
   if (filters.teachingMode) params.set('teachingMode', filters.teachingMode);
   if (filters.minRating) params.set('minRating', filters.minRating);
+  if (filters.sort) params.set('sort', filters.sort);
   return params;
 }
 

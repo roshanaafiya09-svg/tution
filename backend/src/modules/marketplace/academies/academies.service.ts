@@ -28,6 +28,33 @@ const ACADEMY_DENSITY_GATE = { academies: 3 };
 const CANDIDATE_POOL_CAP = 50;
 const DEFAULT_RESULT_LIMIT = 20;
 
+interface RankedAcademyLike {
+  rating: { average: number | null };
+  teacherCount: number;
+  createdAt: Date | string;
+}
+
+/** Find an Academy's sort dropdown — same "swap the comparator before
+ *  .slice(), no extra queries" shape as discovery.service.ts's tutor
+ *  version. `recommended` (the default) keeps the existing rating-then-
+ *  teacherCount ranking untouched. */
+function academySortComparator(
+  sort: SearchAcademiesDto['sort'],
+): (a: RankedAcademyLike, b: RankedAcademyLike) => number {
+  switch (sort) {
+    case 'rating':
+      return (a, b) => (b.rating.average ?? 0) - (a.rating.average ?? 0);
+    case 'recent':
+      return (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    case 'recommended':
+    default:
+      return (a, b) =>
+        (b.rating.average ?? 0) - (a.rating.average ?? 0) ||
+        b.teacherCount - a.teacherCount;
+  }
+}
+
 /**
  * Public academy discovery search + ranking + the public academy page
  * (blueprint-adjacent "Find an Academy", same shape as DiscoveryService
@@ -87,12 +114,13 @@ export class AcademiesService {
           const gradeMins = academyOfferings.map((o) => o.grade_min);
           const gradeMaxes = academyOfferings.map((o) => o.grade_max);
 
-          const [teachers, { summary }, location, studentsCount] =
+          const [teachers, { summary }, location, studentsCount, batchCount] =
             await Promise.all([
               this.academyMembershipsRepository.listActiveForAcademy(academyId),
               this.academyReviewsService.listForAcademy(academyId),
               this.academyLocationsRepository.findByAcademyId(academyId),
               this.countStudentsForTutors(tutorIds),
+              this.countBatchesForTutors(tutorIds),
             ]);
 
           return {
@@ -115,7 +143,9 @@ export class AcademiesService {
             },
             teacherCount: teachers.length,
             studentsCount,
+            batchCount,
             rating: summary,
+            createdAt: first.academy_created_at,
           };
         },
       ),
@@ -126,11 +156,7 @@ export class AcademiesService {
         ? ranked.filter((r) => (r.rating.average ?? 0) >= query.minRating!)
         : ranked;
 
-    filtered.sort(
-      (a, b) =>
-        (b.rating.average ?? 0) - (a.rating.average ?? 0) ||
-        b.teacherCount - a.teacherCount,
-    );
+    filtered.sort(academySortComparator(query.sort));
 
     return {
       gateOpen,
@@ -365,5 +391,14 @@ export class AcademiesService {
       this.bookingsService.listDistinctCompletedStudentIdsForTutors(tutorIds),
     ]);
     return new Set([...batchStudentIds, ...bookingStudentIds]).size;
+  }
+
+  /** Active-batch count across an academy's member tutors — the search
+   *  card's "N batches" figure. Reuses `listForTutors` (already built for
+   *  the Academy Dashboard's own batch list), filtered to `active` since
+   *  a search card shouldn't count archived batches. */
+  private async countBatchesForTutors(tutorIds: string[]): Promise<number> {
+    const batches = await this.batchesRepository.listForTutors(tutorIds);
+    return batches.filter((b) => b.status === 'active').length;
   }
 }

@@ -15,6 +15,17 @@ import {
 
 const TEACHING_MODES = ['online', 'offline', 'both'] as const;
 
+/** "Recently Joined" needs no new field — `profiles_tutor.created_at`
+ *  already exists. "Most Experienced"/"Lowest Fee" are similarly derived
+ *  from columns already selected for the search response. */
+const SORT_MODES = [
+  'recommended',
+  'rating',
+  'experience',
+  'fee',
+  'recent',
+] as const;
+
 export class SearchTutorsDto {
   @IsOptional()
   @IsUUID()
@@ -86,4 +97,8 @@ export class SearchTutorsDto {
   @Min(1)
   @Max(50)
   limit?: number;
+
+  @IsOptional()
+  @IsIn(SORT_MODES)
+  sort?: (typeof SORT_MODES)[number];
 }

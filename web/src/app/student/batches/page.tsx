@@ -1,11 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { BookMarked, CalendarDays, User } from 'lucide-react';
+import Link from 'next/link';
+import { CalendarDays, FileText, Megaphone, User } from 'lucide-react';
 import { api, apiGetPublic, formatMinor } from '@/lib/api';
-import type { AttendanceHistoryEntry, Batch, Session, Subject } from '@/lib/types';
-import { EmptyState, CardSkeleton, ErrorState, StatusBadge } from '@/components/ui';
-import { PageIntro, AcademicCard } from '@/components/student';
+import type { AttendanceHistoryEntry, Batch, Material, Announcement, Session, Subject } from '@/lib/types';
+import { CardSkeleton, ErrorState, StatusBadge } from '@/components/ui';
+import { PageIntro, AcademicCard, NoBatchesEmptyState } from '@/components/student';
 import { cn } from '@/lib/cn';
 
 function formatSessionTime(session: Session): string {
@@ -32,6 +33,8 @@ export default function StudentBatchesPage() {
   const [subjects, setSubjects] = useState<Subject[] | null>(null);
   const [sessions, setSessions] = useState<Session[] | null>(null);
   const [history, setHistory] = useState<AttendanceHistoryEntry[] | null>(null);
+  const [materialsCount, setMaterialsCount] = useState<Map<string, number> | null>(null);
+  const [announcementsCount, setAnnouncementsCount] = useState<Map<string, number> | null>(null);
   const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(() => {
@@ -40,17 +43,30 @@ export default function StudentBatchesPage() {
     setSubjects(null);
     setSessions(null);
     setHistory(null);
+    setMaterialsCount(null);
+    setAnnouncementsCount(null);
     Promise.all([
       api.get<Batch[]>('/batches/enrolled'),
       apiGetPublic<Subject[]>('/catalog/subjects'),
       api.get<Session[]>('/sessions/upcoming'),
       api.get<AttendanceHistoryEntry[]>('/attendance/me/history'),
     ])
-      .then(([b, s, sess, hist]) => {
+      .then(async ([b, s, sess, hist]) => {
         setBatches(b);
         setSubjects(s);
         setSessions(sess);
         setHistory(hist);
+
+        const perBatch = await Promise.all(
+          b.map((batch) =>
+            Promise.all([
+              api.get<Material[]>(`/materials/batch/${batch.id}`).catch(() => [] as Material[]),
+              api.get<Announcement[]>(`/announcements/batch/${batch.id}`).catch(() => [] as Announcement[]),
+            ]),
+          ),
+        );
+        setMaterialsCount(new Map(b.map((batch, i) => [batch.id, perBatch[i][0].length])));
+        setAnnouncementsCount(new Map(b.map((batch, i) => [batch.id, perBatch[i][1].length])));
       })
       .catch(() => setLoadError(true));
   }, []);
@@ -59,7 +75,13 @@ export default function StudentBatchesPage() {
     load();
   }, [load]);
 
-  const loading = batches === null || subjects === null || sessions === null || history === null;
+  const loading =
+    batches === null ||
+    subjects === null ||
+    sessions === null ||
+    history === null ||
+    materialsCount === null ||
+    announcementsCount === null;
 
   const now = new Date();
 
@@ -76,11 +98,7 @@ export default function StudentBatchesPage() {
       ) : loadError ? (
         <ErrorState description="Could not load your batches. Check your connection and try again." onRetry={load} />
       ) : batches.length === 0 ? (
-        <EmptyState
-          icon={BookMarked}
-          title="You aren't enrolled in a batch yet"
-          description="Ask your tutor for an invite link to get started."
-        />
+        <NoBatchesEmptyState />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {batches.map((batch) => {
@@ -94,42 +112,55 @@ export default function StudentBatchesPage() {
               batchHistory.length > 0 ? Math.round((present / batchHistory.length) * 100) : null;
 
             return (
-              <AcademicCard key={batch.id} className="overflow-hidden p-0">
-                <div className={cn('h-1.5', spineTone(batch.subject_id))} aria-hidden />
-                <div className="p-6">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-display text-lg font-semibold text-neutral-900 dark:text-neutral-50">
-                        {batch.title}
-                      </p>
-                      {subject && <p className="text-sm text-neutral-500 dark:text-neutral-400">{subject}</p>}
+              <Link key={batch.id} href={`/student/batches/${batch.id}`}>
+                <AcademicCard interactive className="overflow-hidden p-0">
+                  <div className={cn('h-1.5', spineTone(batch.subject_id))} aria-hidden />
+                  <div className="p-6">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-display text-lg font-semibold text-neutral-900 dark:text-neutral-50">
+                          {batch.title}
+                        </p>
+                        {subject && <p className="text-sm text-neutral-500 dark:text-neutral-400">{subject}</p>}
+                      </div>
+                      <StatusBadge status={batch.status} />
                     </div>
-                    <StatusBadge status={batch.status} />
+
+                    {batch.tutor_display_name && (
+                      <p className="mt-3 flex items-center gap-1.5 text-sm text-neutral-600 dark:text-neutral-400">
+                        <User className="h-3.5 w-3.5 text-neutral-400" aria-hidden />
+                        {batch.tutor_display_name}
+                      </p>
+                    )}
+
+                    <p className="mt-1.5 flex items-center gap-1.5 text-sm text-neutral-600 dark:text-neutral-400">
+                      <CalendarDays className="h-3.5 w-3.5 text-neutral-400" aria-hidden />
+                      {nextSession ? `Next: ${formatSessionTime(nextSession)}` : 'No upcoming class'}
+                    </p>
+
+                    {attendanceRate !== null && (
+                      <p className="mt-1.5 text-sm text-neutral-600 dark:text-neutral-400">
+                        Attendance: {attendanceRate}% ({present}/{batchHistory.length})
+                      </p>
+                    )}
+
+                    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-neutral-600 dark:text-neutral-400">
+                      <span className="flex items-center gap-1.5">
+                        <FileText className="h-3.5 w-3.5 text-neutral-400" aria-hidden />
+                        {materialsCount!.get(batch.id) ?? 0} materials
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <Megaphone className="h-3.5 w-3.5 text-neutral-400" aria-hidden />
+                        {announcementsCount!.get(batch.id) ?? 0} announcements
+                      </span>
+                    </div>
+
+                    <p className="mt-4 border-t border-neutral-100 pt-3.5 text-sm text-neutral-600 dark:border-neutral-800 dark:text-neutral-400">
+                      {formatMinor(batch.fee_minor, batch.currency)} / {batch.fee_period.replace('_', ' ')}
+                    </p>
                   </div>
-
-                  {batch.tutor_display_name && (
-                    <p className="mt-3 flex items-center gap-1.5 text-sm text-neutral-600 dark:text-neutral-400">
-                      <User className="h-3.5 w-3.5 text-neutral-400" aria-hidden />
-                      {batch.tutor_display_name}
-                    </p>
-                  )}
-
-                  <p className="mt-1.5 flex items-center gap-1.5 text-sm text-neutral-600 dark:text-neutral-400">
-                    <CalendarDays className="h-3.5 w-3.5 text-neutral-400" aria-hidden />
-                    {nextSession ? `Next: ${formatSessionTime(nextSession)}` : 'No upcoming class'}
-                  </p>
-
-                  {attendanceRate !== null && (
-                    <p className="mt-1.5 text-sm text-neutral-600 dark:text-neutral-400">
-                      Attendance: {attendanceRate}% ({present}/{batchHistory.length})
-                    </p>
-                  )}
-
-                  <p className="mt-4 border-t border-neutral-100 pt-3.5 text-sm text-neutral-600 dark:border-neutral-800 dark:text-neutral-400">
-                    {formatMinor(batch.fee_minor, batch.currency)} / {batch.fee_period.replace('_', ' ')}
-                  </p>
-                </div>
-              </AcademicCard>
+                </AcademicCard>
+              </Link>
             );
           })}
         </div>

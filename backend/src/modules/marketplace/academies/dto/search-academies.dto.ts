@@ -11,6 +11,10 @@ import {
 
 const TEACHING_MODES = ['online', 'offline', 'both'] as const;
 
+/** Smaller set than SearchTutorsDto's — academies have no experience-years
+ *  or a single fee concept, so "Most Experienced"/"Lowest Fee" don't map. */
+const SORT_MODES = ['recommended', 'rating', 'recent'] as const;
+
 export class SearchAcademiesDto {
   @IsOptional()
   @IsUUID()
@@ -46,4 +50,8 @@ export class SearchAcademiesDto {
   @Min(1)
   @Max(50)
   limit?: number;
+
+  @IsOptional()
+  @IsIn(SORT_MODES)
+  sort?: (typeof SORT_MODES)[number];
 }

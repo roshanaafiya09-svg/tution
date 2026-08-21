@@ -77,6 +77,11 @@ export interface ProfilesStudentTable {
   grade_level: string | null;
   curriculum_id: string | null;
   school_name: string | null;
+  subjects: JSONColumnType<string[], string | undefined, string> | null;
+  languages: JSONColumnType<string[], string | undefined, string> | null;
+  location: string | null;
+  teaching_mode: 'online' | 'offline' | 'both' | null;
+  learning_goals: string | null;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
 }

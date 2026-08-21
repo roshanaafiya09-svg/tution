@@ -1,4 +1,4 @@
-import type { TeachingMode } from './types';
+import type { DiscoverySortMode, TeachingMode } from './types';
 
 /**
  * Shared by the public /discover page and the authenticated Find a
@@ -16,6 +16,7 @@ export interface TutorSearchFilters {
   minExperience?: string;
   feeMaxMinor?: string;
   minRating?: string;
+  sort?: DiscoverySortMode | '';
 }
 
 export function buildTutorSearchParams(filters: TutorSearchFilters): URLSearchParams {
@@ -28,6 +29,7 @@ export function buildTutorSearchParams(filters: TutorSearchFilters): URLSearchPa
   if (filters.minExperience) params.set('minExperience', filters.minExperience);
   if (filters.feeMaxMinor) params.set('feeMaxMinor', filters.feeMaxMinor);
   if (filters.minRating) params.set('minRating', filters.minRating);
+  if (filters.sort) params.set('sort', filters.sort);
   return params;
 }
 

@@ -22,6 +22,11 @@ export interface UpsertStudentProfileInput {
   gradeLevel?: string;
   curriculumId?: string;
   schoolName?: string;
+  subjects?: string[];
+  languages?: string[];
+  location?: string;
+  teachingMode?: 'online' | 'offline' | 'both';
+  learningGoals?: string;
 }
 
 export type TutorVerificationStatus = 'pending' | 'verified' | 'rejected';
@@ -129,6 +134,8 @@ export class ProfilesRepository {
   }
 
   async upsertStudent(userId: string, input: UpsertStudentProfileInput) {
+    const subjects = input.subjects ? JSON.stringify(input.subjects) : null;
+    const languages = input.languages ? JSON.stringify(input.languages) : null;
     return this.db
       .insertInto('profiles_student')
       .values({
@@ -137,6 +144,11 @@ export class ProfilesRepository {
         grade_level: input.gradeLevel ?? null,
         curriculum_id: input.curriculumId ?? null,
         school_name: input.schoolName ?? null,
+        subjects,
+        languages,
+        location: input.location ?? null,
+        teaching_mode: input.teachingMode ?? null,
+        learning_goals: input.learningGoals ?? null,
       })
       .onConflict((oc) =>
         oc.column('user_id').doUpdateSet({
@@ -144,6 +156,11 @@ export class ProfilesRepository {
           grade_level: input.gradeLevel ?? null,
           curriculum_id: input.curriculumId ?? null,
           school_name: input.schoolName ?? null,
+          subjects,
+          languages,
+          location: input.location ?? null,
+          teaching_mode: input.teachingMode ?? null,
+          learning_goals: input.learningGoals ?? null,
         }),
       )
       .returningAll()

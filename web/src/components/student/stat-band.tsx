@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import { cn } from '@/lib/cn';
 
 /** A single continuous metrics strip (internal dividers, not three separate
@@ -32,15 +33,19 @@ export function StatBandItem({
   value,
   tone = 'brand',
   detail,
+  href,
 }: {
   icon: LucideIcon;
   label: string;
   value: ReactNode;
   tone?: keyof typeof TONE_CLASS;
   detail?: string;
+  /** When set, the whole item becomes a link — e.g. Overview's Attendance/
+   *  Assignments/Quizzes stats route to their own pages. */
+  href?: string;
 }) {
-  return (
-    <div className="flex flex-1 items-start gap-3 p-5">
+  const content = (
+    <>
       <Icon className={cn('mt-0.5 h-[18px] w-[18px] shrink-0', TONE_CLASS[tone])} aria-hidden />
       <div className="min-w-0">
         <p className="font-display text-2xl font-semibold leading-none text-neutral-900 dark:text-neutral-50">
@@ -49,6 +54,19 @@ export function StatBandItem({
         <p className="mt-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400">{label}</p>
         {detail && <p className="mt-0.5 text-xs text-neutral-400 dark:text-neutral-500">{detail}</p>}
       </div>
-    </div>
+    </>
   );
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className="flex flex-1 items-start gap-3 p-5 transition-colors duration-fast hover:bg-neutral-50/80 dark:hover:bg-neutral-900/60"
+      >
+        {content}
+      </Link>
+    );
+  }
+
+  return <div className="flex flex-1 items-start gap-3 p-5">{content}</div>;
 }

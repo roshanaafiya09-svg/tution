@@ -49,6 +49,8 @@ export class DiscoveryRepository {
         'profiles_tutor.avatar_object_key',
         'profiles_tutor.teaching_mode',
         'profiles_tutor.languages',
+        'profiles_tutor.years_experience',
+        'profiles_tutor.created_at as tutor_created_at',
       ])
       .where('profiles_tutor.verification_status', '=', 'verified');
 

@@ -313,11 +313,16 @@ export interface DiscoveryTutorResult {
   teachingMode: TeachingMode | null;
   languages: string[];
   location: { city: string; areaLabel: string | null } | null;
+  verified: boolean;
+  yearsExperience: number | null;
+  createdAt: string;
   proofOfTeachingScore: number;
   studentsTaught: number;
   rating: ReviewSummary;
   offerings: DiscoveryOffering[];
 }
+
+export type DiscoverySortMode = 'recommended' | 'rating' | 'experience' | 'fee' | 'recent';
 
 export interface DiscoverySearchResponse {
   gateOpen: boolean;
@@ -403,8 +408,12 @@ export interface AcademyCardResult {
   grades: { min: number; max: number };
   teacherCount: number;
   studentsCount: number | null;
+  batchCount: number;
   rating: ReviewSummary;
+  createdAt: string;
 }
+
+export type AcademySortMode = 'recommended' | 'rating' | 'recent';
 
 export interface AcademySearchResponse {
   gateOpen: boolean;
@@ -858,6 +867,11 @@ export interface StudentProfile {
   grade_level: string | null;
   curriculum_id: string | null;
   school_name: string | null;
+  subjects: string[] | null;
+  languages: string[] | null;
+  location: string | null;
+  teaching_mode: TeachingMode | null;
+  learning_goals: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -1,12 +1,26 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Bell, CheckCheck } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AppNotification } from '@/lib/types';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui';
 
-export function NotificationsBell() {
+/**
+ * Optional, portal-supplied type→route mapping. The same notification
+ * `type` (e.g. "announcement") routes to a different page depending on
+ * which portal is viewing it (a tutor's announcement goes to their batch
+ * detail page, a student's to their own announcements), so the mapping
+ * can't live inside this shared component — each shell passes its own.
+ * Returning null (or omitting the prop entirely) keeps the existing
+ * mark-read-only behavior, so portals that haven't wired this up yet see
+ * no change.
+ */
+export type NotificationHrefResolver = (notification: AppNotification) => string | null;
+
+export function NotificationsBell({ resolveHref }: { resolveHref?: NotificationHrefResolver } = {}) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<AppNotification[] | null>(null);
@@ -33,6 +47,15 @@ export function NotificationsBell() {
     await api.post(`/notifications/${id}/read`);
     setNotifications(await api.get<AppNotification[]>('/notifications'));
     await loadCount();
+  }
+
+  async function handleSelect(n: AppNotification) {
+    if (!n.read_at) await markRead(n.id);
+    const href = resolveHref?.(n);
+    if (href) {
+      setOpen(false);
+      router.push(href);
+    }
   }
 
   async function markAllRead() {
@@ -80,7 +103,7 @@ export function NotificationsBell() {
             notifications.map((n) => (
               <button
                 key={n.id}
-                onClick={() => !n.read_at && void markRead(n.id)}
+                onClick={() => void handleSelect(n)}
                 className={`block w-full border-b border-neutral-50 px-4 py-3 text-left text-sm transition-colors last:border-0 hover:bg-neutral-50 dark:border-neutral-800/60 dark:hover:bg-neutral-800/40 ${
                   n.read_at ? '' : 'bg-brand-50/60 dark:bg-brand-500/10'
                 }`}

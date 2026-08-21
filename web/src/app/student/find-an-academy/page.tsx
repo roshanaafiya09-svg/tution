@@ -2,12 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Star, Info, Search, SearchX, SlidersHorizontal, Users, GraduationCap } from 'lucide-react';
+import { Star, Info, Layers, Search, SearchX, SlidersHorizontal, Users, GraduationCap } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { AcademySearchResponse, Curriculum, Subject } from '@/lib/types';
+import type { AcademySearchResponse, AcademySortMode, Curriculum, Subject } from '@/lib/types';
 import { buildAcademySearchParams, academyInitials } from '@/lib/academies';
 import { CardSkeleton, ErrorState, EmptyState, Field, Input, Select, StatusBadge } from '@/components/ui';
 import { AcademicCard, PageIntro, SectionHeader } from '@/components/student';
+
+const SORT_OPTIONS: { value: AcademySortMode; label: string }[] = [
+  { value: 'recommended', label: 'Recommended' },
+  { value: 'rating', label: 'Highest Rated' },
+  { value: 'recent', label: 'Recently Joined' },
+];
 
 export default function StudentFindAnAcademyPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -18,6 +24,7 @@ export default function StudentFindAnAcademyPage() {
   const [grade, setGrade] = useState('');
   const [teachingMode, setTeachingMode] = useState('');
   const [minRating, setMinRating] = useState('');
+  const [sort, setSort] = useState<AcademySortMode>('recommended');
   const [results, setResults] = useState<AcademySearchResponse | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -36,12 +43,13 @@ export default function StudentFindAnAcademyPage() {
       grade,
       teachingMode: teachingMode as '' | 'online' | 'offline' | 'both',
       minRating,
+      sort: sort === 'recommended' ? '' : sort,
     });
     void api
       .get<AcademySearchResponse>(`/marketplace/academies?${params.toString()}`)
       .then(setResults)
       .catch(() => setLoadError(true));
-  }, [subjectId, curriculumId, grade, teachingMode, minRating, retryCount]);
+  }, [subjectId, curriculumId, grade, teachingMode, minRating, sort, retryCount]);
 
   const filtered =
     results && query.trim()
@@ -144,7 +152,20 @@ export default function StudentFindAnAcademyPage() {
           </AcademicCard>
         )}
 
-        <SectionHeader title="Academies" />
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+          <SectionHeader title="Academies" className="mb-0" />
+          <div className="w-44">
+            <Field label="Sort by">
+              <Select value={sort} onChange={(e) => setSort(e.target.value as AcademySortMode)}>
+                {SORT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+        </div>
 
         {loadError ? (
           <ErrorState
@@ -190,10 +211,16 @@ export default function StudentFindAnAcademyPage() {
                         <p className="text-sm text-neutral-500 dark:text-neutral-400">{academy.tagline}</p>
                       )}
                       <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-400 dark:text-neutral-500">
-                        {[academy.teachingMode, academy.location?.city].filter(Boolean).join(' · ')}
+                        {[academy.teachingMode, academy.location?.city, `Grades ${academy.grades.min}–${academy.grades.max}`]
+                          .filter(Boolean)
+                          .join(' · ')}
                         <span className="flex items-center gap-1">
                           <GraduationCap className="h-3 w-3" aria-hidden />
                           {academy.teacherCount} {academy.teacherCount === 1 ? 'teacher' : 'teachers'}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Layers className="h-3 w-3" aria-hidden />
+                          {academy.batchCount} {academy.batchCount === 1 ? 'batch' : 'batches'}
                         </span>
                         {academy.studentsCount !== null && (
                           <span className="flex items-center gap-1">
