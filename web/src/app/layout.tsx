@@ -19,9 +19,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Tuition App — Run your whole teaching business from one place",
+  title: "Scholar — Run your tuition smarter",
   description:
-    "Batches, scheduling, attendance, materials, homework, and fee tracking for tutors in Chennai & Tamil Nadu. Students and parents follow along on mobile.",
+    "One platform for teachers, students, parents and academies in Chennai & Tamil Nadu to manage batches, attendance, materials, homework and fees — off WhatsApp and out of the notebook.",
 };
 
 export default function RootLayout({
