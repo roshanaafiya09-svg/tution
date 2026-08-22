@@ -6,7 +6,7 @@ import { GraduationCap, UserMinus } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AcademyManagedEnrollment } from '@/lib/types';
 import { CardSkeleton, ConfirmDialog, EmptyState, ErrorState, StatusBadge, useToast } from '@/components/ui';
-import { AcademyCard, AcademyPageIntro, AcademySetupRequired } from '@/components/academy';
+import { AcademyCard, AcademyPageIntro, AcademySetupBanner } from '@/components/academy';
 import { academyInitials } from '@/lib/academies';
 import { useAcademyDashboard } from '@/components/academy-shell';
 
@@ -18,7 +18,10 @@ export default function AcademyStudentsPage() {
   const [removeTarget, setRemoveTarget] = useState<AcademyManagedEnrollment | null>(null);
 
   const load = useCallback(async () => {
-    if (hasAcademy === false) return;
+    if (hasAcademy === false) {
+      setStudents([]);
+      return;
+    }
     setLoadError(false);
     try {
       setStudents(await api.get<AcademyManagedEnrollment[]>('/academy/me/students'));
@@ -38,19 +41,9 @@ export default function AcademyStudentsPage() {
     await load();
   }
 
-  if (hasAcademy === false) {
-    return (
-      <div>
-        <AcademyPageIntro eyebrow="Academy Dashboard" title="Students" description="Students taught across your academy's teachers." />
-        <div className="mt-8">
-          <AcademySetupRequired pageLabel="Students" />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div>
+      <AcademySetupBanner />
       <AcademyPageIntro eyebrow="Academy Dashboard" title="Students" description="Students taught across your academy's teachers." />
 
       <div className="mt-8">

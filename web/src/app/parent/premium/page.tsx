@@ -6,7 +6,7 @@ import { Sparkles, FileText, TrendingUp, ArrowRight } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
 import { payForOrder } from '@/lib/razorpay';
 import type { ParentPremiumStatus, PaymentOrder, SubscriptionPlan } from '@/lib/types';
-import { PageHeader, InlineError, PageLoading, Button } from '@/components/ui';
+import { PageHeader, InlineError, PageLoading, Button, ErrorState } from '@/components/ui';
 import { ParentCard, ParentSectionHeader, PremiumStatusCard } from '@/components/parent';
 
 const BENEFITS = [
@@ -27,14 +27,20 @@ export default function ParentPremiumPage() {
   const [plans, setPlans] = useState<Record<string, SubscriptionPlan> | null>(null);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
-    const [s, p] = await Promise.all([
-      api.get<ParentPremiumStatus>('/parent-premium/me'),
-      api.get<Record<string, SubscriptionPlan>>('/parent-premium/plans'),
-    ]);
-    setStatus(s);
-    setPlans(p);
+    setLoadError(false);
+    try {
+      const [s, p] = await Promise.all([
+        api.get<ParentPremiumStatus>('/parent-premium/me'),
+        api.get<Record<string, SubscriptionPlan>>('/parent-premium/plans'),
+      ]);
+      setStatus(s);
+      setPlans(p);
+    } catch {
+      setLoadError(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -75,7 +81,12 @@ export default function ParentPremiumPage() {
         </div>
       )}
 
-      {status === null ? (
+      {loadError ? (
+        <ErrorState
+          description="Could not load your premium status. Check your connection and try again."
+          onRetry={() => void load()}
+        />
+      ) : status === null ? (
         <PageLoading />
       ) : (
         <div className="space-y-8">

@@ -28,7 +28,7 @@ import {
   StatusBadge,
   useToast,
 } from '@/components/ui';
-import { AcademyCard, AcademyPageIntro, AcademySetupRequired } from '@/components/academy';
+import { AcademyCard, AcademyPageIntro, AcademySetupBanner } from '@/components/academy';
 import { useAcademyDashboard } from '@/components/academy-shell';
 
 const EMPTY_FORM = {
@@ -58,7 +58,10 @@ export default function AcademyBatchesPage() {
   const [archiveTarget, setArchiveTarget] = useState<AcademyManagedBatch | null>(null);
 
   const load = useCallback(async () => {
-    if (hasAcademy === false) return;
+    if (hasAcademy === false) {
+      setBatches([]);
+      return;
+    }
     setLoadError(false);
     try {
       const [batchRows, teacherRows, subjectRows, curriculumRows] = await Promise.all([
@@ -123,19 +126,9 @@ export default function AcademyBatchesPage() {
 
   const canSubmit = form.tutorId && form.title && form.subjectId && form.gradeLevelId;
 
-  if (hasAcademy === false) {
-    return (
-      <div>
-        <AcademyPageIntro eyebrow="Academy Dashboard" title="Batches" description="Batches run by your academy's teachers." />
-        <div className="mt-8">
-          <AcademySetupRequired pageLabel="Batches" />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div>
+      <AcademySetupBanner />
       <AcademyPageIntro
         eyebrow="Academy Dashboard"
         title="Batches"

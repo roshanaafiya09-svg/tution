@@ -31,7 +31,7 @@ import type {
   Subject,
 } from '@/lib/types';
 import { buttonVariants, CardSkeleton, ErrorState, StatCard, StatusBadge } from '@/components/ui';
-import { AcademyCard, AcademyHero, AcademyPageIntro, AcademySectionHeader, type DayPeriod } from '@/components/academy';
+import { AcademyCard, AcademyHero, AcademySectionHeader, type DayPeriod } from '@/components/academy';
 import { SectionHeader, ActionCard, ActivityFeed, EmptyPanel, type ActivityItem } from '@/components/dashboard';
 import { academyInitials } from '@/lib/academies';
 import { useAcademyDashboard } from '@/components/academy-shell';
@@ -141,7 +141,7 @@ export default function AcademyTodayPage() {
   }, [load]);
 
   if (hasAcademy === false) {
-    return <WelcomeCard />;
+    return <WelcomeCard period={dayPeriod()} />;
   }
 
   if (loadError) {
@@ -392,25 +392,30 @@ export default function AcademyTodayPage() {
   );
 }
 
-/** Shown when the account has no `academies` row yet — a focused welcome
- *  + link to Academy Profile, never the creation form itself (that lives
- *  only on Academy Profile, per the Navigation, Routing & UX Update spec). */
-function WelcomeCard() {
+/** Shown when the account has no `academies` row yet. Uses the same
+ *  hero-first, section-based rhythm as the loaded Today page (rather than a
+ *  standalone landing screen) so it reads as "Today, before your academy
+ *  exists" — with a link to Academy Profile, never the creation form itself
+ *  (that lives only on Academy Profile, per the Navigation, Routing & UX
+ *  Update spec). */
+function WelcomeCard({ period }: { period: DayPeriod }) {
   return (
-    <div>
-      <AcademyPageIntro
-        eyebrow="Academy Dashboard"
-        title="Welcome to Scholar"
-        description="Set up your academy profile to unlock your dashboard — teachers, contact requests, batches, and more."
-      />
-      <AcademyCard className="mt-8 max-w-md">
-        <p className="text-sm text-neutral-600 dark:text-neutral-400">
-          It only takes a name to get started. You can add a description, subjects, location, and photos afterward.
-        </p>
-        <Link href="/academy/profile" className={buttonVariants({ className: 'mt-4' })}>
-          Set up Academy Profile
-        </Link>
-      </AcademyCard>
+    <div className="space-y-8">
+      <AcademyHero period={period} greeting={`${GREETING[period]} 👋`} subtitle="Let's get your academy set up on Scholar." />
+
+      <section>
+        <SectionHeader eyebrow="Academy Dashboard" title="Get started" />
+        <AcademyCard className="max-w-md">
+          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">Academy profile incomplete</p>
+          <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+            Complete your profile to unlock all Academy features — teachers, contact requests, batches, and more. It
+            only takes a name to get started; you can add a description, subjects, location, and photos afterward.
+          </p>
+          <Link href="/academy/profile" className={buttonVariants({ className: 'mt-4' })}>
+            Complete Academy Profile
+          </Link>
+        </AcademyCard>
+      </section>
     </div>
   );
 }

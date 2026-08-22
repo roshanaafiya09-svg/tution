@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, Images, Star, Trash2, Upload } from 'lucide-
 import { api } from '@/lib/api';
 import type { AcademyPhoto } from '@/lib/types';
 import { CardSkeleton, ConfirmDialog, EmptyState, ErrorState, useToast } from '@/components/ui';
-import { AcademyPageIntro, AcademySetupRequired } from '@/components/academy';
+import { AcademyPageIntro, AcademySetupBanner } from '@/components/academy';
 import { useAcademyDashboard } from '@/components/academy-shell';
 
 const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -20,7 +20,10 @@ export default function AcademyPhotosPage() {
   const [deleteTarget, setDeleteTarget] = useState<AcademyPhoto | null>(null);
 
   const load = useCallback(async () => {
-    if (hasAcademy === false) return;
+    if (hasAcademy === false) {
+      setPhotos([]);
+      return;
+    }
     setLoadError(false);
     try {
       setPhotos(await api.get<AcademyPhoto[]>('/academy/me/photos'));
@@ -83,6 +86,7 @@ export default function AcademyPhotosPage() {
 
   return (
     <div>
+      <AcademySetupBanner />
       <AcademyPageIntro
         eyebrow="Academy Dashboard"
         title="Photos"
@@ -109,9 +113,7 @@ export default function AcademyPhotosPage() {
       />
 
       <div className="mt-8">
-        {hasAcademy === false ? (
-          <AcademySetupRequired pageLabel="Photos" />
-        ) : loadError ? (
+        {loadError ? (
           <ErrorState description="Could not load photos. Check your connection and try again." onRetry={() => void load()} />
         ) : photos === null ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">

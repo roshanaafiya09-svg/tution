@@ -85,7 +85,7 @@ interface RecentUpdate {
   created_at: string;
 }
 
-export default function StudentOverviewPage() {
+export default function StudentTodayPage() {
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [sessions, setSessions] = useState<Session[] | null>(null);
   const [assignments, setAssignments] = useState<StudentAssignmentSummary[] | null>(null);
@@ -310,6 +310,7 @@ export default function StudentOverviewPage() {
           </div>
 
           <div className="animate-fade-up" style={{ animationDelay: '80ms' }}>
+            <SectionHeader eyebrow="Overview" title="Your week" />
             <StatBand>
               <StatBandItem
                 icon={CalendarCheck}

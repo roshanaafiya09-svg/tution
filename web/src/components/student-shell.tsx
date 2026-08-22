@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import posthog from 'posthog-js';
-import { LogOut, Menu, User } from 'lucide-react';
+import { LogOut, Menu, Settings, User } from 'lucide-react';
 import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
 import type { Me, StudentProfile } from '@/lib/types';
 import { NotificationsBell } from '@/components/notifications-bell';
@@ -137,7 +137,7 @@ export function StudentShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const profileActive = pathname.startsWith('/student/profile');
+  const profileActive = pathname.startsWith('/student/account');
   const pageTitle = studentPageTitle(pathname);
 
   return (
@@ -206,9 +206,15 @@ export function StudentShell({ children }: { children: React.ReactNode }) {
                   </div>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
-                    <Link href="/student/profile">
+                    <Link href="/student/account">
                       <User className="h-4 w-4 text-neutral-400" aria-hidden />
-                      Profile
+                      Account
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/student/settings">
+                      <Settings className="h-4 w-4 text-neutral-400" aria-hidden />
+                      Settings
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />

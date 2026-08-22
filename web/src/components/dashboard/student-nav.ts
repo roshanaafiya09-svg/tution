@@ -4,13 +4,14 @@ import {
   Building2,
   CalendarCheck,
   CalendarClock,
+  CircleUser,
   FileCheck2,
   HelpCircle,
   Home,
   ListChecks,
   Megaphone,
   Search,
-  User,
+  Settings,
   type LucideIcon,
 } from 'lucide-react';
 import { isPortalNavItemActive, type PortalNavGroup, type PortalNavItem } from './portal-sidebar';
@@ -21,7 +22,7 @@ import type { AppNotification } from '@/lib/types';
 export const STUDENT_NAV: PortalNavGroup[] = [
   {
     label: 'Main',
-    items: [{ href: '/student', label: 'Overview', icon: Home, exact: true }],
+    items: [{ href: '/student', label: 'Today', icon: Home, exact: true }],
   },
   {
     label: 'Discover',
@@ -50,12 +51,10 @@ export const STUDENT_NAV: PortalNavGroup[] = [
   },
 ];
 
-/** Pinned to the bottom of the rail, above the sign-out affordance. No
- *  Settings entry — there is no /student/settings page and no defined
- *  content for one yet. Add it here (mirroring ACADEMY_NAV_FOOTER) once a
- *  real settings page exists; nothing else needs to change to support it. */
+/** Pinned to the bottom of the rail, above the sign-out affordance. */
 export const STUDENT_NAV_FOOTER: PortalNavItem[] = [
-  { href: '/student/profile', label: 'Profile', icon: User },
+  { href: '/student/settings', label: 'Settings', icon: Settings },
+  { href: '/student/account', label: 'Account', icon: CircleUser },
 ];
 
 /** Routes with no rail entry of their own but that still need a resolved

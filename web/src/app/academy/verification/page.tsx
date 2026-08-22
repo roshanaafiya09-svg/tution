@@ -13,7 +13,7 @@ import {
   Input,
   StatusBadge,
 } from '@/components/ui';
-import { AcademyCard, AcademyPageIntro, AcademySetupRequired } from '@/components/academy';
+import { AcademyCard, AcademyPageIntro, AcademySetupBanner } from '@/components/academy';
 import { useAcademyDashboard } from '@/components/academy-shell';
 
 const POLICY_VERSION = '1.0';
@@ -76,7 +76,10 @@ export default function AcademyVerificationPage() {
   const [gstin, setGstin] = useState('');
 
   const load = useCallback(async () => {
-    if (hasAcademy === false) return;
+    if (hasAcademy === false) {
+      setStatus(null);
+      return;
+    }
     setLoadError(false);
     try {
       const res = await api.get<AcademyKycVerificationStatus>('/academy/verification/me');
@@ -119,21 +122,6 @@ export default function AcademyVerificationPage() {
     }
   }
 
-  if (hasAcademy === false) {
-    return (
-      <div>
-        <AcademyPageIntro
-          eyebrow="Academy Dashboard"
-          title="Verification"
-          description="Confirming your identity helps keep Scholar safe and prevents fake academies from listing."
-        />
-        <div className="mt-8">
-          <AcademySetupRequired pageLabel="Verification" />
-        </div>
-      </div>
-    );
-  }
-
   if (loadError) {
     return (
       <ErrorState
@@ -157,6 +145,7 @@ export default function AcademyVerificationPage() {
 
   return (
     <div>
+      <AcademySetupBanner />
       <AcademyPageIntro
         eyebrow="Academy Dashboard"
         title="Verification"
@@ -180,7 +169,7 @@ export default function AcademyVerificationPage() {
           )}
         </AcademyCard>
 
-        {(!status || status.status === 'not_started') && (
+        {(!status || status.status === 'not_started') && hasAcademy !== false && (
           <AcademyCard>
             <p className="font-display text-lg font-semibold text-neutral-900 dark:text-neutral-50">What we check</p>
             <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
@@ -201,7 +190,7 @@ export default function AcademyVerificationPage() {
           </AcademyCard>
         )}
 
-        {canStart && (
+        {canStart && hasAcademy !== false && (
           <AcademyCard>
             <p className="font-display text-lg font-semibold text-neutral-900 dark:text-neutral-50">Owner &amp; academy details</p>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">

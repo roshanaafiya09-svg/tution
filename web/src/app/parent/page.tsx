@@ -70,7 +70,7 @@ const NOTIFICATION_ICON: Record<string, { icon: LucideIcon; tone: ActivityItem['
   attendance_absence_alert: { icon: AlertTriangle, tone: 'error' },
 };
 
-export default function ParentHomePage() {
+export default function ParentTodayPage() {
   const [links, setLinks] = useState<ParentLink[] | null>(null);
   const [digests, setDigests] = useState<Digest[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);

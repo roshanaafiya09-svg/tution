@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import posthog from 'posthog-js';
-import { Home, UserPlus, MessagesSquare, Search, Building2, Sparkles, User, LogOut } from 'lucide-react';
+import { LogOut, Menu, Settings, UserPlus, CircleUser } from 'lucide-react';
 import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
 import type { Me } from '@/lib/types';
 import { impersonationStore } from '@/lib/impersonation';
@@ -21,22 +21,64 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui';
+import {
+  ParentSidebar,
+  ParentSidebarDrawer,
+  SIDEBAR_WIDTH_COLLAPSED,
+  SIDEBAR_WIDTH_EXPANDED,
+} from '@/components/dashboard/parent-sidebar';
+import { parentPageTitle } from '@/components/dashboard/parent-nav';
 
-const NAV = [
-  { href: '/parent', label: 'Home', icon: Home },
-  { href: '/parent/find-a-teacher', label: 'Find a Teacher', icon: Search },
-  { href: '/parent/find-an-academy', label: 'Find an Academy', icon: Building2 },
-  { href: '/parent/link', label: 'Link a child', icon: UserPlus },
-  { href: '/parent/messages', label: 'Messages', icon: MessagesSquare },
-  { href: '/parent/premium', label: 'Premium', icon: Sparkles },
-];
+const COLLAPSE_KEY = 'scholar.parentSidebarCollapsed';
 
+/** Tracks a media query as React state. The shell only renders once
+ *  `/auth/me` has resolved, so there's no server render to mismatch. */
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(false);
+
+  useEffect(() => {
+    const list = window.matchMedia(query);
+    setMatches(list.matches);
+    const onChange = (event: MediaQueryListEvent) => setMatches(event.matches);
+    list.addEventListener('change', onChange);
+    return () => list.removeEventListener('change', onChange);
+  }, [query]);
+
+  return matches;
+}
+
+/**
+ * Parent Portal shell — same sidebar component, layout, and page-container
+ * structure as `DashboardShell` (Teacher) and `AcademyShell`; only the nav
+ * config (`ParentSidebar`) and account-menu items differ.
+ */
 export function ParentShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [impersonating, setImpersonating] = useState<ImpersonationTarget | null>(null);
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [collapsedPref, setCollapsedPref] = useState(false);
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
+  const isTabletUp = useMediaQuery('(min-width: 768px)');
+  const collapsed = isDesktop ? collapsedPref : true;
+
+  useEffect(() => {
+    setCollapsedPref(window.localStorage.getItem(COLLAPSE_KEY) === '1');
+  }, []);
+
+  const toggleCollapsed = useCallback(() => {
+    setCollapsedPref((current) => {
+      window.localStorage.setItem(COLLAPSE_KEY, current ? '0' : '1');
+      return !current;
+    });
+  }, []);
+
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     if (!tokenStore.access) {
@@ -94,98 +136,95 @@ export function ParentShell({ children }: { children: React.ReactNode }) {
     );
   }
 
+  const pageTitle = parentPageTitle(pathname);
+
   return (
     <div className="min-h-screen bg-background">
       {impersonating && <ImpersonationBanner target={impersonating} />}
-      <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/85 backdrop-blur supports-[backdrop-filter]:bg-white/70 dark:border-neutral-800 dark:bg-neutral-950/80">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-8">
-            <Link
-              href="/parent"
-              className="font-display text-xl font-semibold italic text-brand-800 dark:text-brand-200"
-            >
-              Scholar
-            </Link>
-            <nav className="hidden items-center gap-1 md:flex">
-              {NAV.map((item) => {
-                const active =
-                  item.href === '/parent' ? pathname === item.href : pathname.startsWith(item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    aria-current={active ? 'page' : undefined}
-                    className={cn(
-                      'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                      active
-                        ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'
-                        : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
-                    )}
-                  >
-                    <item.icon className="h-3.5 w-3.5" aria-hidden />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </nav>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <NotificationsBell />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  className="ml-1 flex h-9 w-9 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline-none focus-visible:shadow-focus-ring dark:bg-brand-500 dark:text-neutral-950 dark:hover:bg-brand-400"
-                  aria-label="Account menu"
-                >
-                  {me.phoneE164.slice(-2)}
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="min-w-[14rem]">
-                <div className="px-2.5 py-1.5 text-xs text-neutral-400 dark:text-neutral-500">Signed in as</div>
-                <div className="px-2.5 pb-2 text-sm font-medium text-neutral-800 dark:text-neutral-100">
-                  {me.phoneE164}
-                </div>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/parent/link">
-                    <User className="h-4 w-4 text-neutral-400" aria-hidden />
-                    Link a child
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={signOut} className="text-error dark:text-error-dark">
-                  <LogOut className="h-4 w-4" aria-hidden />
-                  Sign out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-        <nav className="flex items-center gap-1 overflow-x-auto border-t border-neutral-100 px-4 py-1.5 md:hidden dark:border-neutral-800">
-          {NAV.map((item) => {
-            const active =
-              item.href === '/parent' ? pathname === item.href : pathname.startsWith(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? 'page' : undefined}
-                className={cn(
-                  'flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                  active
-                    ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'
-                    : 'text-neutral-600 dark:text-neutral-400',
-                )}
-              >
-                <item.icon className="h-3.5 w-3.5" aria-hidden />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </header>
+      <ParentSidebar collapsed={collapsed} onToggleCollapse={toggleCollapsed} canToggle={isDesktop} />
+      <ParentSidebarDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
-      <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+      <div
+        className="flex min-h-screen flex-col transition-[padding] duration-base"
+        style={{
+          paddingLeft: isTabletUp ? (collapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED) : undefined,
+        }}
+      >
+        <header className="sticky top-0 z-30 border-b border-neutral-200/70 bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70 dark:border-neutral-800/80">
+          <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
+            <button
+              type="button"
+              onClick={() => setDrawerOpen(true)}
+              aria-label="Open navigation"
+              className="-ml-1 rounded-md p-2 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 focus-visible:outline-none focus-visible:shadow-focus-ring md:hidden dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+            >
+              <Menu className="h-5 w-5" aria-hidden />
+            </button>
+
+            <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
+              <Link
+                href="/parent"
+                className="hidden shrink-0 font-display text-sm italic text-neutral-400 transition-colors hover:text-neutral-600 sm:block dark:text-neutral-500 dark:hover:text-neutral-300"
+              >
+                Scholar
+              </Link>
+              <span className="hidden shrink-0 text-sm text-neutral-300 sm:block dark:text-neutral-700" aria-hidden>
+                /
+              </span>
+              <h1 className="min-w-0 truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">
+                {pageTitle}
+              </h1>
+            </div>
+
+            <div className={cn('flex shrink-0 items-center gap-1')}>
+              <NotificationsBell />
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="ml-1 flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 text-sm font-semibold text-neutral-600 transition-colors hover:bg-neutral-200 focus-visible:outline-none focus-visible:shadow-focus-ring dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+                    aria-label="Account menu"
+                  >
+                    {me.phoneE164.slice(-2)}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="min-w-[14rem]">
+                  <div className="px-2.5 py-1.5 text-xs text-neutral-400 dark:text-neutral-500">Signed in as</div>
+                  <div className="px-2.5 pb-2 text-sm font-medium text-neutral-800 dark:text-neutral-100">
+                    {me.email ?? me.phoneE164}
+                  </div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/parent/link">
+                      <UserPlus className="h-4 w-4 text-neutral-400" aria-hidden />
+                      Link a child
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/parent/account">
+                      <CircleUser className="h-4 w-4 text-neutral-400" aria-hidden />
+                      Account
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/parent/settings">
+                      <Settings className="h-4 w-4 text-neutral-400" aria-hidden />
+                      Settings
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={signOut} className="text-error dark:text-error-dark">
+                    <LogOut className="h-4 w-4" aria-hidden />
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        </header>
+
+        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</main>
+      </div>
     </div>
   );
 }
