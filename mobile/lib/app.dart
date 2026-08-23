@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'features/notifications/application/push_message_handling.dart';
 import 'l10n/gen/app_localizations.dart';
 
 /// English + Tamil (blueprint §4), ARB-based via AppLocalizations —
@@ -16,6 +17,7 @@ class TuitionApp extends ConsumerWidget {
 
     return MaterialApp.router(
       title: 'Tuition App',
+      scaffoldMessengerKey: scaffoldMessengerKey,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
