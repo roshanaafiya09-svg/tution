@@ -16,7 +16,12 @@ import { MessagesRepository } from './messages.repository';
  * Owns table: messages.
  */
 @Module({
-  imports: [IdentityModule, SchedulingModule, ParentsModule, NotificationsModule],
+  imports: [
+    IdentityModule,
+    SchedulingModule,
+    ParentsModule,
+    NotificationsModule,
+  ],
   controllers: [MessagesController],
   providers: [MessagesService, MessagesRepository],
 })

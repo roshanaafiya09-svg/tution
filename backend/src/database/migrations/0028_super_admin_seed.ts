@@ -37,7 +37,7 @@ export async function up(db: Kysely<any>): Promise<void> {
   let userId: string;
 
   if (existing) {
-    userId = existing.id;
+    userId = existing.id as string;
     if (!existing.email) {
       await db
         .updateTable('users')

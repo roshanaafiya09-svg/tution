@@ -30,7 +30,10 @@ export class ActiveSubscriptionGuard implements CanActivate {
         status === 'active'
           ? 'Your subscription period has ended. Renew to keep going.'
           : 'Your trial has ended. Subscribe to keep going.';
-      throw new HttpException({ error: 'TrialExpired', message }, HttpStatus.PAYMENT_REQUIRED);
+      throw new HttpException(
+        { error: 'TrialExpired', message },
+        HttpStatus.PAYMENT_REQUIRED,
+      );
     }
     return true;
   }

@@ -64,7 +64,6 @@ import { AcademyVerificationModule } from './modules/marketplace/academy-verific
  * run without NODE_ENV=production set) — module absent means nothing
  * to load, not a boot crash.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const devModuleImports: any[] = [];
 if (process.env.NODE_ENV !== 'production') {
   try {
@@ -78,6 +77,8 @@ if (process.env.NODE_ENV !== 'production') {
 
 @Module({
   imports: [
+    // devModuleImports is deliberately `any[]` — see the comment above it.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     ...devModuleImports,
     ConfigModule.forRoot({
       isGlobal: true,

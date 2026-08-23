@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { App, cert, initializeApp } from 'firebase-admin/app';
+import { App, cert, initializeApp, ServiceAccount } from 'firebase-admin/app';
 import { getMessaging, TokenMessage } from 'firebase-admin/messaging';
 import { DeviceTokensRepository } from '../device-tokens/device-tokens.repository';
 import { PushMessage, PushProvider } from './push-provider.interface';
@@ -39,7 +39,7 @@ export class FcmPushProvider implements PushProvider {
     const b64 = this.config.getOrThrow<string>('fcm.serviceAccountJsonBase64');
     const serviceAccount = JSON.parse(
       Buffer.from(b64, 'base64').toString('utf8'),
-    );
+    ) as ServiceAccount;
     this.app = initializeApp(
       { credential: cert(serviceAccount) },
       'push-provider',

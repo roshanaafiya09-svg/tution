@@ -1,4 +1,7 @@
-import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import { EmailOtpProvider } from './email-otp.provider';
 
@@ -23,6 +26,25 @@ function jsonResponse(status: number, body: unknown): Response {
     status,
     json: () => Promise.resolve(body),
   } as unknown as Response;
+}
+
+/** The shape of the second argument EmailOtpProvider's own `fetch(url,
+ *  init)` call is invoked with — accurate to what it actually sends (see
+ *  email-otp.provider.ts's Brevo request body), not a blanket `any`.
+ *  `fetchMock` itself stays a plain untyped `jest.Mock` (matching how
+ *  `global.fetch` is assigned below); this narrows just the two spots
+ *  that read back into its recorded calls. */
+interface MockFetchInit {
+  method: string;
+  headers: Record<string, string>;
+  body: string;
+}
+
+interface BrevoRequestBody {
+  sender: { email: string };
+  to: { email: string }[];
+  subject: string;
+  textContent: string;
 }
 
 describe('EmailOtpProvider', () => {
@@ -53,10 +75,16 @@ describe('EmailOtpProvider', () => {
       'https://api.brevo.com/v3/smtp/email',
       expect.objectContaining({
         method: 'POST',
+        // A nested expect.objectContaining(...) resolves to `any` under
+        // this project's TS config — a Jest-typing artifact, not an
+        // actual untyped value in this test; no accurate non-`any` type
+        // exists to give it without fighting @types/jest's own signature.
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         headers: expect.objectContaining({ 'api-key': 'test-brevo-api-key' }),
       }),
     );
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    const [, init] = fetchMock.mock.calls[0] as [string, MockFetchInit];
+    const body = JSON.parse(init.body) as BrevoRequestBody;
     expect(body.sender.email).toBe('scholar.otp@gmail.com');
     expect(body.to).toEqual([{ email: 'student@example.com' }]);
     expect(body.subject).toContain('123456');
@@ -67,8 +95,8 @@ describe('EmailOtpProvider', () => {
     fetchMock.mockResolvedValue(jsonResponse(201, { messageId: 'abc' }));
     await provider.send('anything', '123456', { email: 'student@example.com' });
 
-    const body = fetchMock.mock.calls[0][1].body as string;
-    expect(body).not.toContain('test-brevo-api-key');
+    const [, init] = fetchMock.mock.calls[0] as [string, MockFetchInit];
+    expect(init.body).not.toContain('test-brevo-api-key');
   });
 
   it('maps a network failure (fetch throwing) to ServiceUnavailableException', async () => {
@@ -90,10 +118,14 @@ describe('EmailOtpProvider', () => {
   });
 
   it('never leaks the API key in a thrown error message', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(500, { message: 'Internal error' }));
+    fetchMock.mockResolvedValue(
+      jsonResponse(500, { message: 'Internal error' }),
+    );
 
     try {
-      await provider.send('anything', '123456', { email: 'student@example.com' });
+      await provider.send('anything', '123456', {
+        email: 'student@example.com',
+      });
       fail('expected send() to throw');
     } catch (err) {
       expect((err as Error).message).not.toContain('test-brevo-api-key');

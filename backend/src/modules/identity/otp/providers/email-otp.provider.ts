@@ -82,9 +82,7 @@ export class EmailOtpProvider implements OtpProvider {
 
     if (response.ok) return;
 
-    const body = (await response
-      .json()
-      .catch(() => ({}) as BrevoErrorBody)) as BrevoErrorBody;
+    const body = (await response.json().catch(() => ({}))) as BrevoErrorBody;
 
     // Server-side diagnostics only ever include Brevo's own error
     // description — never the API key, headers, or request body.

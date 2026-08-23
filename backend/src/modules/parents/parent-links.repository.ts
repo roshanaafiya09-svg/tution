@@ -45,7 +45,11 @@ export class ParentLinksRepository {
   listForParent(parentId: string) {
     return this.db
       .selectFrom('parent_child_links')
-      .leftJoin('profiles_student', 'profiles_student.user_id', 'parent_child_links.student_id')
+      .leftJoin(
+        'profiles_student',
+        'profiles_student.user_id',
+        'parent_child_links.student_id',
+      )
       .selectAll('parent_child_links')
       .select('profiles_student.display_name as student_display_name')
       .where('parent_id', '=', parentId)

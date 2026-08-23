@@ -29,10 +29,14 @@ export class RazorpayPayoutsProvider implements PayoutsProvider {
     const keyId = this.config.get<string>('razorpay.keyId');
     const keySecret = this.config.get<string>('razorpay.keySecret');
     this.client =
-      keyId && keySecret ? new Razorpay({ key_id: keyId, key_secret: keySecret }) : null;
+      keyId && keySecret
+        ? new Razorpay({ key_id: keyId, key_secret: keySecret })
+        : null;
   }
 
-  async initiatePayout(params: InitiatePayoutParams): Promise<{ payoutId: string }> {
+  async initiatePayout(
+    params: InitiatePayoutParams,
+  ): Promise<{ payoutId: string }> {
     if (!this.client) {
       throw new InternalServerErrorException('Razorpay client not initialized');
     }

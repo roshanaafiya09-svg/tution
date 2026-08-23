@@ -18,7 +18,11 @@ import { ParentInviteRepository } from './parent-invite.repository';
 @Module({
   imports: [IdentityModule, TrustModule],
   controllers: [ParentLinksController],
-  providers: [ParentLinksService, ParentLinksRepository, ParentInviteRepository],
+  providers: [
+    ParentLinksService,
+    ParentLinksRepository,
+    ParentInviteRepository,
+  ],
   exports: [ParentLinksRepository],
 })
 export class ParentsModule {}

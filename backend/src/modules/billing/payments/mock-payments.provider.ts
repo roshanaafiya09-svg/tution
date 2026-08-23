@@ -30,11 +30,16 @@ export class MockPaymentsProvider implements PaymentsProvider {
 
   async simulateCapture(orderId: string): Promise<{ paymentId: string }> {
     const paymentId = `mock_pay_${randomBytes(8).toString('hex')}`;
-    this.logger.warn(`Simulated capture of MOCK order ${orderId} as ${paymentId}`);
+    this.logger.warn(
+      `Simulated capture of MOCK order ${orderId} as ${paymentId}`,
+    );
     return { paymentId };
   }
 
-  verifyWebhook(_rawBody: string, _signature: string): WebhookVerificationResult | null {
+  verifyWebhook(
+    _rawBody: string,
+    _signature: string,
+  ): WebhookVerificationResult | null {
     this.logger.warn(
       'Webhook received while running the mock payments provider — mock orders are captured via simulateCapture, not a webhook. Rejecting.',
     );

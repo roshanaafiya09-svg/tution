@@ -16,7 +16,9 @@ export class MockPayoutsProvider implements PayoutsProvider {
   readonly name = 'mock';
   private readonly logger = new Logger('Payouts (mock)');
 
-  async initiatePayout(params: InitiatePayoutParams): Promise<{ payoutId: string }> {
+  async initiatePayout(
+    params: InitiatePayoutParams,
+  ): Promise<{ payoutId: string }> {
     const payoutId = `mock_payout_${randomBytes(8).toString('hex')}`;
     this.logger.warn(
       `Created MOCK payout ${payoutId} for ${params.amountMinor} ${params.currency} (reference ${params.reference}) — RAZORPAY_KEY_ID unset, not a real transfer`,

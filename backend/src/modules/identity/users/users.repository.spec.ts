@@ -31,7 +31,7 @@ describe('UsersRepository.createWithRole', () => {
    *  `this.db.transaction().execute(...)` — mocking just that call is
    *  enough to exercise the catch/translate logic without needing to
    *  emulate Kysely's full fluent query-builder chain. */
-  function build(executeError: unknown): UsersRepository {
+  function build(executeError: Error): UsersRepository {
     const db = {
       transaction: () => ({
         execute: () => Promise.reject(executeError),
@@ -54,9 +54,9 @@ describe('UsersRepository.createWithRole', () => {
   it('translates a phone_e164 collision into a clear 409', async () => {
     const repo = build(pgUniqueViolation('users_phone_e164_key'));
 
-    await expect(
-      repo.createWithRole('+919876543210', 'tutor'),
-    ).rejects.toThrow(/phone number already exists/);
+    await expect(repo.createWithRole('+919876543210', 'tutor')).rejects.toThrow(
+      /phone number already exists/,
+    );
   });
 
   it('translates an email collision into a clear 409', async () => {
@@ -70,9 +70,9 @@ describe('UsersRepository.createWithRole', () => {
   it('does not swallow an unrelated error as a fake conflict', async () => {
     const repo = build(new Error('connection terminated unexpectedly'));
 
-    await expect(
-      repo.createWithRole('+919876543210', 'tutor'),
-    ).rejects.toThrow('connection terminated unexpectedly');
+    await expect(repo.createWithRole('+919876543210', 'tutor')).rejects.toThrow(
+      'connection terminated unexpectedly',
+    );
   });
 
   it('still requires a phone number for an email signup, before ever touching the database', async () => {

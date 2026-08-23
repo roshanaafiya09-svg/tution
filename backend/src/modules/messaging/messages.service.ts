@@ -84,7 +84,11 @@ export class MessagesService {
     });
   }
 
-  async listThread(user: AccessTokenPayload, batchId: string, studentId: string) {
+  async listThread(
+    user: AccessTokenPayload,
+    batchId: string,
+    studentId: string,
+  ) {
     await this.resolveAccess(user, batchId, studentId);
     return this.repository.listForThread(batchId, studentId);
   }
@@ -109,15 +113,17 @@ export class MessagesService {
       .map((link) => link.student_id);
 
     const perChild = await Promise.all(
-      activeChildIds.map((studentId) => this.repository.listThreadsForParentChild(studentId)),
+      activeChildIds.map((studentId) =>
+        this.repository.listThreadsForParentChild(studentId),
+      ),
     );
 
     return perChild
       .flat()
       .sort(
         (a, b) =>
-          new Date(b.last_message_at as unknown as string).getTime() -
-          new Date(a.last_message_at as unknown as string).getTime(),
+          new Date(b.last_message_at).getTime() -
+          new Date(a.last_message_at).getTime(),
       );
   }
 

@@ -15,6 +15,10 @@ export class DeviceTokensController {
     @CurrentUser() user: AccessTokenPayload,
     @Body() dto: RegisterDeviceTokenDto,
   ) {
-    return this.repository.upsert(user.sub, dto.token, dto.platform ?? 'android');
+    return this.repository.upsert(
+      user.sub,
+      dto.token,
+      dto.platform ?? 'android',
+    );
   }
 }

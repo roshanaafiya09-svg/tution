@@ -19,8 +19,15 @@ export class PayoutsController {
   }
 
   @Post('generate')
-  generate(@CurrentUser() user: AccessTokenPayload, @Body() dto: GeneratePayoutDto) {
-    return this.payoutsService.generate(user.sub, dto.periodStart, dto.periodEnd);
+  generate(
+    @CurrentUser() user: AccessTokenPayload,
+    @Body() dto: GeneratePayoutDto,
+  ) {
+    return this.payoutsService.generate(
+      user.sub,
+      dto.periodStart,
+      dto.periodEnd,
+    );
   }
 
   /** Dev/test-only — see PayoutsProvider.simulateComplete. */

@@ -96,9 +96,7 @@ export class AssessmentService {
     // submission's object_keys first so those files aren't orphaned in
     // storage once the rows referencing them are gone.
     const submissions = await this.submissions.listForAssignment(assignmentId);
-    const objectKeys = submissions.flatMap(
-      (s) => s.object_keys as unknown as string[],
-    );
+    const objectKeys = submissions.flatMap((s) => s.object_keys);
     await Promise.all(objectKeys.map((key) => this.storage.delete(key)));
 
     await this.assignments.delete(assignmentId);
@@ -144,7 +142,7 @@ export class AssessmentService {
     );
 
     if (previous) {
-      const staleKeys = (previous.object_keys as unknown as string[]).filter(
+      const staleKeys = previous.object_keys.filter(
         (key) => !objectKeys.includes(key),
       );
       await Promise.all(
@@ -154,7 +152,7 @@ export class AssessmentService {
             // fails to clean up is a non-fatal storage-cost concern, not
             // a reason to fail the student's resubmission.
             this.logger.warn(
-              `Failed to delete stale submission file "${key}": ${err instanceof Error ? err.message : err}`,
+              `Failed to delete stale submission file "${key}": ${err instanceof Error ? err.message : String(err)}`,
             );
           }),
         ),
@@ -193,7 +191,7 @@ export class AssessmentService {
     );
     await this.batchesService.getOwnedBatch(tutorId, assignment.batch_id);
 
-    const objectKeys = submission.object_keys as unknown as string[];
+    const objectKeys = submission.object_keys;
     const urls = await Promise.all(
       objectKeys.map((key) => this.storage.createDownloadUrl(key)),
     );

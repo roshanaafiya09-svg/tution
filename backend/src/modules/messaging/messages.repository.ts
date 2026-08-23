@@ -53,7 +53,10 @@ export class MessagesRepository {
         'messages.body',
         'messages.created_at',
         eb.fn
-          .coalesce('profiles_tutor.display_name', 'profiles_student.display_name')
+          .coalesce(
+            'profiles_tutor.display_name',
+            'profiles_student.display_name',
+          )
           .as('sender_display_name'),
       ])
       .where('messages.batch_id', '=', batchId)

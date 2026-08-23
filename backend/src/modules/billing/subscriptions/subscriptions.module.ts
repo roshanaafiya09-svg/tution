@@ -12,7 +12,11 @@ import { ActiveSubscriptionGuard } from './guards/active-subscription.guard';
  * Owns table: subscriptions.
  */
 @Module({
-  providers: [SubscriptionsService, SubscriptionsRepository, ActiveSubscriptionGuard],
+  providers: [
+    SubscriptionsService,
+    SubscriptionsRepository,
+    ActiveSubscriptionGuard,
+  ],
   exports: [SubscriptionsService, ActiveSubscriptionGuard],
 })
 export class SubscriptionsModule {}

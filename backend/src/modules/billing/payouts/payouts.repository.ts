@@ -49,7 +49,11 @@ export class PayoutsRepository {
   setProviderPayout(id: string, providerPayoutId: string, provider: string) {
     return this.db
       .updateTable('payouts')
-      .set({ status: 'processing', provider_payout_id: providerPayoutId, provider })
+      .set({
+        status: 'processing',
+        provider_payout_id: providerPayoutId,
+        provider,
+      })
       .where('id', '=', id)
       .returningAll()
       .executeTakeFirstOrThrow();
