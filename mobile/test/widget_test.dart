@@ -37,7 +37,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Tuition App'), findsOneWidget);
+    expect(find.text('Scholar'), findsOneWidget);
     expect(find.text('Send OTP'), findsOneWidget);
   });
 }

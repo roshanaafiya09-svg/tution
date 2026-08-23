@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Scholar's actual warm-neutral canvas colour (shared/design-tokens/tokens.json
+         color.neutral.50), used site-wide as the light-mode page background.
+         Replaces the launch screen's previous plain white/system-default
+         background so the very first frame the user sees already matches
+         the product's visual identity, even before a real app-icon mark is
+         available (see handover notes — no Scholar logo asset exists in the
+         repo yet, so this is a colour-only branding step, not the full fix). -->
+    <color name="splash_background">#FAF9F7</color>
+</resources>

@@ -144,7 +144,7 @@ export default function AcademyAccountPage() {
                           Delete your account?
                         </h3>
                         <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-                          This permanently deletes your account and signs you out everywhere. Your academy's
+                          This permanently deletes your account and signs you out everywhere. Your academy&apos;s
                           teacher members keep their own accounts, batches, and students untouched — only your
                           own login and academy ownership are removed.
                         </p>

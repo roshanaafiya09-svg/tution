@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark-mode counterpart to values/colors.xml — shared/design-tokens/tokens.json
+         color.neutral.950, the darkest step of the same neutral ramp. -->
+    <color name="splash_background">#14120E</color>
+</resources>

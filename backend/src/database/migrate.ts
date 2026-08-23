@@ -60,9 +60,19 @@ async function run() {
     );
   }
 
+  // See database.module.ts for why this is explicit rather than relying on
+  // sslmode in the connection string — same reasoning applies here since
+  // this pool also runs against production (Dockerfile CMD runs this
+  // before the app boots, see 0034's migration history).
   const db = new Kysely<DB>({
     dialect: new PostgresDialect({
-      pool: new Pool({ connectionString: databaseUrl }),
+      pool: new Pool({
+        connectionString: databaseUrl,
+        ssl:
+          process.env.NODE_ENV === 'production'
+            ? { rejectUnauthorized: true }
+            : undefined,
+      }),
     }),
   });
 

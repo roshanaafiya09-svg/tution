@@ -1,0 +1,130 @@
+name: CI
+
+# Static/test quality gate for the three independently-deployable pieces of
+# this monorepo (backend, web, mobile). Runs on every push and PR so a
+# broken change is visible before it reaches Render/Vercel's own
+# push-triggered auto-deploy — this workflow does not itself block those
+# deploys (see the note at the bottom of this file for how to wire that up).
+#
+# Deliberately excludes anything that needs a live database or a real
+# secret: backend's `test:e2e` (needs a running Postgres) and any mobile
+# release/signed build are out of scope here on purpose, not an oversight.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (lint, typecheck/build, tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+
+      # Not `npm run lint` — that script runs eslint --fix, which mutates
+      # files instead of failing the check. CI should fail loudly, not
+      # silently patch and pass.
+      - name: Lint
+        run: npx eslint "{src,apps,libs,test}/**/*.ts"
+
+      # `nest build` compiles via tsc, which is also the project's
+      # typecheck — no separate typecheck script exists or is needed.
+      - name: Build (compiles + typechecks)
+        run: npm run build
+
+      # Unit specs only (jest, rootDir src, *.spec.ts) — these mock their
+      # own dependencies and need no database or external credentials.
+      # test:e2e boots the full Nest app against a real Postgres and is
+      # intentionally not run here; add it later behind a service
+      # container if end-to-end coverage in CI becomes a priority.
+      - name: Unit tests
+        run: npm test
+
+  web:
+    name: Web (lint, typecheck, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    env:
+      # Public (non-secret) build-time value — matches web/.env.example's
+      # documented default. Only read lazily at request time (see
+      # src/lib/api.ts), not at build/module-load time, so this exists
+      # purely so `next build` has something defined; it is never used to
+      # actually reach a backend during the build.
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+
+      # No test step: web/ has no test framework installed (confirmed —
+      # no jest/vitest/playwright in package.json, no *.test.tsx files).
+      # Not faked here; tracked as follow-up work, not part of this gate.
+
+  mobile:
+    name: Mobile (analyze, test, debug build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Test
+        run: flutter test
+
+      # Debug build only — no signing secrets required or used. Confirms
+      # the app actually compiles for Android; the release/signed build
+      # (needs the upload keystore) stays a manual/local step.
+      - name: Debug APK build check
+        run: flutter build apk --debug
+
+# --- Making this an actual deploy gate ---
+# Right now Render and Vercel each auto-deploy directly on push to master,
+# independently of whether this workflow passes. To make a red CI run
+# actually block a bad deploy, enable a GitHub branch protection rule on
+# master (Settings → Branches → Branch protection rules) requiring the
+# "Backend", "Web", and "Mobile" checks above to pass before a PR can
+# merge. That's a repo-settings change, so it's left for you to enable
+# rather than made here.
