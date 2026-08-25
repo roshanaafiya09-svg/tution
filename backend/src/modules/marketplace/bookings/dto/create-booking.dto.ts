@@ -34,8 +34,8 @@ export class CreateBookingDto {
 
   @IsOptional()
   @IsUrl(
-    { require_protocol: true },
-    { message: 'meetingUrl must be a full URL' },
+    { protocols: ['http', 'https'], require_protocol: true },
+    { message: 'meetingUrl must be a full http(s) URL' },
   )
   meetingUrl?: string;
 

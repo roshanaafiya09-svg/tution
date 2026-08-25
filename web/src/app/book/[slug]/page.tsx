@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CheckCircle2, Clock3 } from 'lucide-react';
-import { api, formatMinor, tokenStore, ApiError } from '@/lib/api';
+import { api, formatMinor, ensureSession, ApiError } from '@/lib/api';
 import { payForOrder } from '@/lib/razorpay';
 import type { Booking, PaymentOrder, PublicTutorPage } from '@/lib/types';
 import { Card, Button, Field, Input, Select, InlineError, PageLoading } from '@/components/ui';
@@ -40,7 +40,7 @@ export default function BookSessionPage() {
   }, [slug]);
 
   async function book() {
-    if (!tokenStore.access) {
+    if (!(await ensureSession())) {
       router.push(`/login?next=/book/${slug}`);
       return;
     }
@@ -80,7 +80,7 @@ export default function BookSessionPage() {
   }
 
   async function joinWaitlist() {
-    if (!tokenStore.access) {
+    if (!(await ensureSession())) {
       router.push(`/login?next=/book/${slug}`);
       return;
     }

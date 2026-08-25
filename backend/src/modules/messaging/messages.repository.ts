@@ -6,6 +6,14 @@ import { newId } from '../../database/id';
 
 export type SenderRole = 'tutor' | 'student' | 'parent';
 
+export interface ThreadPage {
+  /** Server-clamped page size — see MessagesService.listThread. */
+  limit: number;
+  /** Keyset cursor: fetch the page of messages strictly older than this
+   *  message id. Omit for the most recent page. */
+  before?: string;
+}
+
 @Injectable()
 export class MessagesRepository {
   constructor(@Inject(KYSELY_CONNECTION) private readonly db: Kysely<DB>) {}
@@ -32,9 +40,16 @@ export class MessagesRepository {
   }
 
   /** A thread is keyed by (batch_id, student_id) — every message in it
-   *  is visible to the tutor, the student, and any consented parent. */
-  listForThread(batchId: string, studentId: string) {
-    return this.db
+   *  is visible to the tutor, the student, and any consented parent.
+   *  Keyset-paginated on `id` (UUIDv7 — monotonically increasing with
+   *  insertion time, so it's a single-column stable sort *and* tiebreak
+   *  with no risk of two same-millisecond messages tying like a plain
+   *  `created_at` sort could): returns the `limit` most recent messages,
+   *  or the next `limit` older than `before` if given, newest-first.
+   *  MessagesService reverses this to the ascending order the frontend
+   *  expects for display. */
+  listForThread(batchId: string, studentId: string, page: ThreadPage) {
+    let query = this.db
       .selectFrom('messages')
       .leftJoin(
         'profiles_tutor',
@@ -60,9 +75,13 @@ export class MessagesRepository {
           .as('sender_display_name'),
       ])
       .where('messages.batch_id', '=', batchId)
-      .where('messages.student_id', '=', studentId)
-      .orderBy('messages.created_at')
-      .execute();
+      .where('messages.student_id', '=', studentId);
+
+    if (page.before) {
+      query = query.where('messages.id', '<', page.before);
+    }
+
+    return query.orderBy('messages.id', 'desc').limit(page.limit).execute();
   }
 
   /** One row per (batch, student) thread the tutor has any message in,

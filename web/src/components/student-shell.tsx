@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import posthog from 'posthog-js';
 import { LogOut, Menu, Settings, User } from 'lucide-react';
-import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
+import { api, apiLogout, ensureSession, ApiError } from '@/lib/api';
 import type { Me, StudentProfile } from '@/lib/types';
 import { NotificationsBell } from '@/components/notifications-bell';
 import { cn } from '@/lib/cn';
@@ -86,39 +86,36 @@ export function StudentShell({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   useEffect(() => {
-    if (!tokenStore.access) {
-      router.replace('/login');
-      return;
-    }
+    void (async () => {
+      if (!(await ensureSession())) {
+        router.replace('/login');
+        return;
+      }
 
-    api
-      .get<Me>('/auth/me')
-      .then(setMe)
-      .catch((err: unknown) => {
+      try {
+        setMe(await api.get<Me>('/auth/me'));
+      } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
           router.replace('/login');
         } else {
           setError('Could not load your account.');
         }
-      });
+      }
 
-    api
-      .get<StudentProfile | undefined>('/profiles/student/me')
-      .then((p) => setProfile(p ?? null))
-      .catch(() => setProfile(null));
+      api
+        .get<StudentProfile | undefined>('/profiles/student/me')
+        .then((p) => setProfile(p ?? null))
+        .catch(() => setProfile(null));
+    })();
   }, [router]);
 
   function signOut() {
-    const refreshToken = tokenStore.refresh;
-    tokenStore.clear();
     if (posthog.__loaded) posthog.reset();
     router.replace('/login');
     // Best-effort: the device is signed out locally regardless of
     // whether this reaches the server, but a reachable one should
-    // actually revoke the refresh token rather than leave it valid.
-    if (refreshToken) {
-      void apiPost('/auth/logout', { refreshToken }).catch(() => {});
-    }
+    // actually revoke the refresh token/cookie rather than leave it valid.
+    void apiLogout();
   }
 
   if (error) {

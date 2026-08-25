@@ -8,9 +8,33 @@ import { UsersRepository } from '../users/users.repository';
 import { identifierType, normalizeIdentifier } from '../identifier.util';
 import { TokensService } from './tokens.service';
 
+// SEC-05: a phone identifier with no usable email (no account at all,
+// or an account with none on file — these two already collapse into
+// the same 400/message below, by construction) returns almost
+// immediately, while a real send awaits OtpService.requestOtp()'s
+// Redis + provider round trip. That gap is a timing side channel an
+// attacker could use to tell "this phone has an emailed account" apart
+// from "it doesn't", even though the response body/status already
+// don't. This delay floor closes most of that gap without punishing
+// the (rare) legitimate signup-prompt path much. Not perfect —
+// production's real OTP-provider latency (~1-2s, see handover.md) is
+// still somewhat distinguishable from a fixed delay — but rate
+// limiting (5 requests/15min per identifier, see OtpService) already
+// caps how fast anyone can probe this either way, and the finding is
+// rated Low.
+const REJECTED_IDENTIFIER_DELAY_MS = 400;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export interface AuthTokens {
   accessToken: string;
   refreshToken: string;
+  /** HMAC of the refresh token's jti — see TokensService.signCsrfToken.
+   *  Always computed; AuthController decides whether to expose it (web
+   *  clients need it, mobile's body-based refresh flow doesn't). */
+  csrfToken: string;
 }
 
 @Injectable()
@@ -37,6 +61,7 @@ export class AuthService {
       identifierType(identifier) === 'email' ? identifier : user?.email;
 
     if (!email) {
+      await delay(REJECTED_IDENTIFIER_DELAY_MS);
       throw new BadRequestException(
         'An email address is required to receive a login code — sign up with your email, or add one to your account.',
       );
@@ -83,12 +108,13 @@ export class AuthService {
 
     const roles = await this.usersRepository.getRoles(user.id);
     const accessToken = this.tokensService.signAccessToken(user.id, roles);
-    const refreshToken = await this.tokensService.issueRefreshToken(
+    const issued = await this.tokensService.issueRefreshToken(
       user.id,
       deviceLabel,
     );
+    const csrfToken = this.tokensService.signCsrfToken(issued.jti);
 
-    return { accessToken, refreshToken };
+    return { accessToken, refreshToken: issued.token, csrfToken };
   }
 
   async refresh(
@@ -100,13 +126,14 @@ export class AuthService {
     const roles = await this.usersRepository.getRoles(userId);
 
     const accessToken = this.tokensService.signAccessToken(userId, roles);
-    const newRefreshToken = await this.tokensService.rotateRefreshToken(
+    const rotated = await this.tokensService.rotateRefreshToken(
       jti,
       userId,
       deviceLabel,
     );
+    const csrfToken = this.tokensService.signCsrfToken(rotated.jti);
 
-    return { accessToken, refreshToken: newRefreshToken };
+    return { accessToken, refreshToken: rotated.token, csrfToken };
   }
 
   logout(refreshToken: string): Promise<void> {

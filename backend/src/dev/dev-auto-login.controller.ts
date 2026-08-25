@@ -1,7 +1,12 @@
-import { Controller, ForbiddenException, Post } from '@nestjs/common';
+import { Controller, ForbiddenException, Post, Req, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { UsersRepository } from '../modules/identity/users/users.repository';
 import { TokensService } from '../modules/identity/auth/tokens.service';
+import {
+  applyWebSession,
+  isWebClient,
+} from '../modules/identity/auth/web-session.util';
 
 const DEV_SUPER_ADMIN_EMAIL = 'roshanaafiya09@gmail.com';
 
@@ -22,8 +27,12 @@ export class DevAutoLoginController {
   ) {}
 
   @Post()
-  async autoLogin(): Promise<{ accessToken: string; refreshToken: string }> {
-    if (this.config.get<string>('app.nodeEnv') === 'production') {
+  async autoLogin(
+    @Req() req: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    const nodeEnv = this.config.get<string>('app.nodeEnv');
+    if (nodeEnv === 'production') {
       throw new ForbiddenException('Not available in production');
     }
 
@@ -36,11 +45,17 @@ export class DevAutoLoginController {
 
     const roles = await this.usersRepository.getRoles(user.id);
     const accessToken = this.tokensService.signAccessToken(user.id, roles);
-    const refreshToken = await this.tokensService.issueRefreshToken(
+    const issued = await this.tokensService.issueRefreshToken(
       user.id,
       'dev-auto-login',
     );
+    const csrfToken = this.tokensService.signCsrfToken(issued.jti);
 
-    return { accessToken, refreshToken };
+    return applyWebSession(
+      reply,
+      { accessToken, refreshToken: issued.token, csrfToken },
+      isWebClient(req),
+      nodeEnv,
+    );
   }
 }

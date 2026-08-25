@@ -26,8 +26,14 @@ export function NotificationsBell({ resolveHref }: { resolveHref?: NotificationH
   const [notifications, setNotifications] = useState<AppNotification[] | null>(null);
 
   const loadCount = useCallback(async () => {
-    const { count } = await api.get<{ count: number }>('/notifications/unread-count');
-    setUnreadCount(count);
+    try {
+      const { count } = await api.get<{ count: number }>('/notifications/unread-count');
+      setUnreadCount(count);
+    } catch {
+      // Best-effort background poll (every 30s) — a transient failure
+      // (session refresh in flight, brief network blip) shouldn't
+      // surface as an unhandled rejection; the next tick retries.
+    }
   }, []);
 
   useEffect(() => {

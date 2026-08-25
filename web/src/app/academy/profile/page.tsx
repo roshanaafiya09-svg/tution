@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Globe, Mail, MapPin, Pencil, Phone } from 'lucide-react';
 import { api } from '@/lib/api';
+import { safeHref } from '@/lib/safe-url';
 import type { AcademyAcademicInfo, AcademyOwnerProfile, TeachingMode } from '@/lib/types';
 import {
   Badge,
@@ -470,9 +471,9 @@ export default function AcademyProfilePage() {
                       {profile.contactEmail}
                     </span>
                   )}
-                  {profile.websiteUrl && (
+                  {profile.websiteUrl && safeHref(profile.websiteUrl) && (
                     <a
-                      href={profile.websiteUrl}
+                      href={safeHref(profile.websiteUrl)}
                       target="_blank"
                       rel="noreferrer"
                       className="flex items-center gap-1.5 text-brand-600 hover:underline dark:text-brand-300"

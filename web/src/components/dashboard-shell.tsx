@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import posthog from 'posthog-js';
 import { LogOut, Menu, Search, Settings, User } from 'lucide-react';
-import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
+import { api, apiLogout, ensureSession, ApiError } from '@/lib/api';
 import type { Me } from '@/lib/types';
 import { impersonationStore } from '@/lib/impersonation';
 import type { ImpersonationTarget } from '@/lib/impersonation';
@@ -83,24 +83,24 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   useEffect(() => {
-    if (!tokenStore.access) {
-      router.replace('/login');
-      return;
-    }
+    void (async () => {
+      if (!(await ensureSession())) {
+        router.replace('/login');
+        return;
+      }
 
-    setImpersonating(impersonationStore.target);
+      setImpersonating(impersonationStore.target);
 
-    api
-      .get<Me>('/auth/me')
-      .then(setMe)
-      .catch((err: unknown) => {
+      try {
+        setMe(await api.get<Me>('/auth/me'));
+      } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
           // A 401 while viewing as another user means the (deliberately
           // short-lived, non-refreshable) impersonation token expired —
           // that's "session ended", not "signed out", so send the admin
           // back to /admin rather than bouncing them to /login.
           if (impersonationStore.active) {
-            impersonationStore.stop();
+            await impersonationStore.stop();
             router.replace('/admin');
           } else {
             router.replace('/login');
@@ -108,20 +108,17 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         } else {
           setError('Could not load your account.');
         }
-      });
+      }
+    })();
   }, [router]);
 
   function signOut() {
-    const refreshToken = tokenStore.refresh;
-    tokenStore.clear();
     if (posthog.__loaded) posthog.reset();
     router.replace('/login');
     // Best-effort: the device is signed out locally regardless of
     // whether this reaches the server, but a reachable one should
-    // actually revoke the refresh token rather than leave it valid.
-    if (refreshToken) {
-      void apiPost('/auth/logout', { refreshToken }).catch(() => {});
-    }
+    // actually revoke the refresh token/cookie rather than leave it valid.
+    void apiLogout();
   }
 
   if (error) {

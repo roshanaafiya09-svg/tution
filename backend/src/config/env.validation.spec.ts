@@ -9,12 +9,14 @@ import { validateEnv } from './env.validation';
  */
 const VALID_ACCESS_SECRET = 'aVeryRealRandomLookingAccessSecret1234';
 const VALID_REFRESH_SECRET = 'aVeryRealRandomLookingRefreshSecret5678';
+const VALID_CSRF_SECRET = 'aVeryRealRandomLookingCsrfSecret90AB';
 
 function baseConfig(overrides: Record<string, string> = {}) {
   return {
     DATABASE_URL: 'postgres://user:pass@localhost:5432/db',
     JWT_ACCESS_SECRET: VALID_ACCESS_SECRET,
     JWT_REFRESH_SECRET: VALID_REFRESH_SECRET,
+    CSRF_SECRET: VALID_CSRF_SECRET,
     ...overrides,
   };
 }
@@ -50,6 +52,26 @@ describe('validateEnv — JWT secret hardening', () => {
       validateEnv(
         baseConfig({
           JWT_ACCESS_SECRET: 'a'.repeat(40),
+        }),
+      ),
+    ).toThrow(/too little character variety/);
+  });
+
+  it('rejects CSRF_SECRET reusing a JWT secret', () => {
+    expect(() =>
+      validateEnv(
+        baseConfig({
+          CSRF_SECRET: VALID_ACCESS_SECRET,
+        }),
+      ),
+    ).toThrow(/CSRF_SECRET must differ/);
+  });
+
+  it('rejects a low-variety CSRF_SECRET', () => {
+    expect(() =>
+      validateEnv(
+        baseConfig({
+          CSRF_SECRET: 'b'.repeat(40),
         }),
       ),
     ).toThrow(/too little character variety/);

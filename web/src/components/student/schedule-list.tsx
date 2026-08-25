@@ -3,6 +3,7 @@ import type { Batch, Session, Subject } from '@/lib/types';
 import { StatusBadge, buttonVariants } from '@/components/ui';
 import { AcademicCard, TimelineNode, TimelineDot } from '@/components/student';
 import { cn } from '@/lib/cn';
+import { safeHref } from '@/lib/safe-url';
 
 function formatTime(session: Session): string {
   return new Date(session.scheduled_start_utc).toLocaleString('en-IN', {
@@ -85,9 +86,9 @@ export function ScheduleList({ sessions, batches, subjects }: { sessions: Sessio
                     </div>
                     <div className="flex items-center gap-2">
                       <StatusBadge status={session.status} />
-                      {session.meeting_url && (
+                      {safeHref(session.meeting_url) && (
                         <a
-                          href={session.meeting_url}
+                          href={safeHref(session.meeting_url)}
                           target="_blank"
                           rel="noreferrer"
                           className={buttonVariants({ variant: 'accent', size: 'sm' })}

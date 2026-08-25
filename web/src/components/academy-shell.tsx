@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import posthog from 'posthog-js';
 import { LogOut, Menu, Settings, Building2 } from 'lucide-react';
-import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
+import { api, apiLogout, ensureSession, ApiError } from '@/lib/api';
 import type { Me } from '@/lib/types';
 import { NotificationsBell } from '@/components/notifications-bell';
 import { cn } from '@/lib/cn';
@@ -105,14 +105,14 @@ export function AcademyShell({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   useEffect(() => {
-    if (!tokenStore.access) {
-      router.replace('/login');
-      return;
-    }
+    void (async () => {
+      if (!(await ensureSession())) {
+        router.replace('/login');
+        return;
+      }
 
-    api
-      .get<Me>('/auth/me')
-      .then(async (account) => {
+      try {
+        const account = await api.get<Me>('/auth/me');
         if (!account.roles.includes('academy')) {
           router.replace('/get-the-app');
           return;
@@ -128,24 +128,20 @@ export function AcademyShell({ children }: { children: React.ReactNode }) {
             setError('Could not load your academy.');
           }
         }
-      })
-      .catch((err: unknown) => {
+      } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
           router.replace('/login');
         } else {
           setError('Could not load your account.');
         }
-      });
+      }
+    })();
   }, [router]);
 
   function signOut() {
-    const refreshToken = tokenStore.refresh;
-    tokenStore.clear();
     if (posthog.__loaded) posthog.reset();
     router.replace('/login');
-    if (refreshToken) {
-      void apiPost('/auth/logout', { refreshToken }).catch(() => {});
-    }
+    void apiLogout();
   }
 
   if (error) {

@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import posthog from 'posthog-js';
 import { ShieldCheck, Users, GraduationCap, Heart, LogOut, LayoutDashboard } from 'lucide-react';
-import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
+import { api, apiLogout, ensureSession, ApiError } from '@/lib/api';
 import type { Me } from '@/lib/types';
 import {
   PageLoading,
@@ -37,37 +37,33 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!tokenStore.access) {
-      router.replace('/login');
-      return;
-    }
+    void (async () => {
+      if (!(await ensureSession())) {
+        router.replace('/login');
+        return;
+      }
 
-    api
-      .get<Me>('/auth/me')
-      .then((account) => {
+      try {
+        const account = await api.get<Me>('/auth/me');
         if (!account.roles.includes('superadmin')) {
           router.replace('/get-the-app');
           return;
         }
         setMe(account);
-      })
-      .catch((err: unknown) => {
+      } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
           router.replace('/login');
         } else {
           setError('Could not load your account.');
         }
-      });
+      }
+    })();
   }, [router]);
 
   function signOut() {
-    const refreshToken = tokenStore.refresh;
-    tokenStore.clear();
     if (posthog.__loaded) posthog.reset();
     router.replace('/login');
-    if (refreshToken) {
-      void apiPost('/auth/logout', { refreshToken }).catch(() => {});
-    }
+    void apiLogout();
   }
 
   if (error) {

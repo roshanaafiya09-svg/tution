@@ -131,18 +131,22 @@ export class DoubtSolverService {
     const result = await this.aiService.generateDoubtHint(question, chunks);
     const citations = toCitations(chunks);
 
-    const interaction = await this.interactions.create({
-      studentId,
-      batchId,
-      parentId: null,
-      kind: 'hint',
-      questionText: question,
-      answerText: result.text,
-      citations,
-      flagged: false,
-      inputTokens: result.inputTokens,
-      outputTokens: result.outputTokens,
-    });
+    const interaction = await this.interactions.createIfUnderBudget(
+      {
+        studentId,
+        batchId,
+        parentId: null,
+        kind: 'hint',
+        questionText: question,
+        answerText: result.text,
+        citations,
+        flagged: false,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+      },
+      this.monthlyTokenCap(),
+    );
+    if (!interaction) this.throwOverBudget();
 
     this.analytics.capture(studentId, 'doubt_question_asked', {
       batchId,
@@ -200,18 +204,22 @@ export class DoubtSolverService {
       chunks,
     );
 
-    const answer = await this.interactions.create({
-      studentId,
-      batchId: hint.batch_id,
-      parentId: hint.id,
-      kind: 'full_answer',
-      questionText: hint.question_text,
-      answerText: result.text,
-      citations: toCitations(chunks),
-      flagged: false,
-      inputTokens: result.inputTokens,
-      outputTokens: result.outputTokens,
-    });
+    const answer = await this.interactions.createIfUnderBudget(
+      {
+        studentId,
+        batchId: hint.batch_id,
+        parentId: hint.id,
+        kind: 'full_answer',
+        questionText: hint.question_text,
+        answerText: result.text,
+        citations: toCitations(chunks),
+        flagged: false,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+      },
+      this.monthlyTokenCap(),
+    );
+    if (!answer) this.throwOverBudget();
 
     this.analytics.capture(studentId, 'doubt_answer_unlocked', {
       batchId: hint.batch_id,
@@ -240,16 +248,28 @@ export class DoubtSolverService {
     }));
   }
 
-  private async assertUnderBudget(studentId: string): Promise<void> {
-    const cap =
+  private monthlyTokenCap(): number {
+    return (
       this.config.get<number>('ai.doubtSolverMonthlyTokenCap') ??
-      DEFAULT_MONTHLY_TOKEN_CAP;
+      DEFAULT_MONTHLY_TOKEN_CAP
+    );
+  }
+
+  private throwOverBudget(): never {
+    throw new ForbiddenException(
+      'Monthly AI usage limit reached for this account — ask your tutor directly, or try again next month',
+    );
+  }
+
+  /** Cheap up-front fail-fast only — NOT the authoritative gate (see
+   *  AiInteractionsRepository.createIfUnderBudget for that, called
+   *  right before the write). This just avoids paying for an AI call
+   *  that's obviously already over budget before it even starts;
+   *  concurrent requests racing each other past this specific check is
+   *  exactly the TOCTOU createIfUnderBudget's advisory lock closes. */
+  private async assertUnderBudget(studentId: string): Promise<void> {
     const used = await this.interactions.monthlyTokenUsage(studentId);
-    if (used >= cap) {
-      throw new ForbiddenException(
-        'Monthly AI usage limit reached for this account — ask your tutor directly, or try again next month',
-      );
-    }
+    if (used >= this.monthlyTokenCap()) this.throwOverBudget();
   }
 
   private async assertEnrolled(

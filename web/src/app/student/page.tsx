@@ -15,6 +15,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { api, apiGetPublic } from '@/lib/api';
+import { safeHref } from '@/lib/safe-url';
 import type {
   Announcement,
   AttendanceSummary,
@@ -279,9 +280,9 @@ export default function StudentTodayPage() {
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    {nextSession.meeting_url && (
+                    {safeHref(nextSession.meeting_url) && (
                       <a
-                        href={nextSession.meeting_url}
+                        href={safeHref(nextSession.meeting_url)}
                         target="_blank"
                         rel="noreferrer"
                         className={buttonVariants({ variant: 'accent', size: 'sm' })}

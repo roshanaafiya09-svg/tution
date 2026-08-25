@@ -22,6 +22,14 @@ export const envSchema = z.object({
     .string()
     .min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
 
+  // --- CSRF (web refresh-cookie protection) — signs a synchronizer
+  // token derived from each refresh token's jti, returned once in the
+  // login/refresh JSON body and echoed back as X-CSRF-Token on
+  // /auth/refresh and /auth/logout. Needed because the refresh cookie
+  // itself is SameSite=None (web and API are on different domains), so
+  // SameSite alone gives no CSRF protection. See CsrfGuard. ---
+  CSRF_SECRET: z.string().min(32, 'CSRF_SECRET must be at least 32 characters'),
+
   CORS_ORIGINS: z
     .string()
     .default('http://localhost:3000')
@@ -181,11 +189,16 @@ export function validateEnv(config: Record<string, unknown>): EnvConfig {
     throw new Error(`Invalid environment configuration:\n${issues}`);
   }
 
-  const { JWT_ACCESS_SECRET, JWT_REFRESH_SECRET } = parsed.data;
+  const { JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, CSRF_SECRET } = parsed.data;
   const secretIssues: string[] = [];
   if (JWT_ACCESS_SECRET === JWT_REFRESH_SECRET) {
     secretIssues.push(
       'JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must not be the same value — a leaked access token secret would also forge refresh tokens.',
+    );
+  }
+  if (CSRF_SECRET === JWT_ACCESS_SECRET || CSRF_SECRET === JWT_REFRESH_SECRET) {
+    secretIssues.push(
+      'CSRF_SECRET must differ from JWT_ACCESS_SECRET/JWT_REFRESH_SECRET — a leaked JWT secret should not also let an attacker forge CSRF tokens.',
     );
   }
   if (
@@ -204,6 +217,11 @@ export function validateEnv(config: Record<string, unknown>): EnvConfig {
   if (!hasMinimalVariety(JWT_REFRESH_SECRET)) {
     secretIssues.push(
       'JWT_REFRESH_SECRET has too little character variety to be a real random secret.',
+    );
+  }
+  if (!hasMinimalVariety(CSRF_SECRET)) {
+    secretIssues.push(
+      'CSRF_SECRET has too little character variety to be a real random secret.',
     );
   }
   if (secretIssues.length > 0) {

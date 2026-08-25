@@ -9,6 +9,12 @@ import type { AccessTokenPayload } from '../identity/auth/tokens.service';
 
 const NOTIFICATION_BODY_MAX_LENGTH = 140;
 
+// SEC-03: listForThread had no limit/cursor at all — a long-running
+// thread's full history was fetched in one unbounded query on every
+// page load. Same clamp pattern as AuditLogService.query.
+const DEFAULT_THREAD_PAGE_SIZE = 50;
+const MAX_THREAD_PAGE_SIZE = 100;
+
 /**
  * Monitored-only adult<->minor messaging (blueprint §9). A thread is
  * keyed by (batchId, studentId) rather than a sender/recipient pair, so
@@ -88,9 +94,23 @@ export class MessagesService {
     user: AccessTokenPayload,
     batchId: string,
     studentId: string,
+    params: { limit?: number; before?: string } = {},
   ) {
     await this.resolveAccess(user, batchId, studentId);
-    return this.repository.listForThread(batchId, studentId);
+    const limit = Math.min(
+      params.limit && params.limit > 0
+        ? params.limit
+        : DEFAULT_THREAD_PAGE_SIZE,
+      MAX_THREAD_PAGE_SIZE,
+    );
+    const page = await this.repository.listForThread(batchId, studentId, {
+      limit,
+      before: params.before,
+    });
+    // Repository returns newest-first (keyset pagination order) — the
+    // thread UI expects oldest-first, same as the old unbounded query's
+    // `orderBy('messages.created_at')` did.
+    return page.reverse();
   }
 
   async listMine(user: AccessTokenPayload) {

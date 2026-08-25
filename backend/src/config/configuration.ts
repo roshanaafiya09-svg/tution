@@ -147,5 +147,6 @@ export const marketplaceConfig = registerAs('marketplace', () => ({
 export const authConfig = registerAs('auth', () => ({
   jwtAccessSecret: process.env.JWT_ACCESS_SECRET as string,
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET as string,
+  csrfSecret: process.env.CSRF_SECRET as string,
   accessTokenTtl: '15m',
 }));

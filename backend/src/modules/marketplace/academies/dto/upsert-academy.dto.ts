@@ -91,7 +91,10 @@ export class UpsertAcademyDto {
   contactEmail?: string;
 
   @IsOptional()
-  @IsUrl()
+  @IsUrl(
+    { protocols: ['http', 'https'], require_protocol: true },
+    { message: 'websiteUrl must be a full http(s) URL' },
+  )
   @MaxLength(300)
   websiteUrl?: string;
 }

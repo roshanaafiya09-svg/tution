@@ -42,18 +42,29 @@ export class GoogleAuthService {
     }
 
     let email: string | undefined;
+    let emailVerified: boolean | undefined;
     try {
       const ticket = await this.client.verifyIdToken({
         idToken,
         audience: clientId,
       });
-      email = ticket.getPayload()?.email;
+      const payload = ticket.getPayload();
+      email = payload?.email;
+      emailVerified = payload?.email_verified;
     } catch {
       throw new UnauthorizedException('Invalid Google ID token');
     }
 
     if (!email) {
-      throw new UnauthorizedException('Google account has no verified email');
+      throw new UnauthorizedException('Google account has no email');
+    }
+    // Google issues ID tokens for accounts with an unconfirmed address
+    // (e.g. a Workspace domain the admin hasn't verified) — trusting the
+    // email claim without this check would let such an account log
+    // straight into whatever existing app account happens to share that
+    // address.
+    if (!emailVerified) {
+      throw new UnauthorizedException('Google account email is not verified');
     }
 
     const user = await this.usersRepository.findByEmail(email);
@@ -65,11 +76,12 @@ export class GoogleAuthService {
 
     const roles = await this.usersRepository.getRoles(user.id);
     const accessToken = this.tokensService.signAccessToken(user.id, roles);
-    const refreshToken = await this.tokensService.issueRefreshToken(
+    const issued = await this.tokensService.issueRefreshToken(
       user.id,
       deviceLabel,
     );
+    const csrfToken = this.tokensService.signCsrfToken(issued.jti);
 
-    return { accessToken, refreshToken };
+    return { accessToken, refreshToken: issued.token, csrfToken };
   }
 }

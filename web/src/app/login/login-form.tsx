@@ -4,14 +4,14 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Script from 'next/script';
 import posthog from 'posthog-js';
-import { api, apiPost, tokenStore, ApiError } from '@/lib/api';
+import { api, apiPost, session, ensureSession, ApiError } from '@/lib/api';
 import { safeRedirectPath } from '@/lib/safe-redirect';
 import { Button, Field, Input, InlineError, Card } from '@/components/ui';
 import type { Me } from '@/lib/types';
 
 interface AuthTokens {
   accessToken: string;
-  refreshToken: string;
+  csrfToken: string;
 }
 
 type Phase = 'identify' | 'otp' | 'choose-role';
@@ -61,7 +61,7 @@ export function LoginForm() {
   const identifierReady = kind === 'phone' ? phoneDigits.length === 10 : email.includes('@');
 
   async function onAuthenticated(tokens: AuthTokens) {
-    tokenStore.set(tokens.accessToken, tokens.refreshToken);
+    session.set(tokens.accessToken, tokens.csrfToken);
     if (posthog.__loaded) {
       const userId = decodeJwtSubject(tokens.accessToken);
       if (userId) posthog.identify(userId);
@@ -105,9 +105,13 @@ export function LoginForm() {
   // while testing another account's flow locally).
   useEffect(() => {
     if (process.env.NODE_ENV !== 'development') return;
-    if (tokenStore.access) return;
 
     void (async () => {
+      // A page reload can still have a valid refresh cookie from an
+      // earlier dev session — check before firing another auto-login,
+      // same intent as the old synchronous localStorage check.
+      if (await ensureSession()) return;
+
       try {
         const tokens = await apiPost<AuthTokens>('/dev/auto-login', {});
         await onAuthenticated(tokens);

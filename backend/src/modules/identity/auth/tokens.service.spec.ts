@@ -119,3 +119,54 @@ describe('TokensService.verifyRefreshToken', () => {
     expect(revokeAllForUser).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * SEC-02: the CSRF synchronizer token protects /auth/refresh and
+ * /auth/logout, which are otherwise authorized purely by the
+ * SameSite=None refresh cookie — a cookie any site can trigger the
+ * browser into attaching. Stateless by design (HMAC of the jti), so
+ * these tests only need to check the sign/verify round trip, not any
+ * storage.
+ */
+describe('TokensService CSRF token', () => {
+  it('signs a deterministic token for a given jti and verifies it', () => {
+    const { service } = buildService({});
+    const token = service.signCsrfToken('jti-1');
+    expect(service.verifyCsrfToken('jti-1', token)).toBe(true);
+  });
+
+  it('rejects a token that was signed for a different jti', () => {
+    const { service } = buildService({});
+    const token = service.signCsrfToken('jti-1');
+    expect(service.verifyCsrfToken('jti-2', token)).toBe(false);
+  });
+
+  it('rejects a tampered/non-hex candidate token without throwing', () => {
+    const { service } = buildService({});
+    expect(service.verifyCsrfToken('jti-1', 'not-hex-garbage!!')).toBe(false);
+  });
+});
+
+describe('TokensService.peekRefreshJti', () => {
+  it('recovers the jti from a validly-signed token, ignoring expiration', () => {
+    const { service, verify } = buildService({
+      verify: jest.fn().mockReturnValue({ sub: 'user-1', jti: 'jti-1' }),
+    });
+
+    expect(service.peekRefreshJti('token')).toBe('jti-1');
+    expect(verify).toHaveBeenCalledWith(
+      'token',
+      expect.objectContaining({ ignoreExpiration: true }),
+    );
+  });
+
+  it('returns null for an invalid/tampered token instead of throwing', () => {
+    const { service } = buildService({
+      verify: jest.fn().mockImplementation(() => {
+        throw new Error('bad jwt');
+      }),
+    });
+
+    expect(service.peekRefreshJti('garbage')).toBeNull();
+  });
+});

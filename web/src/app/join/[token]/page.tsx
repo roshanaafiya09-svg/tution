@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { PartyPopper, AlertTriangle } from 'lucide-react';
-import { api, tokenStore, ApiError } from '@/lib/api';
+import { api, ensureSession, ApiError } from '@/lib/api';
 import { Card, Button, InlineError, PageLoading } from '@/components/ui';
 
 interface InvitePreview {
@@ -30,7 +30,7 @@ export default function JoinPage() {
   }, [token]);
 
   async function join() {
-    if (!tokenStore.access) {
+    if (!(await ensureSession())) {
       // Come back here after signing in.
       router.push(`/login?next=/join/${token}`);
       return;

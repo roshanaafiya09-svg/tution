@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 
 // AuthService imports UsersRepository, which imports database.module.ts —
 // that pulls in Kysely's real (ESM) package at the top level for its
@@ -24,6 +24,7 @@ import type { TokensService } from './tokens.service';
  */
 function buildService(overrides: {
   findByEmail?: jest.Mock;
+  findByIdentifier?: jest.Mock;
   requestOtp?: jest.Mock;
   checkOtp?: jest.Mock;
   updateEmail?: jest.Mock;
@@ -39,6 +40,8 @@ function buildService(overrides: {
   const usersRepository = {
     findByEmail:
       overrides.findByEmail ?? jest.fn().mockResolvedValue(undefined),
+    findByIdentifier:
+      overrides.findByIdentifier ?? jest.fn().mockResolvedValue(undefined),
     updateEmail:
       overrides.updateEmail ?? jest.fn().mockResolvedValue(undefined),
   } as unknown as UsersRepository;
@@ -138,5 +141,94 @@ describe('AuthService.confirmEmailUpdate', () => {
     ).rejects.toBeInstanceOf(ConflictException);
     expect(consumeOtp).not.toHaveBeenCalled();
     expect(revokeAllSessions).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * SEC-05: a phone identifier with no account, and a phone identifier
+ * whose account has no email on file, must be indistinguishable to the
+ * caller — both are "we can't send you a code" (400), never a
+ * different status/message that would let someone probe which phone
+ * numbers have real accounts. Email identifiers always get sent to
+ * (accounts and non-accounts alike), so they were never enumerable.
+ */
+describe('AuthService.requestOtp — enumeration resistance (SEC-05)', () => {
+  it('a non-existent phone number gets the exact same 400 as an existing-but-emailless account', async () => {
+    const { service: serviceNoAccount } = buildService({
+      findByIdentifier: jest.fn().mockResolvedValue(undefined),
+    });
+    const { service: serviceNoEmail } = buildService({
+      findByIdentifier: jest.fn().mockResolvedValue({ id: 'u1', email: null }),
+    });
+
+    const [errNoAccount, errNoEmail] = await Promise.all([
+      serviceNoAccount.requestOtp('+919876543210').catch((e: Error) => e),
+      serviceNoEmail.requestOtp('+919876543211').catch((e: Error) => e),
+    ]);
+
+    expect(errNoAccount).toBeInstanceOf(BadRequestException);
+    expect(errNoEmail).toBeInstanceOf(BadRequestException);
+    expect((errNoAccount as BadRequestException).message).toBe(
+      (errNoEmail as BadRequestException).message,
+    );
+    expect((errNoAccount as BadRequestException).getStatus()).toBe(
+      (errNoEmail as BadRequestException).getStatus(),
+    );
+  });
+
+  it('sends to an email identifier regardless of whether an account exists for it — never distinguishable', async () => {
+    const requestOtp = jest.fn().mockResolvedValue(undefined);
+    const { service } = buildService({
+      findByIdentifier: jest.fn().mockResolvedValue(undefined),
+      requestOtp,
+    });
+
+    await service.requestOtp('Nobody@Example.com');
+
+    expect(requestOtp).toHaveBeenCalledWith('nobody@example.com', {
+      email: 'nobody@example.com',
+    });
+  });
+
+  it('sends to an existing phone-identified account with an email on file', async () => {
+    const requestOtp = jest.fn().mockResolvedValue(undefined);
+    const { service } = buildService({
+      findByIdentifier: jest
+        .fn()
+        .mockResolvedValue({ id: 'u1', email: 'real@example.com' }),
+      requestOtp,
+    });
+
+    await service.requestOtp('+919876543210');
+
+    expect(requestOtp).toHaveBeenCalledWith('+919876543210', {
+      email: 'real@example.com',
+    });
+  });
+
+  it('applies a delay before rejecting an unsendable identifier, closing most of the timing side channel', async () => {
+    jest.useFakeTimers();
+    try {
+      const { service } = buildService({
+        findByIdentifier: jest.fn().mockResolvedValue(undefined),
+      });
+
+      const promise = service
+        .requestOtp('+919876543210')
+        .catch((e: Error) => e);
+      // Not resolved yet — the delay hasn't elapsed.
+      let settled = false;
+      void promise.then(() => {
+        settled = true;
+      });
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      await jest.advanceTimersByTimeAsync(400);
+      const err = await promise;
+      expect(err).toBeInstanceOf(BadRequestException);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

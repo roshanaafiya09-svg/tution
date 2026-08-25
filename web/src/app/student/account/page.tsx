@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, Download, Trash2 } from 'lucide-react';
-import { api, apiGetPublic, tokenStore, ApiError } from '@/lib/api';
+import { api, apiGetPublic, session, ApiError } from '@/lib/api';
 import type { Curriculum, Me, StudentProfile, TeachingMode } from '@/lib/types';
 import {
   Button,
@@ -122,7 +122,7 @@ export default function StudentAccountPage() {
     setDeleting(true);
     try {
       await api.delete('/account/me');
-      tokenStore.clear();
+      session.clear();
       router.replace('/login');
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'Could not delete your account.');

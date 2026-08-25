@@ -64,9 +64,9 @@ export default function AdminStudentDashboardPage() {
         setSessions(sessionsRes);
         setBatches(batchesRes);
       })
-      .catch((err: unknown) => {
+      .catch(async (err: unknown) => {
         if (err instanceof ApiError && err.status === 401) {
-          impersonationStore.stop();
+          await impersonationStore.stop();
           router.replace('/admin');
         } else {
           setError("Could not load this student's dashboard.");

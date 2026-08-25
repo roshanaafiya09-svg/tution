@@ -18,8 +18,25 @@ function getApiUrl(): string {
   return API_URL;
 }
 
-const ACCESS_TOKEN_KEY = 'accessToken';
-const REFRESH_TOKEN_KEY = 'refreshToken';
+/**
+ * Auth transport (SEC-02): the refresh token used to live in
+ * localStorage alongside the access token — readable by any XSS on the
+ * page. It now lives only in an httpOnly cookie the backend sets on
+ * /auth/otp/verify, /auth/google, and /auth/refresh (see
+ * backend/src/modules/identity/auth/web-session.util.ts) — this module
+ * never sees its value, only sends `credentials: 'include'` so the
+ * browser attaches it. The access token stays in memory only (a page
+ * reload loses it, which is why `ensureSession()` exists below to
+ * silently re-derive one from the cookie on load) — never localStorage,
+ * never a JS-readable cookie.
+ *
+ * The `X-Auth-Client: web` header on every call tells the backend to
+ * take this cookie-based path instead of the legacy body-in/body-out
+ * `refreshToken` shape mobile still uses — mobile never sends this
+ * header and is completely unaffected by any of this.
+ */
+let accessToken: string | null = null;
+let csrfToken: string | null = null;
 
 export class ApiError extends Error {
   constructor(
@@ -34,30 +51,45 @@ export class ApiError extends Error {
   }
 }
 
-export const tokenStore = {
+export const session = {
   get access() {
-    return typeof window === 'undefined' ? null : localStorage.getItem(ACCESS_TOKEN_KEY);
+    return accessToken;
   },
-  get refresh() {
-    return typeof window === 'undefined' ? null : localStorage.getItem(REFRESH_TOKEN_KEY);
-  },
-  set(accessToken: string, refreshToken: string) {
-    localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-    localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+  set(newAccessToken: string, newCsrfToken: string) {
+    accessToken = newAccessToken;
+    csrfToken = newCsrfToken;
   },
   /** Impersonation tokens (see lib/impersonation.ts) have no matching
-   *  refresh token by design — this makes that the active session while
-   *  guaranteeing there's no stale refresh token left behind that could
-   *  get silently exchanged for a fresh one on a 401. */
-  setAccessOnly(accessToken: string) {
-    localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
+   *  refresh token/cookie by design — this makes that the active session
+   *  while deliberately leaving csrfToken untouched, since impersonation
+   *  never rotates or otherwise uses the admin's own refresh cookie. */
+  setAccessOnly(newAccessToken: string) {
+    accessToken = newAccessToken;
   },
   clear() {
-    localStorage.removeItem(ACCESS_TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
+    accessToken = null;
+    csrfToken = null;
   },
 };
+
+const AUTH_HEADERS = { 'X-Auth-Client': 'web' } as const;
+
+let ensureSessionPromise: Promise<boolean> | null = null;
+
+/** Re-derives the in-memory access token from the httpOnly refresh
+ *  cookie on page load (or after any 401), memoized so several shells/
+ *  components mounting at once trigger exactly one /auth/refresh call
+ *  rather than a stampede. Returns false (no throw) when there's no
+ *  valid session — callers redirect to /login on false. */
+export function ensureSession(): Promise<boolean> {
+  if (accessToken) return Promise.resolve(true);
+  if (!ensureSessionPromise) {
+    ensureSessionPromise = refreshTokens().finally(() => {
+      ensureSessionPromise = null;
+    });
+  }
+  return ensureSessionPromise;
+}
 
 async function parseError(res: Response): Promise<never> {
   const data: unknown = await res.json().catch(() => ({}));
@@ -88,25 +120,24 @@ async function parseError(res: Response): Promise<never> {
 /**
  * Access tokens live 15 minutes, so a single silent refresh-and-retry on
  * 401 keeps a working session from bouncing the user to the login page
- * mid-task. A failed refresh clears tokens — the caller sees the 401.
+ * mid-task. A failed refresh clears the in-memory session — the caller
+ * sees the 401 (or, via ensureSession(), a `false`).
  */
 async function refreshTokens(): Promise<boolean> {
-  const refreshToken = tokenStore.refresh;
-  if (!refreshToken) return false;
-
   const res = await fetch(`${getApiUrl()}/auth/refresh`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken }),
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...AUTH_HEADERS },
+    body: '{}',
   });
 
   if (!res.ok) {
-    tokenStore.clear();
+    session.clear();
     return false;
   }
 
-  const tokens = (await res.json()) as { accessToken: string; refreshToken: string };
-  tokenStore.set(tokens.accessToken, tokens.refreshToken);
+  const tokens = (await res.json()) as { accessToken: string; csrfToken: string };
+  session.set(tokens.accessToken, tokens.csrfToken);
   return true;
 }
 
@@ -116,15 +147,14 @@ async function request<T>(
   body?: unknown,
   retryOn401 = true,
 ): Promise<T> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...AUTH_HEADERS };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
-
-  const accessToken = tokenStore.access;
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
   const res = await fetch(`${getApiUrl()}${path}`, {
     method,
     headers,
+    credentials: 'include',
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 
@@ -151,11 +181,39 @@ export const api = {
   delete: <T>(path: string) => request<T>('DELETE', path),
 };
 
-/** Unauthenticated — used by the login page before tokens exist. */
+/** Revokes the session server-side (refresh token, whether cookie- or
+ *  body-borne) and clears the in-memory access/CSRF tokens. Best-effort
+ *  like the old logout: the caller is signed out locally regardless of
+ *  whether the network call itself succeeds. */
+export async function apiLogout(): Promise<void> {
+  try {
+    await fetch(`${getApiUrl()}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...AUTH_HEADERS,
+        ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+      },
+      body: '{}',
+    });
+  } catch {
+    // Unreachable backend — still sign out locally below.
+  } finally {
+    session.clear();
+  }
+}
+
+/** Unauthenticated — used by the login page before a session exists.
+ *  Also carries `credentials: 'include'` because /auth/otp/verify,
+ *  /auth/google, and /dev/auto-login (the session-starting endpoints)
+ *  are called through this helper too, and need the browser to accept
+ *  the Set-Cookie response. */
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${getApiUrl()}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...AUTH_HEADERS },
     body: JSON.stringify(body),
   });
   if (!res.ok) return parseError(res);

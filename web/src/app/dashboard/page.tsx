@@ -23,6 +23,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
+import { safeHref } from '@/lib/safe-url';
 import { currentPeriodLabel, loadRoster, type RosterData } from '@/lib/teacher-roster';
 import type {
   AppNotification,
@@ -375,9 +376,9 @@ export default function TodayPage() {
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  {nextSession.meeting_url && (
+                  {safeHref(nextSession.meeting_url) && (
                     <a
-                      href={nextSession.meeting_url}
+                      href={safeHref(nextSession.meeting_url)}
                       target="_blank"
                       rel="noreferrer"
                       className={buttonVariants({ variant: 'accent', size: 'sm' })}
@@ -528,9 +529,9 @@ export default function TodayPage() {
                     </span>
                     <StatusBadge status={session.status} />
                     <span className="flex shrink-0 flex-wrap items-center gap-2">
-                      {session.meeting_url && session.status === 'scheduled' && (
+                      {safeHref(session.meeting_url) && session.status === 'scheduled' && (
                         <a
-                          href={session.meeting_url}
+                          href={safeHref(session.meeting_url)}
                           target="_blank"
                           rel="noreferrer"
                           className={buttonVariants({ variant: 'accent', size: 'sm' })}

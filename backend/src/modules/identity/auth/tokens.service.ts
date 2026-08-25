@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -7,7 +7,12 @@ import { RefreshTokenRepository } from './refresh-token.repository';
 
 const ACCESS_TOKEN_TTL = '15m';
 export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
-const REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
+export const REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
+
+export interface IssuedRefreshToken {
+  token: string;
+  jti: string;
+}
 
 export interface AccessTokenPayload {
   sub: string;
@@ -68,7 +73,7 @@ export class TokensService {
   async issueRefreshToken(
     userId: string,
     deviceLabel?: string,
-  ): Promise<string> {
+  ): Promise<IssuedRefreshToken> {
     const jti = randomUUID();
     await this.refreshTokenRepository.create(
       userId,
@@ -77,13 +82,65 @@ export class TokensService {
       deviceLabel,
     );
 
-    return this.jwtService.sign(
+    const token = this.jwtService.sign(
       { sub: userId, jti },
       {
         secret: this.config.getOrThrow<string>('auth.jwtRefreshSecret'),
         expiresIn: REFRESH_TOKEN_TTL_SECONDS,
       },
     );
+    return { token, jti };
+  }
+
+  /** Signature/expiry-tolerant decode only — no Redis lookup, no
+   *  rotation/revocation check. Used by CsrfGuard to cheaply recover a
+   *  cookie-borne refresh token's jti before the real verifyRefreshToken
+   *  runs deeper in the request. `ignoreExpiration` is deliberate: a
+   *  request bearing an expired-but-signature-valid cookie should still
+   *  have its CSRF header checked (and rejected for mismatch) rather
+   *  than skip straight to whatever expiry error the real verify below
+   *  would throw — CSRF and "is this session still valid" are separate
+   *  questions. */
+  peekRefreshJti(token: string): string | null {
+    try {
+      const payload = this.jwtService.verify<{ sub: string; jti: string }>(
+        token,
+        {
+          secret: this.config.getOrThrow<string>('auth.jwtRefreshSecret'),
+          ignoreExpiration: true,
+        },
+      );
+      return payload.jti;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Stateless HMAC of a refresh token's jti — the CSRF synchronizer
+   *  token handed to the web client once (in the login/refresh JSON
+   *  body) and echoed back as X-CSRF-Token on /auth/refresh and
+   *  /auth/logout. Deliberately not stored anywhere: it's fully
+   *  recomputable from the jti + server secret, so there's nothing to
+   *  invalidate on rotation beyond the jti itself already changing. */
+  signCsrfToken(jti: string): string {
+    return createHmac(
+      'sha256',
+      this.config.getOrThrow<string>('auth.csrfSecret'),
+    )
+      .update(jti)
+      .digest('hex');
+  }
+
+  verifyCsrfToken(jti: string, candidate: string): boolean {
+    const expected = Buffer.from(this.signCsrfToken(jti), 'hex');
+    let candidateBuf: Buffer;
+    try {
+      candidateBuf = Buffer.from(candidate, 'hex');
+    } catch {
+      return false;
+    }
+    if (expected.length !== candidateBuf.length) return false;
+    return timingSafeEqual(expected, candidateBuf);
   }
 
   /** Verifies the refresh JWT and that its jti is still active (not
@@ -132,7 +189,7 @@ export class TokensService {
     oldJti: string,
     userId: string,
     deviceLabel?: string,
-  ): Promise<string> {
+  ): Promise<IssuedRefreshToken> {
     await this.refreshTokenRepository.revoke(oldJti);
     return this.issueRefreshToken(userId, deviceLabel);
   }

@@ -14,8 +14,8 @@ const ROLE_LABEL: Record<ImpersonationTarget['role'], string> = {
 export function ImpersonationBanner({ target }: { target: ImpersonationTarget }) {
   const router = useRouter();
 
-  function backToSuperAdmin() {
-    impersonationStore.stop();
+  async function backToSuperAdmin() {
+    await impersonationStore.stop();
     router.replace('/admin');
   }
 
@@ -29,7 +29,7 @@ export function ImpersonationBanner({ target }: { target: ImpersonationTarget })
       </span>
       <button
         type="button"
-        onClick={backToSuperAdmin}
+        onClick={() => void backToSuperAdmin()}
         className="rounded-md bg-neutral-900/10 px-2.5 py-1 text-sm font-semibold transition-colors hover:bg-neutral-900/20 focus-visible:outline-none focus-visible:shadow-focus-ring"
       >
         ← Back to Super Admin

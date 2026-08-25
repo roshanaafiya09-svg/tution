@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { CalendarClock, CheckCircle2, ClipboardList, FileText, ListChecks, Megaphone, User, Video } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { api } from '@/lib/api';
+import { safeHref } from '@/lib/safe-url';
 import type { Announcement, Material, Session, StudentAssignmentSummary, StudentQuizSummary } from '@/lib/types';
 import { CardSkeleton, ErrorState, EmptyState, buttonVariants } from '@/components/ui';
 import { AcademicCard, ActionCard, SectionHeader, useBatchWorkspace } from '@/components/student';
@@ -159,9 +160,9 @@ export default function BatchOverviewTab() {
                   </p>
                 )}
               </div>
-              {nextSession.meeting_url && (
+              {safeHref(nextSession.meeting_url) && (
                 <a
-                  href={nextSession.meeting_url}
+                  href={safeHref(nextSession.meeting_url)}
                   target="_blank"
                   rel="noreferrer"
                   className={buttonVariants({ variant: 'accent', size: 'sm' })}

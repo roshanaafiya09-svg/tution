@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CalendarClock, Star } from 'lucide-react';
-import { api, formatMinor, tokenStore, ApiError } from '@/lib/api';
+import { api, formatMinor, ensureSession, ApiError } from '@/lib/api';
 import type { Booking, Subject } from '@/lib/types';
 import { Card, EmptyState, StatusBadge, Button, Field, Input, Select, InlineError, PageLoading } from '@/components/ui';
 
@@ -24,12 +24,14 @@ export default function MyBookingsPage() {
   }, []);
 
   useEffect(() => {
-    if (!tokenStore.access) {
-      router.replace('/login?next=/bookings');
-      return;
-    }
-    void api.get<Subject[]>('/catalog/subjects').then(setSubjects);
-    load().catch(() => setError('Could not load your bookings.'));
+    void (async () => {
+      if (!(await ensureSession())) {
+        router.replace('/login?next=/bookings');
+        return;
+      }
+      void api.get<Subject[]>('/catalog/subjects').then(setSubjects);
+      load().catch(() => setError('Could not load your bookings.'));
+    })();
   }, [router, load]);
 
   function subjectName(subjectId: string): string {

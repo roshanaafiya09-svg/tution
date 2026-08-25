@@ -12,6 +12,7 @@ import {
   Users,
 } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
+import { safeHref } from '@/lib/safe-url';
 import type {
   AvailabilityException,
   AvailabilityRule,
@@ -185,9 +186,9 @@ function EventRow({ event }: { event: CalendarEvent }) {
       </span>
       <span className="flex shrink-0 items-center gap-2">
         <StatusBadge status={event.status} />
-        {event.meetingUrl && event.status !== 'cancelled' && (
+        {safeHref(event.meetingUrl) && event.status !== 'cancelled' && (
           <a
-            href={event.meetingUrl}
+            href={safeHref(event.meetingUrl)}
             target="_blank"
             rel="noreferrer"
             className={buttonVariants({ variant: 'secondary', size: 'sm' })}

@@ -59,6 +59,12 @@ coverage/
 .terraform/
 backend/uploads/
 
+# --- Signing keys / credentials (SEC-01) ---
+*.jks
+*.p12
+*.key
+keystore-credentials.txt
+
 # --- Local Redis dump (created when redis-server runs from repo root) ---
 dump.rdb
 

@@ -8,10 +8,12 @@ import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
+import cookie from '@fastify/cookie';
 import type { Kysely } from 'kysely';
 import { AppModule } from './app.module';
 import { KYSELY_CONNECTION } from './database/database.module';
 import type { DB } from './database/types';
+import { scrubSentryEvent } from './sentry-scrub';
 
 // Must run before anything else, including NestFactory.create — Sentry's
 // own docs require init() to happen before the app/DI container exists.
@@ -19,6 +21,12 @@ if (process.env.SENTRY_DSN) {
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
     environment: process.env.NODE_ENV,
+    // SEC-10: explicit, reviewable PII policy (see sentry-scrub.ts)
+    // rather than relying implicitly on the SDK's own default
+    // redaction. sendDefaultPii is off by default already, but set
+    // explicitly here so that's a deliberate choice, not an assumption.
+    sendDefaultPii: false,
+    beforeSend: scrubSentryEvent,
   });
 }
 
@@ -78,6 +86,10 @@ async function bootstrap() {
   const config = app.get(ConfigService);
 
   await app.register(helmet);
+  // No `secret` — the refresh token stored in this cookie is already a
+  // signed JWT (see TokensService), so a second signing layer here would
+  // be redundant. Plain (unsigned) fastify cookie parsing is enough.
+  await app.register(cookie);
   await app.register(cors, {
     origin: config.get<string[]>('app.corsOrigins'),
     credentials: true,

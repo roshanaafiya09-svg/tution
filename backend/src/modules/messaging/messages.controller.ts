@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../identity/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../identity/auth/guards/roles.guard';
 import { Roles } from '../identity/auth/decorators/roles.decorator';
@@ -19,14 +27,21 @@ export class MessagesController {
     return this.messagesService.listMine(user);
   }
 
+  /** Server-clamped page size (see MessagesService.listThread) —
+   *  `before` (a message id) fetches the next page older than it. */
   @Get('batch/:batchId/student/:studentId')
   @Roles('tutor', 'student', 'parent')
   listThread(
     @CurrentUser() user: AccessTokenPayload,
     @Param('batchId') batchId: string,
     @Param('studentId') studentId: string,
+    @Query('limit') limit?: string,
+    @Query('before') before?: string,
   ) {
-    return this.messagesService.listThread(user, batchId, studentId);
+    return this.messagesService.listThread(user, batchId, studentId, {
+      limit: limit ? Number(limit) : undefined,
+      before,
+    });
   }
 
   @Post('batch/:batchId/student/:studentId')

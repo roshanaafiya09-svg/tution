@@ -3,6 +3,7 @@ import { Video, Users } from 'lucide-react';
 import { AcademicCard } from './academic-card';
 import { buttonVariants } from '@/components/ui';
 import { cn } from '@/lib/cn';
+import { safeHref } from '@/lib/safe-url';
 
 /** A single class/session — the strongest visual element on Today and
  *  the Sessions timeline. Shows only fields that actually exist; the
@@ -47,9 +48,9 @@ export function SessionCard({
         )}
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        {meetingUrl && (
+        {safeHref(meetingUrl) && (
           <a
-            href={meetingUrl}
+            href={safeHref(meetingUrl)}
             target="_blank"
             rel="noreferrer"
             className={buttonVariants({ variant: 'accent', size: 'sm' })}
