@@ -140,6 +140,14 @@ export class AttendanceService {
     return this.repository.listForBatch(batchId);
   }
 
+  /** Bulk sibling of historyForBatch — attendance history across every
+   *  batch this tutor owns, in one grouped query. Backs the Teacher
+   *  Dashboard roster load. */
+  async historyForOwnBatches(tutorId: string) {
+    const batches = await this.batchesService.listForTutor(tutorId);
+    return this.repository.listForBatches(batches.map((b) => b.id));
+  }
+
   /** Student's own attendance, across every batch they've ever been in. */
   myHistory(studentId: string) {
     return this.repository.listForStudent(studentId);

@@ -44,4 +44,13 @@ export class AnnouncementsService {
 
     return this.repository.listForBatch(batchId);
   }
+
+  /** Bulk sibling of listForBatch — announcements across every batch the
+   *  student is actively enrolled in, in one query. Batch ids are derived
+   *  server-side from the student's own enrollments, never trusted from
+   *  the client. */
+  async listForOwnEnrolledBatches(studentId: string) {
+    const batches = await this.batchesRepository.listForStudent(studentId);
+    return this.repository.listForBatches(batches.map((b) => b.id));
+  }
 }

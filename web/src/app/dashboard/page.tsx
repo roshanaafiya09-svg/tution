@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertCircle,
@@ -24,7 +24,9 @@ import {
 } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
 import { safeHref } from '@/lib/safe-url';
-import { currentPeriodLabel, loadRoster, type RosterData } from '@/lib/teacher-roster';
+import { currentPeriodLabel, loadRoster } from '@/lib/teacher-roster';
+import { GREETING, dayPeriod, todayLabel } from '@/lib/greeting';
+import { useCachedFetch } from '@/lib/use-cached-fetch';
 import type {
   AppNotification,
   Batch,
@@ -52,7 +54,6 @@ import {
   AcademicCard,
   EmptyPanel,
   MetricCard,
-  type DayPeriod,
   type ActivityItem,
 } from '@/components/dashboard';
 import { OnboardingChecklist } from '@/components/dashboard/onboarding-checklist';
@@ -82,19 +83,6 @@ function isToday(session: Session): boolean {
   return start.toDateString() === now.toDateString();
 }
 
-function dayPeriod(): DayPeriod {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'morning';
-  if (hour < 17) return 'afternoon';
-  return 'evening';
-}
-
-const GREETING: Record<DayPeriod, string> = {
-  morning: 'Good morning',
-  afternoon: 'Good afternoon',
-  evening: 'Good evening',
-};
-
 const NOTIFICATION_ICON: Record<string, { icon: LucideIcon; tone: ActivityItem['tone'] }> = {
   new_message: { icon: MessageSquareText, tone: 'info' },
 };
@@ -117,68 +105,55 @@ interface AttentionItem {
 
 export default function TodayPage() {
   const toast = useToast();
-  const [sessions, setSessions] = useState<Session[] | null>(null);
-  const [batches, setBatches] = useState<Batch[] | null>(null);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [feeTotals, setFeeTotals] = useState<FeeTotals | null>(null);
-  const [quizDrafts, setQuizDrafts] = useState<QuizDraftSummary[]>([]);
-  const [profile, setProfile] = useState<TutorProfile | null>(null);
-  const [verifications, setVerifications] = useState<VerificationUpload[]>([]);
-  const [roster, setRoster] = useState<RosterData | null>(null);
-  const [loadError, setLoadError] = useState(false);
   const [completingId, setCompletingId] = useState<string | null>(null);
 
   const periodLabel = currentPeriodLabel();
 
-  const load = useCallback(() => {
-    setLoadError(false);
-    setSessions(null);
-    setBatches(null);
-    setRoster(null);
-
+  const fetchMainBundle = useCallback(async () => {
     // The default /sessions/me window starts "now", which would hide the
     // classes that already ran but never had attendance marked — exactly
     // the thing Needs your attention exists to surface.
-    Promise.all([
-      api.get<Session[]>(sessionsWindowPath()),
-      api.get<Batch[]>('/batches/me'),
-      api.get<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
-      api.get<AppNotification[]>('/notifications').catch(() => [] as AppNotification[]),
-      api.get<FeeTotals | null>(`/fees/period/totals?period=${periodLabel}`).catch(() => null),
-      api.get<QuizDraftSummary[]>('/quizzes/me').catch(() => [] as QuizDraftSummary[]),
-      api.get<TutorProfile | null>('/profiles/tutor/me').catch(() => null),
-      api.get<VerificationUpload[]>('/verifications/me').catch(() => [] as VerificationUpload[]),
-    ])
-      .then(([sessionRows, batchRows, subjectRows, notificationRows, totals, drafts, profileRow, verificationRows]) => {
-        setSessions(sessionRows);
-        setBatches(batchRows);
-        setSubjects(subjectRows);
-        setNotifications(notificationRows);
-        setFeeTotals(totals);
-        setQuizDrafts(drafts);
-        setProfile(profileRow);
-        setVerifications(verificationRows);
-      })
-      .catch(() => setLoadError(true));
-
-    // The roster is a fan-out over every batch, so it fills the two tiles
-    // that need it after the page has already painted rather than holding
-    // the whole dashboard back.
-    loadRoster(periodLabel)
-      .then(setRoster)
-      .catch(() => setRoster(null));
+    const [sessionRows, batchRows, subjectRows, notificationRows, totals, drafts, profileRow, verificationRows] =
+      await Promise.all([
+        api.get<Session[]>(sessionsWindowPath()),
+        api.get<Batch[]>('/batches/me'),
+        api.get<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
+        api.get<AppNotification[]>('/notifications').catch(() => [] as AppNotification[]),
+        api.get<FeeTotals | null>(`/fees/period/totals?period=${periodLabel}`).catch(() => null),
+        api.get<QuizDraftSummary[]>('/quizzes/me').catch(() => [] as QuizDraftSummary[]),
+        api.get<TutorProfile | null>('/profiles/tutor/me').catch(() => null),
+        api.get<VerificationUpload[]>('/verifications/me').catch(() => [] as VerificationUpload[]),
+      ]);
+    return { sessionRows, batchRows, subjectRows, notificationRows, totals, drafts, profileRow, verificationRows };
   }, [periodLabel]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { data: mainBundle, error: loadError, reload: reloadMain } = useCachedFetch('teacher-dashboard', fetchMainBundle);
+
+  // The roster is a fan-out over every batch, cached separately so it
+  // fills the two tiles that need it after the page has already painted
+  // rather than holding the whole dashboard back.
+  const fetchRoster = useCallback(() => loadRoster(periodLabel), [periodLabel]);
+  const { data: roster, reload: reloadRoster } = useCachedFetch('teacher-dashboard-roster', fetchRoster);
+
+  const sessions = mainBundle?.sessionRows ?? null;
+  const batches = mainBundle?.batchRows ?? null;
+  const subjects = mainBundle?.subjectRows ?? [];
+  const notifications = mainBundle?.notificationRows ?? [];
+  const feeTotals = mainBundle?.totals ?? null;
+  const quizDrafts = mainBundle?.drafts ?? [];
+  const profile = mainBundle?.profileRow ?? null;
+  const verifications = mainBundle?.verificationRows ?? [];
+
+  function load() {
+    reloadMain();
+    reloadRoster();
+  }
 
   async function markComplete(sessionId: string) {
     setCompletingId(sessionId);
     try {
       await api.post(`/sessions/${sessionId}/complete`);
-      setSessions(await api.get<Session[]>(sessionsWindowPath()));
+      await reloadMain();
       toast({ title: 'Marked as done', variant: 'success' });
     } catch {
       toast({ title: 'Could not update the class', variant: 'error' });
@@ -318,13 +293,7 @@ export default function TodayPage() {
     });
   }
 
-  const period = dayPeriod();
-  const todayLabel = now.toLocaleDateString('en-IN', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  const period = dayPeriod(now);
 
   if (loadError) {
     return (
@@ -358,7 +327,7 @@ export default function TodayPage() {
           subtitle="Here's what's happening with your teaching."
         >
           <p className="mt-1 text-xs font-medium uppercase tracking-[0.14em] text-neutral-500 dark:text-neutral-400">
-            {todayLabel}
+            {todayLabel(now)}
           </p>
           <div className="mt-6 border-t border-neutral-900/5 pt-6 dark:border-white/10">
             {nextSession ? (

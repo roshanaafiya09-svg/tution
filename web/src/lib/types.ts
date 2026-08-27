@@ -123,6 +123,8 @@ export interface Session {
 
 export interface Enrollment {
   id: string;
+  /** Present only on the bulk `/batches/me/students` response. */
+  batch_id?: string;
   student_id: string;
   status: 'active' | 'left';
   joined_at: string;
@@ -203,6 +205,8 @@ export interface Material {
 
 export interface Announcement {
   id: string;
+  /** Present only on the bulk `/announcements/mine` response. */
+  batch_id?: string;
   body: string;
   created_at: string;
 }
@@ -898,6 +902,8 @@ export interface StudentQuizSummary {
   score: number | null;
   total: number | null;
   attemptedAt: string | null;
+  /** Present only on the bulk `/quizzes/mine` response. */
+  batchId?: string;
 }
 
 export interface QuizTakeQuestion {
@@ -971,6 +977,8 @@ export interface AttendanceHistoryEntry {
 export interface AttendanceBatchHistoryEntry {
   id: string;
   session_id: string;
+  /** Present only on the bulk `/attendance/batches/mine/history` response. */
+  batch_id?: string;
   scheduled_start_utc: string;
   student_id: string;
   display_name: string | null;

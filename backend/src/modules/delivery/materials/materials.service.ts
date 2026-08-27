@@ -72,6 +72,15 @@ export class MaterialsService {
     return this.repository.listForBatch(batchId);
   }
 
+  /** Bulk sibling of listForBatch — materials across every batch the
+   *  student is actively enrolled in, in one query. Batch ids are derived
+   *  server-side from the student's own enrollments, never trusted from
+   *  the client. */
+  async listForOwnEnrolledBatches(studentId: string) {
+    const batches = await this.batchesRepository.listForStudent(studentId);
+    return this.repository.listForBatches(batches.map((b) => b.id));
+  }
+
   async getDownloadUrl(userId: string, materialId: string, isTutor: boolean) {
     const material = await this.repository.findById(materialId);
     if (!material) throw new NotFoundException('Material not found');

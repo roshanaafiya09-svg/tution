@@ -120,6 +120,39 @@ export class BatchesRepository {
       .execute();
   }
 
+  /** Bulk sibling of listEnrollments — every enrollment (active or left)
+   *  across a set of batch ids in one grouped query, backing the Teacher
+   *  Dashboard's roster load (previously one /batches/:id/students call
+   *  per batch). Unlike listEnrollmentsForTutors, this intentionally
+   *  includes non-active enrollments — the roster marks former students
+   *  as "left" rather than dropping them. */
+  listEnrollmentsForBatches(batchIds: string[]) {
+    return this.db
+      .selectFrom('enrollments')
+      .innerJoin('users', 'users.id', 'enrollments.student_id')
+      .leftJoin(
+        'profiles_student',
+        'profiles_student.user_id',
+        'enrollments.student_id',
+      )
+      .select([
+        'enrollments.id',
+        'enrollments.batch_id',
+        'enrollments.student_id',
+        'enrollments.status',
+        'enrollments.joined_at',
+        'users.phone_e164',
+        'profiles_student.display_name',
+      ])
+      .where(
+        'enrollments.batch_id',
+        'in',
+        batchIds.length ? batchIds : ['00000000-0000-0000-0000-000000000000'],
+      )
+      .orderBy('enrollments.joined_at')
+      .execute();
+  }
+
   findEnrollment(batchId: string, studentId: string) {
     return this.db
       .selectFrom('enrollments')

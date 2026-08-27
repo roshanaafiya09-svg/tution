@@ -2,9 +2,9 @@ import { api } from '@/lib/api';
 import type { AttendanceBatchHistoryEntry, Batch, Enrollment, FeeEntry } from '@/lib/types';
 
 /** One student, merged across every batch of this teacher's that they
- *  belong to. Assembled entirely client-side from endpoints that already
- *  exist (`/batches/:id/students`, `/attendance/batch/:id/history`,
- *  `/fees/period`) — there is no single roster endpoint server-side yet. */
+ *  belong to. Assembled client-side from the bulk `/batches/me/students`,
+ *  `/attendance/batches/mine/history`, and `/fees/period` endpoints —
+ *  there is no single roster endpoint server-side yet. */
 export interface RosterStudent {
   studentId: string;
   displayName: string | null;
@@ -37,71 +37,56 @@ function emptyAttendance(): RosterStudent['attendance'] {
 }
 
 /**
- * Fan-out load of the teacher's whole roster. One request per batch for
- * enrollments and one per batch for attendance, plus a single fee-period
- * call — the same N+1 shape the Batches list already uses. Failures on an
- * individual batch degrade that batch's contribution to empty rather than
- * failing the whole page.
+ * Bulk load of the teacher's whole roster: one call for enrollments across
+ * every batch, one for attendance across every batch, plus a single
+ * fee-period call — replacing what used to be two requests per batch.
+ * Failures degrade to an empty roster rather than a broken page.
  */
 export async function loadRoster(periodLabel = currentPeriodLabel()): Promise<RosterData> {
-  const batches = await api.get<Batch[]>('/batches/me');
-
-  const [enrollmentsByBatch, attendanceByBatch, feeEntries] = await Promise.all([
-    Promise.all(
-      batches.map((batch) =>
-        api
-          .get<Enrollment[]>(`/batches/${batch.id}/students`)
-          .then((rows) => [batch, rows] as const)
-          .catch(() => [batch, [] as Enrollment[]] as const),
-      ),
-    ),
-    Promise.all(
-      batches.map((batch) =>
-        api
-          .get<AttendanceBatchHistoryEntry[]>(`/attendance/batch/${batch.id}/history`)
-          .then((rows) => [batch, rows] as const)
-          .catch(() => [batch, [] as AttendanceBatchHistoryEntry[]] as const),
-      ),
-    ),
+  const [batches, enrollments, attendanceRows, feeEntries] = await Promise.all([
+    api.get<Batch[]>('/batches/me'),
+    api.get<Enrollment[]>('/batches/me/students').catch(() => [] as Enrollment[]),
+    api.get<AttendanceBatchHistoryEntry[]>('/attendance/batches/mine/history').catch(() => [] as AttendanceBatchHistoryEntry[]),
     api.get<FeeEntry[]>(`/fees/period?period=${periodLabel}`).catch(() => [] as FeeEntry[]),
   ]);
 
+  const batchById = new Map(batches.map((b) => [b.id, b]));
   const byStudent = new Map<string, RosterStudent>();
 
-  for (const [batch, enrollments] of enrollmentsByBatch) {
-    for (const enrollment of enrollments) {
-      const existing = byStudent.get(enrollment.student_id);
-      if (existing) {
-        existing.batches.push({ id: batch.id, title: batch.title, status: enrollment.status });
-        if (enrollment.status === 'active') existing.status = 'active';
-        if (enrollment.joined_at < existing.joinedAt) existing.joinedAt = enrollment.joined_at;
-        existing.displayName = existing.displayName ?? enrollment.display_name;
-      } else {
-        byStudent.set(enrollment.student_id, {
-          studentId: enrollment.student_id,
-          displayName: enrollment.display_name,
-          phoneE164: enrollment.phone_e164,
-          status: enrollment.status,
-          joinedAt: enrollment.joined_at,
-          batches: [{ id: batch.id, title: batch.title, status: enrollment.status }],
-          attendance: emptyAttendance(),
-          attendanceHistory: [],
-          fees: { expectedMinor: 0, paidMinor: 0, outstandingMinor: 0, currency: 'INR', entries: [] },
-        });
-      }
+  for (const enrollment of enrollments) {
+    const batch = enrollment.batch_id ? batchById.get(enrollment.batch_id) : undefined;
+    if (!batch) continue;
+    const existing = byStudent.get(enrollment.student_id);
+    if (existing) {
+      existing.batches.push({ id: batch.id, title: batch.title, status: enrollment.status });
+      if (enrollment.status === 'active') existing.status = 'active';
+      if (enrollment.joined_at < existing.joinedAt) existing.joinedAt = enrollment.joined_at;
+      existing.displayName = existing.displayName ?? enrollment.display_name;
+    } else {
+      byStudent.set(enrollment.student_id, {
+        studentId: enrollment.student_id,
+        displayName: enrollment.display_name,
+        phoneE164: enrollment.phone_e164,
+        status: enrollment.status,
+        joinedAt: enrollment.joined_at,
+        batches: [{ id: batch.id, title: batch.title, status: enrollment.status }],
+        attendance: emptyAttendance(),
+        attendanceHistory: [],
+        fees: { expectedMinor: 0, paidMinor: 0, outstandingMinor: 0, currency: 'INR', entries: [] },
+      });
     }
   }
 
-  for (const [batch, rows] of attendanceByBatch) {
-    for (const row of rows) {
-      const student = byStudent.get(row.student_id);
-      if (!student) continue;
-      student.attendance.total += 1;
-      if (row.status === 'present') student.attendance.present += 1;
-      else if (row.status === 'late') student.attendance.late += 1;
-      else student.attendance.absent += 1;
-      student.attendanceHistory.push({ ...row, batch_id: batch.id, batch_title: batch.title });
-    }
+  for (const row of attendanceRows) {
+    const batch = row.batch_id ? batchById.get(row.batch_id) : undefined;
+    if (!batch) continue;
+    const student = byStudent.get(row.student_id);
+    if (!student) continue;
+    student.attendance.total += 1;
+    if (row.status === 'present') student.attendance.present += 1;
+    else if (row.status === 'late') student.attendance.late += 1;
+    else student.attendance.absent += 1;
+    student.attendanceHistory.push({ ...row, batch_id: batch.id, batch_title: batch.title });
   }
 
   for (const student of byStudent.values()) {

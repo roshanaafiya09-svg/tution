@@ -100,6 +100,28 @@ export class StudentQuizzesService {
     }));
   }
 
+  /** Bulk sibling of listForBatch — published quizzes across every batch
+   *  the student is actively enrolled in, in one query. Batch ids are
+   *  derived server-side from the student's own enrollments. */
+  async listForOwnEnrolledBatches(studentId: string) {
+    const batches = await this.batchesRepository.listForStudent(studentId);
+    const rows = await this.repository.listForBatches(
+      batches.map((b) => b.id),
+      studentId,
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      batchId: r.batch_id,
+      title: r.title,
+      createdAt: r.created_at,
+      questionCount: Number(r.question_count),
+      attempted: r.score !== null,
+      score: r.score,
+      total: r.total,
+      attemptedAt: r.attempted_at,
+    }));
+  }
+
   /** Fetch a quiz to take. If the student already attempted it, this
    *  returns the review view (correct answers + their choices) instead
    *  of the blank question set — one attempt only, no retakes. */

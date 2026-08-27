@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import Link from 'next/link';
 import {
   Award,
@@ -17,6 +17,8 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
+import { GREETING, dayPeriod, todayLabel } from '@/lib/greeting';
+import { useCachedFetch } from '@/lib/use-cached-fetch';
 import type {
   AcademyActiveTeacher,
   AcademyKycVerificationStatus,
@@ -36,17 +38,18 @@ import { SectionHeader, ActionCard, ActivityFeed, EmptyPanel, type ActivityItem 
 import { academyInitials } from '@/lib/academies';
 import { useAcademyDashboard } from '@/components/academy-shell';
 
-const GREETING: Record<DayPeriod, string> = {
-  morning: 'Good morning',
-  afternoon: 'Good afternoon',
-  evening: 'Good evening',
-};
-
-function dayPeriod(): DayPeriod {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'morning';
-  if (hour < 17) return 'afternoon';
-  return 'evening';
+/** Real, data-driven context line for the Academy hero — never a fake stat. */
+function academyContextLine(
+  todaySessionsCount: number,
+  pendingRequestsCount: number,
+): string {
+  const parts: string[] = [];
+  if (todaySessionsCount > 0) parts.push(`${todaySessionsCount} class${todaySessionsCount === 1 ? '' : 'es'} scheduled today`);
+  if (pendingRequestsCount > 0) {
+    parts.push(`${pendingRequestsCount} teacher ${pendingRequestsCount === 1 ? 'request' : 'requests'} pending`);
+  }
+  if (parts.length === 0) return 'No classes scheduled for today.';
+  return parts.join(' · ');
 }
 
 function isToday(session: AcademyTodaySession): boolean {
@@ -72,27 +75,27 @@ function sessionDateTime(session: AcademyTodaySession): string {
   });
 }
 
+interface AcademyBundle {
+  profile: AcademyOwnerProfile;
+  stats: AcademyOwnerStats;
+  pendingRequests: AcademyPendingRequest[];
+  contactRequests: ContactRequest[];
+  activeTeachers: AcademyActiveTeacher[];
+  sessions: AcademyTodaySession[];
+  batches: AcademyManagedBatch[];
+  subjects: Subject[];
+  photos: AcademyPhoto[];
+  kyc: AcademyKycVerificationStatus | null;
+  reviews: Review[];
+}
+
 export default function AcademyTodayPage() {
   const { hasAcademy } = useAcademyDashboard();
-  const [profile, setProfile] = useState<AcademyOwnerProfile | null>(null);
-  const [stats, setStats] = useState<AcademyOwnerStats | null>(null);
-  const [pendingRequests, setPendingRequests] = useState<AcademyPendingRequest[]>([]);
-  const [contactRequests, setContactRequests] = useState<ContactRequest[]>([]);
-  const [activeTeachers, setActiveTeachers] = useState<AcademyActiveTeacher[]>([]);
-  const [sessions, setSessions] = useState<AcademyTodaySession[]>([]);
-  const [batches, setBatches] = useState<AcademyManagedBatch[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [photos, setPhotos] = useState<AcademyPhoto[]>([]);
-  const [kyc, setKyc] = useState<AcademyKycVerificationStatus | null>(null);
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [loadError, setLoadError] = useState(false);
 
-  const load = useCallback(async () => {
-    if (hasAcademy === false) return;
-    setLoadError(false);
+  const fetchBundle = useCallback(async (): Promise<AcademyBundle | null> => {
+    if (hasAcademy === false) return null;
     try {
       const profileRes = await api.get<AcademyOwnerProfile>('/academy/me');
-      setProfile(profileRes);
       const [
         statsRes,
         pendingRes,
@@ -119,29 +122,41 @@ export default function AcademyTodayPage() {
           .then((r) => r.reviews)
           .catch(() => [] as Review[]),
       ]);
-      setStats(statsRes);
-      setPendingRequests(pendingRes);
-      setContactRequests(contactRes);
-      setActiveTeachers(teachersRes);
-      setSessions(sessionsRes);
-      setBatches(batchesRes);
-      setSubjects(subjectsRes);
-      setPhotos(photosRes);
-      setKyc(kycRes);
-      setReviews(reviewsRes);
+      return {
+        profile: profileRes,
+        stats: statsRes,
+        pendingRequests: pendingRes,
+        contactRequests: contactRes,
+        activeTeachers: teachersRes,
+        sessions: sessionsRes,
+        batches: batchesRes,
+        subjects: subjectsRes,
+        photos: photosRes,
+        kyc: kycRes,
+        reviews: reviewsRes,
+      };
     } catch (err) {
-      if (!(err instanceof ApiError && err.status === 404)) {
-        setLoadError(true);
-      }
+      if (err instanceof ApiError && err.status === 404) return null;
+      throw err;
     }
   }, [hasAcademy]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const { data: bundle, error: loadError, reload: load } = useCachedFetch('academy-dashboard', fetchBundle);
+
+  const profile = bundle?.profile ?? null;
+  const stats = bundle?.stats ?? null;
+  const pendingRequests = bundle?.pendingRequests ?? [];
+  const contactRequests = bundle?.contactRequests ?? [];
+  const activeTeachers = bundle?.activeTeachers ?? [];
+  const sessions = bundle?.sessions ?? [];
+  const batches = bundle?.batches ?? [];
+  const subjects = bundle?.subjects ?? [];
+  const photos = bundle?.photos ?? [];
+  const kyc = bundle?.kyc ?? null;
+  const reviews = bundle?.reviews ?? [];
 
   if (hasAcademy === false) {
-    return <WelcomeCard period={dayPeriod()} />;
+    return <WelcomeCard period={dayPeriod(new Date())} />;
   }
 
   if (loadError) {
@@ -164,7 +179,8 @@ export default function AcademyTodayPage() {
     );
   }
 
-  const period = dayPeriod();
+  const now = new Date();
+  const period = dayPeriod(now);
   const todaySessions = sessions.filter(isToday);
   const upcoming = sessions
     .filter((s) => !isToday(s) && s.status === 'scheduled')
@@ -273,8 +289,15 @@ export default function AcademyTodayPage() {
         <AcademyHero
           period={period}
           greeting={`${GREETING[period]}, ${profile.name} 👋`}
-          subtitle="Here's what's happening at your academy today."
-        />
+          subtitle="Here's what's happening with your academy."
+        >
+          <p className="mt-1 text-xs font-medium uppercase tracking-[0.14em] text-neutral-500 dark:text-neutral-400">
+            {todayLabel(now)}
+          </p>
+          <p className="mt-3 text-sm text-neutral-600 dark:text-neutral-300">
+            {academyContextLine(todaySessions.length, pendingRequests.length)}
+          </p>
+        </AcademyHero>
       </div>
 
       <section className="animate-fade-up" style={{ animationDelay: '60ms' }}>

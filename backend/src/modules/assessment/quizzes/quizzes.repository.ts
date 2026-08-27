@@ -109,4 +109,38 @@ export class PublishedQuizzesRepository {
       .orderBy('quizzes.created_at', 'desc')
       .execute();
   }
+
+  /** Bulk sibling of listForBatch — published quizzes (with the student's
+   *  own attempt status) across a set of batches in one query, backing
+   *  the Student Dashboard's "mine" endpoint. */
+  listForBatches(batchIds: string[], studentId: string) {
+    return this.db
+      .selectFrom('quizzes')
+      .leftJoin('quiz_attempts', (join) =>
+        join
+          .onRef('quiz_attempts.quiz_id', '=', 'quizzes.id')
+          .on('quiz_attempts.student_id', '=', studentId),
+      )
+      .select((eb) => [
+        'quizzes.id',
+        'quizzes.batch_id',
+        'quizzes.title',
+        'quizzes.created_at',
+        eb
+          .selectFrom('quiz_questions')
+          .select((e) => e.fn.countAll().as('count'))
+          .whereRef('quiz_questions.quiz_id', '=', 'quizzes.id')
+          .as('question_count'),
+        'quiz_attempts.score',
+        'quiz_attempts.total',
+        'quiz_attempts.submitted_at as attempted_at',
+      ])
+      .where(
+        'quizzes.batch_id',
+        'in',
+        batchIds.length ? batchIds : ['00000000-0000-0000-0000-000000000000'],
+      )
+      .orderBy('quizzes.created_at', 'desc')
+      .execute();
+  }
 }

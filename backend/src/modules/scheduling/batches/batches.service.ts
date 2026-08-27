@@ -66,6 +66,13 @@ export class BatchesService {
     return this.repository.listEnrollments(batchId);
   }
 
+  /** Bulk sibling of listEnrollments — every enrollment across all of this
+   *  tutor's own batches in one grouped query, backing the roster load. */
+  async listEnrollmentsForOwnBatches(tutorId: string) {
+    const batches = await this.repository.listForTutor(tutorId);
+    return this.repository.listEnrollmentsForBatches(batches.map((b) => b.id));
+  }
+
   async enroll(
     batchId: string,
     studentId: string,

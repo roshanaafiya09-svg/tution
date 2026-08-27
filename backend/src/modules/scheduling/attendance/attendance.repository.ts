@@ -255,6 +255,38 @@ export class AttendanceRepository {
       .execute();
   }
 
+  /** Bulk sibling of listForBatch — attendance across every session in a
+   *  set of batches, newest first, in one grouped query. Backs the
+   *  Teacher Dashboard roster load (previously one /attendance/batch/:id/
+   *  history call per batch). */
+  listForBatches(batchIds: string[]) {
+    return this.db
+      .selectFrom('attendance')
+      .innerJoin('class_sessions', 'class_sessions.id', 'attendance.session_id')
+      .leftJoin(
+        'profiles_student',
+        'profiles_student.user_id',
+        'attendance.student_id',
+      )
+      .select([
+        'attendance.id',
+        'attendance.session_id',
+        'class_sessions.batch_id',
+        'class_sessions.scheduled_start_utc',
+        'attendance.student_id',
+        'profiles_student.display_name',
+        'attendance.status',
+        'attendance.method',
+      ])
+      .where(
+        'class_sessions.batch_id',
+        'in',
+        batchIds.length ? batchIds : ['00000000-0000-0000-0000-000000000000'],
+      )
+      .orderBy('class_sessions.scheduled_start_utc', 'desc')
+      .execute();
+  }
+
   /** Absences for one student in one batch since a given date — feeds
    *  the repeated-absence alert check (AttendanceService). */
   async countAbsencesForStudentInBatch(

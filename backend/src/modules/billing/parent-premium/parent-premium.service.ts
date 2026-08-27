@@ -20,10 +20,15 @@ export class ParentPremiumService {
 
   /** Checked lazily against current_period_end, same as tutor
    *  subscriptions — an 'active' row whose period has lapsed is
-   *  correctly treated as inactive with no renewal job needed. */
+   *  correctly treated as inactive with no renewal job needed. A plain
+   *  read (no self-healing insert): this runs on every doubt-solver
+   *  request via ParentPremiumForStudentGuard and on the weekly digest
+   *  job, so a parent who's never subscribed must not trigger a write on
+   *  every check — getOwnSubscription is the only path that creates the
+   *  row, at actual purchase time. */
   async isActive(parentId: string): Promise<boolean> {
-    const subscription = await this.getOrCreate(parentId);
-    if (subscription.status !== 'active') return false;
+    const subscription = await this.repository.findByParentId(parentId);
+    if (!subscription || subscription.status !== 'active') return false;
     return (
       subscription.current_period_end != null &&
       new Date(subscription.current_period_end) > new Date()
@@ -48,11 +53,14 @@ export class ParentPremiumService {
     return results.some(Boolean);
   }
 
+  /** Plain read, same rationale as isActive — a parent who has never
+   *  opened the Premium page or subscribed should not cause a row to be
+   *  written just by checking their own status. */
   async getStatus(parentId: string) {
-    const subscription = await this.getOrCreate(parentId);
+    const subscription = await this.repository.findByParentId(parentId);
     return {
-      status: subscription.status,
-      currentPeriodEnd: subscription.current_period_end,
+      status: subscription?.status ?? ('inactive' as const),
+      currentPeriodEnd: subscription?.current_period_end ?? null,
     };
   }
 

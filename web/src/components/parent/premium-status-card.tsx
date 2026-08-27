@@ -6,8 +6,22 @@ import type { ParentPremiumStatus } from '@/lib/types';
 /** The status header on the Premium page — active or not, with the
  *  renewal date when known. Reused as-is regardless of subscription
  *  state so the page never has two competing "status" treatments. */
+function statusDetail(status: ParentPremiumStatus): string | null {
+  if (status.status === 'active') {
+    return status.currentPeriodEnd
+      ? `Renews ${new Date(status.currentPeriodEnd).toLocaleDateString('en-IN')}`
+      : null;
+  }
+  if (status.status === 'cancelled' || status.status === 'past_due') {
+    return 'Your subscription lapsed — resubscribe to restore access.';
+  }
+  // 'inactive'
+  return status.currentPeriodEnd ? null : 'Not subscribed yet — see plans below.';
+}
+
 export function PremiumStatusCard({ status }: { status: ParentPremiumStatus }) {
   const isActive = status.status === 'active';
+  const detail = statusDetail(status);
 
   return (
     <ParentCard
@@ -26,11 +40,7 @@ export function PremiumStatusCard({ status }: { status: ParentPremiumStatus }) {
           <p className="mt-1 font-display text-2xl font-semibold capitalize text-neutral-900 dark:text-neutral-50">
             {status.status.replace(/_/g, ' ')}
           </p>
-          {status.currentPeriodEnd && (
-            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-              Renews {new Date(status.currentPeriodEnd).toLocaleDateString('en-IN')}
-            </p>
-          )}
+          {detail && <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{detail}</p>}
         </div>
       </div>
       <StatusBadge status={status.status} />

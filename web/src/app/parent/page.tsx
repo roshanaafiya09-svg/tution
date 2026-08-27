@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   Users,
@@ -17,6 +17,8 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
+import { GREETING, dayPeriod, todayLabel } from '@/lib/greeting';
+import { useCachedFetch } from '@/lib/use-cached-fetch';
 import type {
   AppNotification,
   Digest,
@@ -36,23 +38,20 @@ import {
   ActivityFeed,
   MessagePreview,
   ParentEmptyState,
-  type DayPeriod,
   type SnapshotStat,
   type ActivityItem,
 } from '@/components/parent';
 
-function dayPeriod(): DayPeriod {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'morning';
-  if (hour < 17) return 'afternoon';
-  return 'evening';
+/** Real, data-driven context line for the Parent hero — never a fake stat.
+ *  Uses the already-assembled attention signals rather than fetching a
+ *  child-schedule endpoint that doesn't exist yet, per-child aware for
+ *  parents linked to more than one student. */
+function parentContextLine(activeCount: number, attentionCount: number): string {
+  if (activeCount === 0) return '';
+  const childWord = activeCount === 1 ? 'child' : 'children';
+  if (attentionCount === 0) return `${activeCount} ${childWord} linked · All caught up`;
+  return `${activeCount} ${childWord} linked · ${attentionCount} item${attentionCount === 1 ? '' : 's'} need${attentionCount === 1 ? 's' : ''} attention`;
 }
-
-const GREETING: Record<DayPeriod, string> = {
-  morning: 'Good morning',
-  afternoon: 'Good afternoon',
-  evening: 'Good evening',
-};
 
 interface AttentionItem {
   key: string;
@@ -71,52 +70,48 @@ const NOTIFICATION_ICON: Record<string, { icon: LucideIcon; tone: ActivityItem['
 };
 
 export default function ParentTodayPage() {
-  const [links, setLinks] = useState<ParentLink[] | null>(null);
-  const [digests, setDigests] = useState<Digest[]>([]);
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [threads, setThreads] = useState<ThreadSummary[]>([]);
-  const [progressByChild, setProgressByChild] = useState<Record<string, ProgressSummary | null>>({});
-  const [feesByChild, setFeesByChild] = useState<Record<string, StudentFeeEntry[]>>({});
-  const [loadError, setLoadError] = useState(false);
   const [consentingId, setConsentingId] = useState<string | null>(null);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    setLoadError(false);
-    setLinks(null);
-
-    Promise.all([
+  const fetchBundle = useCallback(async () => {
+    const [linksRes, digestsRes, notificationsRes, threadsRes] = await Promise.all([
       api.get<ParentLink[]>('/parent-links/me'),
       api.get<Digest[]>('/digests/me').catch(() => [] as Digest[]),
       api.get<AppNotification[]>('/notifications').catch(() => [] as AppNotification[]),
       api.get<ThreadSummary[]>('/messages/mine').catch(() => [] as ThreadSummary[]),
-    ])
-      .then(async ([linksRes, digestsRes, notificationsRes, threadsRes]) => {
-        setLinks(linksRes);
-        setDigests(digestsRes);
-        setNotifications(notificationsRes);
-        setThreads(threadsRes);
+    ]);
 
-        const active = linksRes.filter((l) => l.status === 'active');
-        setSelectedStudentId((current) => current ?? active[0]?.student_id ?? null);
+    const active = linksRes.filter((l) => l.status === 'active');
+    const perChild = await Promise.all(
+      active.map((link) =>
+        Promise.all([
+          api.get<ProgressSummary>(`/progress/student/${link.student_id}`).catch(() => null),
+          api.get<StudentFeeEntry[]>(`/fees/student/${link.student_id}`).catch(() => [] as StudentFeeEntry[]),
+        ]).then(([progress, fees]) => [link.student_id, progress, fees] as const),
+      ),
+    );
 
-        const perChild = await Promise.all(
-          active.map((link) =>
-            Promise.all([
-              api.get<ProgressSummary>(`/progress/student/${link.student_id}`).catch(() => null),
-              api.get<StudentFeeEntry[]>(`/fees/student/${link.student_id}`).catch(() => [] as StudentFeeEntry[]),
-            ]).then(([progress, fees]) => [link.student_id, progress, fees] as const),
-          ),
-        );
-        setProgressByChild(Object.fromEntries(perChild.map(([id, progress]) => [id, progress])));
-        setFeesByChild(Object.fromEntries(perChild.map(([id, , fees]) => [id, fees])));
-      })
-      .catch(() => setLoadError(true));
+    return {
+      links: linksRes,
+      digests: digestsRes,
+      notifications: notificationsRes,
+      threads: threadsRes,
+      progressByChild: Object.fromEntries(perChild.map(([id, progress]) => [id, progress])) as Record<
+        string,
+        ProgressSummary | null
+      >,
+      feesByChild: Object.fromEntries(perChild.map(([id, , fees]) => [id, fees])) as Record<string, StudentFeeEntry[]>,
+    };
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { data: bundle, error: loadError, reload: load } = useCachedFetch('parent-dashboard', fetchBundle);
+
+  const links = bundle?.links ?? null;
+  const digests = bundle?.digests ?? [];
+  const notifications = bundle?.notifications ?? [];
+  const threads = bundle?.threads ?? [];
+  const progressByChild = bundle?.progressByChild ?? {};
+  const feesByChild = bundle?.feesByChild ?? {};
 
   async function grantConsent(linkId: string) {
     setConsentingId(linkId);
@@ -259,7 +254,8 @@ export default function ParentTodayPage() {
   }
 
   const loading = links === null;
-  const period = dayPeriod();
+  const now = new Date();
+  const period = dayPeriod(now);
 
   return (
     <div className="space-y-8">
@@ -305,7 +301,16 @@ export default function ParentTodayPage() {
                     : "Here's how your children are doing."
                   : 'Grant consent below to start seeing their learning activity.'
               }
-            />
+            >
+              <p className="mt-1 text-xs font-medium uppercase tracking-[0.14em] text-neutral-500 dark:text-neutral-400">
+                {todayLabel(now)}
+              </p>
+              {active.length > 0 && (
+                <p className="mt-3 text-sm text-neutral-600 dark:text-neutral-300">
+                  {parentContextLine(active.length, attentionItems.length)}
+                </p>
+              )}
+            </ParentHero>
           </div>
 
           {active.length > 0 && (

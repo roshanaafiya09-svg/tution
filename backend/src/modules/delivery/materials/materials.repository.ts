@@ -42,6 +42,21 @@ export class MaterialsRepository {
       .execute();
   }
 
+  /** Bulk sibling of listForBatch — materials across a set of batches in
+   *  one query, backing the Student Dashboard's "mine" endpoint. */
+  listForBatches(batchIds: string[]) {
+    return this.db
+      .selectFrom('materials')
+      .selectAll()
+      .where(
+        'batch_id',
+        'in',
+        batchIds.length ? batchIds : ['00000000-0000-0000-0000-000000000000'],
+      )
+      .orderBy('created_at', 'desc')
+      .execute();
+  }
+
   findById(id: string) {
     return this.db
       .selectFrom('materials')

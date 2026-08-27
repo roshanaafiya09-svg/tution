@@ -65,6 +65,16 @@ export class AttendanceController {
     return this.attendanceService.historyForBatch(user.sub, batchId);
   }
 
+  /** Bulk sibling of batchHistory — attendance history across every batch
+   *  this tutor owns, in one grouped query. Backs the Teacher Dashboard
+   *  roster load (replaces one call per batch). Distinct literal prefix
+   *  ('batches/' vs 'batch/') from the route above, so no path collision. */
+  @Get('batches/mine/history')
+  @Roles('tutor')
+  batchesHistoryForOwn(@CurrentUser() user: AccessTokenPayload) {
+    return this.attendanceService.historyForOwnBatches(user.sub);
+  }
+
   /** Student's own all-time attendance summary, across every batch. */
   @Get('me/summary')
   @Roles('student')

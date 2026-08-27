@@ -37,6 +37,15 @@ export class MaterialsController {
     return this.materialsService.createUploadUrl(user.sub, dto);
   }
 
+  /** Bulk sibling of listForBatch — materials across every batch the
+   *  student is enrolled in, in one call. */
+  @Get('mine')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('student')
+  listMine(@CurrentUser() user: AccessTokenPayload) {
+    return this.materialsService.listForOwnEnrolledBatches(user.sub);
+  }
+
   @Get('batch/:batchId')
   @UseGuards(JwtAuthGuard)
   listForBatch(

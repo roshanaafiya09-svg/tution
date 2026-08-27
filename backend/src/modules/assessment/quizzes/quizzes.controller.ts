@@ -26,6 +26,17 @@ export class StudentQuizzesController {
     return this.quizzesService.publish(user.sub, draftId);
   }
 
+  /** Bulk sibling of listForBatch — quizzes across every batch the
+   *  student is enrolled in, in one call. Kept as a depth-2 path (not a
+   *  bare 'mine') per this controller's existing convention of avoiding
+   *  single-segment routes, since '/quizzes' is also served by ai/quizzes'
+   *  tutor-authoring controller ('me', ':id'). */
+  @Get('batches/mine')
+  @Roles('student')
+  listMine(@CurrentUser() user: AccessTokenPayload) {
+    return this.quizzesService.listForOwnEnrolledBatches(user.sub);
+  }
+
   @Get('batch/:batchId')
   @Roles('student')
   listForBatch(

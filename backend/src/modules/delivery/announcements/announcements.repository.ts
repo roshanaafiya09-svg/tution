@@ -25,6 +25,22 @@ export class AnnouncementsRepository {
       .execute();
   }
 
+  /** Bulk sibling of listForBatch — announcements across a set of batches
+   *  in one query, backing the Student Dashboard's "mine" endpoint
+   *  (previously one /announcements/batch/:id call per enrolled batch). */
+  listForBatches(batchIds: string[]) {
+    return this.db
+      .selectFrom('announcements')
+      .selectAll()
+      .where(
+        'batch_id',
+        'in',
+        batchIds.length ? batchIds : ['00000000-0000-0000-0000-000000000000'],
+      )
+      .orderBy('created_at', 'desc')
+      .execute();
+  }
+
   /** Active student IDs for a batch — the notification fan-out target. */
   listBatchStudentIds(batchId: string) {
     return this.db

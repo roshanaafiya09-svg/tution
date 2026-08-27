@@ -43,6 +43,16 @@ export class BatchesController {
     return this.batchesService.listOpenWithSeats(user.sub);
   }
 
+  /** Bulk enrollments across every batch this tutor owns — backs the
+   *  Teacher Dashboard roster (replaces one /batches/:id/students call per
+   *  batch). Registered before ':id/students' so 'me' is never captured as
+   *  a batch id. */
+  @Get('me/students')
+  @Roles('tutor')
+  listOwnStudents(@CurrentUser() user: AccessTokenPayload) {
+    return this.batchesService.listEnrollmentsForOwnBatches(user.sub);
+  }
+
   @Post()
   @Roles('tutor')
   @UseGuards(ActiveSubscriptionGuard)

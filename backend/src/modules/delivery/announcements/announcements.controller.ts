@@ -22,6 +22,16 @@ export class AnnouncementsController {
     return this.announcementsService.create(user.sub, batchId, dto.body);
   }
 
+  /** Bulk sibling of listForBatch — announcements across every batch the
+   *  student is enrolled in, in one call. Registered before 'batch/:batchId'
+   *  is irrelevant here since the literal prefixes differ ('mine' vs
+   *  'batch'), but kept alongside it for readability. */
+  @Get('mine')
+  @Roles('student')
+  listMine(@CurrentUser() user: AccessTokenPayload) {
+    return this.announcementsService.listForOwnEnrolledBatches(user.sub);
+  }
+
   @Get('batch/:batchId')
   listForBatch(
     @CurrentUser() user: AccessTokenPayload,

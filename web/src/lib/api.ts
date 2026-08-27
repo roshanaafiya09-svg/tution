@@ -1,5 +1,6 @@
 import * as Sentry from '@sentry/nextjs';
 import posthog from 'posthog-js';
+import { clearCachedFetch } from './use-cached-fetch';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -201,6 +202,10 @@ export async function apiLogout(): Promise<void> {
     // Unreachable backend — still sign out locally below.
   } finally {
     session.clear();
+    // Logout here is a client-side redirect, not a full page reload, so
+    // the module-level dashboard cache would otherwise leak this user's
+    // data into the next login in the same tab.
+    clearCachedFetch();
   }
 }
 

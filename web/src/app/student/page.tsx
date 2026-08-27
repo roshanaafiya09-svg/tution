@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import Link from 'next/link';
 import {
   CalendarCheck,
@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { api, apiGetPublic } from '@/lib/api';
 import { safeHref } from '@/lib/safe-url';
+import { GREETING, dayPeriod, todayLabel } from '@/lib/greeting';
+import { useCachedFetch } from '@/lib/use-cached-fetch';
 import type {
   Announcement,
   AttendanceSummary,
@@ -28,7 +30,7 @@ import type {
   Subject,
 } from '@/lib/types';
 import { EmptyState, CardSkeleton, ErrorState, buttonVariants } from '@/components/ui';
-import { HeroPanel, StatBand, StatBandItem, SectionHeader, ActionCard, AcademicCard, type DayPeriod } from '@/components/student';
+import { HeroPanel, StatBand, StatBandItem, SectionHeader, ActionCard, AcademicCard } from '@/components/student';
 
 function formatSessionTime(session: Session): string {
   return new Date(session.scheduled_start_utc).toLocaleString('en-IN', {
@@ -41,24 +43,32 @@ function formatSessionTime(session: Session): string {
   });
 }
 
-function dayPeriod(): DayPeriod {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'morning';
-  if (hour < 17) return 'afternoon';
-  return 'evening';
-}
-
-const GREETING: Record<DayPeriod, string> = {
-  morning: 'Good morning',
-  afternoon: 'Good afternoon',
-  evening: 'Good evening',
-};
-
 function taskTone(dueAtUtc: string): 'error' | 'warning' | 'brand' {
   const diff = new Date(dueAtUtc).getTime() - Date.now();
   if (diff < 0) return 'error';
   if (diff <= 24 * 60 * 60 * 1000) return 'warning';
   return 'brand';
+}
+
+/** Real, data-driven context line for the Student hero — never a fake stat. */
+function studentContextLine(
+  sessions: Session[] | null,
+  assignments: StudentAssignmentSummary[] | null,
+): string {
+  if (sessions === null || assignments === null) return '';
+  const now = new Date();
+  const classesToday = sessions.filter((s) => new Date(s.scheduled_start_utc).toDateString() === now.toDateString()).length;
+  const assignmentsDueToday = assignments.filter(
+    (a) => !a.submission_id && new Date(a.due_at_utc).toDateString() === now.toDateString(),
+  ).length;
+
+  const parts: string[] = [];
+  if (classesToday > 0) parts.push(`${classesToday} class${classesToday === 1 ? '' : 'es'} today`);
+  if (assignmentsDueToday > 0) {
+    parts.push(`${assignmentsDueToday} assignment${assignmentsDueToday === 1 ? '' : 's'} due today`);
+  }
+  if (parts.length === 0) return 'No classes scheduled for today. Enjoy your free time!';
+  return parts.join(' · ');
 }
 
 interface AnnouncementWithBatch extends Announcement {
@@ -87,95 +97,78 @@ interface RecentUpdate {
 }
 
 export default function StudentTodayPage() {
-  const [profile, setProfile] = useState<StudentProfile | null>(null);
-  const [sessions, setSessions] = useState<Session[] | null>(null);
-  const [assignments, setAssignments] = useState<StudentAssignmentSummary[] | null>(null);
-  const [batches, setBatches] = useState<Batch[] | null>(null);
-  const [subjects, setSubjects] = useState<Subject[] | null>(null);
-  const [attendance, setAttendance] = useState<AttendanceSummary | null>(null);
-  const [announcements, setAnnouncements] = useState<AnnouncementWithBatch[] | null>(null);
-  const [quizzes, setQuizzes] = useState<QuizWithBatch[] | null>(null);
-  const [updates, setUpdates] = useState<RecentUpdate[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
-
-  const load = useCallback(() => {
-    setLoadError(false);
-    setSessions(null);
-    setAssignments(null);
-    setBatches(null);
-    setSubjects(null);
-    setAttendance(null);
-    setAnnouncements(null);
-    setQuizzes(null);
-    setUpdates(null);
-
-    Promise.all([
+  const fetchBundle = useCallback(async () => {
+    const [profileRes, sessionsRes, assignmentsRes, batchesRes, subjectsRes, attendanceRes] = await Promise.all([
       api.get<StudentProfile | undefined>('/profiles/student/me').catch(() => undefined),
       api.get<Session[]>('/sessions/upcoming'),
       api.get<StudentAssignmentSummary[]>('/assignments/me'),
       api.get<Batch[]>('/batches/enrolled'),
       apiGetPublic<Subject[]>('/catalog/subjects'),
       api.get<AttendanceSummary>('/attendance/me/summary'),
-    ])
-      .then(async ([profileRes, sessionsRes, assignmentsRes, batchesRes, subjectsRes, attendanceRes]) => {
-        setProfile(profileRes ?? null);
-        setSessions(sessionsRes);
-        setAssignments(assignmentsRes);
-        setBatches(batchesRes);
-        setSubjects(subjectsRes);
-        setAttendance(attendanceRes);
+    ]);
 
-        const perBatch = await Promise.all(
-          batchesRes.map((batch) =>
-            Promise.all([
-              api
-                .get<Announcement[]>(`/announcements/batch/${batch.id}`)
-                .then((list) => list.map((a) => ({ ...a, batch_title: batch.title })))
-                .catch(() => [] as AnnouncementWithBatch[]),
-              api
-                .get<StudentQuizSummary[]>(`/quizzes/batch/${batch.id}`)
-                .then((list) => list.map((q) => ({ ...q, batch_title: batch.title })))
-                .catch(() => [] as QuizWithBatch[]),
-              api
-                .get<Material[]>(`/materials/batch/${batch.id}`)
-                .then((list) => list.map((m) => ({ ...m, batch_title: batch.title })))
-                .catch(() => [] as (Material & { batch_title: string })[]),
-            ]),
-          ),
-        );
+    const batchById = new Map(batchesRes.map((b) => [b.id, b]));
+    const [announcementRows, quizRows, materialRows] = await Promise.all([
+      api.get<Announcement[]>('/announcements/mine').catch(() => [] as Announcement[]),
+      api.get<StudentQuizSummary[]>('/quizzes/batches/mine').catch(() => [] as StudentQuizSummary[]),
+      api.get<Material[]>('/materials/mine').catch(() => [] as Material[]),
+    ]);
 
-        const allAnnouncements = perBatch.flatMap(([a]) => a);
-        const allMaterials = perBatch.flatMap(([, , m]) => m);
+    const allAnnouncements: AnnouncementWithBatch[] = announcementRows
+      .filter((a) => a.batch_id && batchById.has(a.batch_id))
+      .map((a) => ({ ...a, batch_title: batchById.get(a.batch_id!)!.title }));
+    const allMaterials = materialRows
+      .filter((m) => batchById.has(m.batch_id))
+      .map((m) => ({ ...m, batch_title: batchById.get(m.batch_id)!.title }));
+    const allQuizzes: QuizWithBatch[] = quizRows
+      .filter((q) => q.batchId && batchById.has(q.batchId))
+      .map((q) => ({ ...q, batch_title: batchById.get(q.batchId!)!.title }));
 
-        setAnnouncements(
-          allAnnouncements.slice().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
-        );
-        setQuizzes(perBatch.flatMap(([, q]) => q));
+    const announcements = allAnnouncements
+      .slice()
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-        const merged: RecentUpdate[] = [
-          ...allAnnouncements.map((a) => ({
-            key: `announcement-${a.id}`,
-            icon: Megaphone,
-            batch_title: a.batch_title,
-            text: a.body,
-            created_at: a.created_at,
-          })),
-          ...allMaterials.map((m) => ({
-            key: `material-${m.id}`,
-            icon: FileText,
-            batch_title: m.batch_title,
-            text: `${m.title} uploaded`,
-            created_at: m.created_at,
-          })),
-        ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        setUpdates(merged.slice(0, 5));
-      })
-      .catch(() => setLoadError(true));
+    const merged: RecentUpdate[] = [
+      ...allAnnouncements.map((a) => ({
+        key: `announcement-${a.id}`,
+        icon: Megaphone,
+        batch_title: a.batch_title,
+        text: a.body,
+        created_at: a.created_at,
+      })),
+      ...allMaterials.map((m) => ({
+        key: `material-${m.id}`,
+        icon: FileText,
+        batch_title: m.batch_title,
+        text: `${m.title} uploaded`,
+        created_at: m.created_at,
+      })),
+    ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    return {
+      profile: profileRes ?? null,
+      sessions: sessionsRes,
+      assignments: assignmentsRes,
+      batches: batchesRes,
+      subjects: subjectsRes,
+      attendance: attendanceRes,
+      announcements,
+      quizzes: allQuizzes,
+      updates: merged.slice(0, 5),
+    };
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { data: bundle, error: loadError, reload: load } = useCachedFetch('student-dashboard', fetchBundle);
+
+  const profile = bundle?.profile ?? null;
+  const sessions = bundle?.sessions ?? null;
+  const assignments = bundle?.assignments ?? null;
+  const batches = bundle?.batches ?? null;
+  const subjects = bundle?.subjects ?? null;
+  const attendance = bundle?.attendance ?? null;
+  const announcements = bundle?.announcements ?? null;
+  const quizzes = bundle?.quizzes ?? null;
+  const updates = bundle?.updates ?? null;
 
   const loading =
     sessions === null ||
@@ -232,7 +225,8 @@ export default function StudentTodayPage() {
     });
   }
 
-  const period = dayPeriod();
+  const period = dayPeriod(now);
+  const contextLine = studentContextLine(sessions, assignments);
 
   return (
     <div className="space-y-8">
@@ -256,7 +250,12 @@ export default function StudentTodayPage() {
               period={period}
               greeting={profile ? `${GREETING[period]}, ${profile.display_name} 👋` : `${GREETING[period]} 👋`}
               subtitle="Here's what's happening with your learning."
-            />
+            >
+              <p className="mt-1 text-xs font-medium uppercase tracking-[0.14em] text-neutral-500 dark:text-neutral-400">
+                {todayLabel(now)}
+              </p>
+              <p className="mt-3 text-sm text-neutral-600 dark:text-neutral-300">{contextLine}</p>
+            </HeroPanel>
           </div>
 
           <div className="animate-fade-up" style={{ animationDelay: '40ms' }}>
