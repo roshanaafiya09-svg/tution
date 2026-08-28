@@ -71,6 +71,27 @@ export class SessionsController {
     );
   }
 
+  /** Parent's view of a consented child's schedule — mirrors
+   *  GET /progress/student/:studentId and
+   *  GET /attendance/student/:studentId/summary's naming and
+   *  consent-check pattern. 403s unless there's an active consent link. */
+  @Get('student/:studentId')
+  @Roles('parent')
+  listForChild(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('studentId') studentId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const window = parseWindow(from, to);
+    return this.sessionsService.forParent(
+      user.sub,
+      studentId,
+      window.from,
+      window.to,
+    );
+  }
+
   @Get('batch/:batchId')
   @Roles('tutor')
   listForBatch(

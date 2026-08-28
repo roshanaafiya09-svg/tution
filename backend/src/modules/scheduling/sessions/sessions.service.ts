@@ -54,6 +54,20 @@ export class SessionsService {
     return this.repository.listForStudentBetween(studentId, from, to);
   }
 
+  /** Parent's view of a consented child's schedule — same active-link
+   *  gate ProgressService/AttendanceService use for their parent-facing
+   *  routes. */
+  async forParent(parentId: string, studentId: string, from: Date, to: Date) {
+    const hasLink = await this.repository.hasActiveParentLink(
+      parentId,
+      studentId,
+    );
+    if (!hasLink) {
+      throw new ForbiddenException('No active consented link to this student');
+    }
+    return this.repository.listForStudentBetweenWithTutor(studentId, from, to);
+  }
+
   /** Loads a session without an ownership check — for students joining. */
   async findByIdOrThrow(sessionId: string) {
     const session = await this.repository.findById(sessionId);

@@ -24,11 +24,13 @@ import type {
   Digest,
   ParentLink,
   ProgressSummary,
+  Session,
   StudentFeeEntry,
   ThreadSummary,
 } from '@/lib/types';
-import { EmptyState, CardSkeleton, ErrorState, Button } from '@/components/ui';
+import { EmptyState, CardSkeleton, ErrorState, Button, StatusBadge } from '@/components/ui';
 import {
+  ParentCard,
   ParentHero,
   ParentSectionHeader,
   ChildSwitcher,
@@ -51,6 +53,27 @@ function parentContextLine(activeCount: number, attentionCount: number): string 
   const childWord = activeCount === 1 ? 'child' : 'children';
   if (attentionCount === 0) return `${activeCount} ${childWord} linked · All caught up`;
   return `${activeCount} ${childWord} linked · ${attentionCount} item${attentionCount === 1 ? '' : 's'} need${attentionCount === 1 ? 's' : ''} attention`;
+}
+
+function sessionTime(session: Session): string {
+  return new Date(session.scheduled_start_utc).toLocaleTimeString('en-IN', {
+    timeZone: session.timezone,
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function isSessionToday(session: Session, now: Date): boolean {
+  return new Date(session.scheduled_start_utc).toDateString() === now.toDateString();
+}
+
+/** A day back (to still catch a class that started earlier today) to two
+ *  weeks ahead — same window shape the Teacher/Academy dashboards use for
+ *  their own "today's classes" derivation. */
+function childSessionsPath(studentId: string): string {
+  const from = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const to = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+  return `/sessions/student/${studentId}?from=${from}&to=${to}`;
 }
 
 interface AttentionItem {
@@ -87,7 +110,8 @@ export default function ParentTodayPage() {
         Promise.all([
           api.get<ProgressSummary>(`/progress/student/${link.student_id}`).catch(() => null),
           api.get<StudentFeeEntry[]>(`/fees/student/${link.student_id}`).catch(() => [] as StudentFeeEntry[]),
-        ]).then(([progress, fees]) => [link.student_id, progress, fees] as const),
+          api.get<Session[]>(childSessionsPath(link.student_id)).catch(() => [] as Session[]),
+        ]).then(([progress, fees, sessions]) => [link.student_id, progress, fees, sessions] as const),
       ),
     );
 
@@ -101,6 +125,10 @@ export default function ParentTodayPage() {
         ProgressSummary | null
       >,
       feesByChild: Object.fromEntries(perChild.map(([id, , fees]) => [id, fees])) as Record<string, StudentFeeEntry[]>,
+      sessionsByChild: Object.fromEntries(perChild.map(([id, , , sessions]) => [id, sessions])) as Record<
+        string,
+        Session[]
+      >,
     };
   }, []);
 
@@ -112,6 +140,7 @@ export default function ParentTodayPage() {
   const threads = bundle?.threads ?? [];
   const progressByChild = bundle?.progressByChild ?? {};
   const feesByChild = bundle?.feesByChild ?? {};
+  const sessionsByChild = bundle?.sessionsByChild ?? {};
 
   async function grantConsent(linkId: string) {
     setConsentingId(linkId);
@@ -222,8 +251,13 @@ export default function ParentTodayPage() {
     .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime())
     .slice(0, 3);
 
+  const now = new Date();
+
   const selectedLink = active.find((l) => l.student_id === selectedStudentId) ?? active[0] ?? null;
   const selectedProgress = selectedLink ? progressByChild[selectedLink.student_id] : undefined;
+  const todaySessions = (selectedLink ? sessionsByChild[selectedLink.student_id] ?? [] : [])
+    .filter((s) => isSessionToday(s, now))
+    .sort((a, b) => new Date(a.scheduled_start_utc).getTime() - new Date(b.scheduled_start_utc).getTime());
 
   const snapshotStats: SnapshotStat[] = [];
   if (selectedProgress) {
@@ -254,7 +288,6 @@ export default function ParentTodayPage() {
   }
 
   const loading = links === null;
-  const now = new Date();
   const period = dayPeriod(now);
 
   return (
@@ -371,14 +404,42 @@ export default function ParentTodayPage() {
             </div>
           )}
 
-          {active.length > 0 && (
+          {active.length > 0 && selectedLink && (
             <section className="animate-fade-up" style={{ animationDelay: '160ms' }}>
-              <ParentSectionHeader eyebrow="What's happening next" title="What's next" />
-              <ParentEmptyState
-                icon={CalendarCheck}
-                title="No upcoming classes"
-                description="There are no scheduled classes to show right now."
+              <ParentSectionHeader
+                eyebrow={active.length > 1 ? nameFor(selectedLink.student_id) : "Today's schedule"}
+                title="What's next"
               />
+              {todaySessions.length === 0 ? (
+                <ParentEmptyState
+                  icon={CalendarCheck}
+                  title="No classes scheduled for today."
+                  description={
+                    active.length > 1
+                      ? `Nothing on ${nameFor(selectedLink.student_id)}'s calendar today.`
+                      : "There's nothing on the calendar today."
+                  }
+                />
+              ) : (
+                <ParentCard className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800/80">
+                  {todaySessions.map((session) => (
+                    <div key={session.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3.5">
+                      <span className="w-16 shrink-0 font-display text-base font-semibold tabular-nums text-neutral-900 dark:text-neutral-50">
+                        {sessionTime(session)}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                          {session.batch_title}
+                        </span>
+                        <span className="block truncate text-xs text-neutral-500 dark:text-neutral-400">
+                          {session.tutor_display_name ?? 'Teacher'} · {session.duration_min} min
+                        </span>
+                      </span>
+                      <StatusBadge status={session.status} />
+                    </div>
+                  ))}
+                </ParentCard>
+              )}
             </section>
           )}
 

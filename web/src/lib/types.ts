@@ -119,6 +119,9 @@ export interface Session {
   duration_min: number;
   meeting_url: string | null;
   status: 'scheduled' | 'completed' | 'cancelled';
+  /** Only present on GET /sessions/student/:studentId (the parent-facing
+   *  route) — the tutor's profiles_tutor.display_name, null if unset. */
+  tutor_display_name?: string | null;
 }
 
 export interface Enrollment {

@@ -151,6 +151,62 @@ export class SessionsRepository {
       .execute();
   }
 
+  /** Same active-consent-link gate AttendanceRepository.hasActiveParentLink
+   *  uses for its parent-facing routes — queried directly against
+   *  parent_child_links rather than via ParentLinksRepository, since
+   *  SchedulingModule can't import ParentsModule without closing the
+   *  cycle documented in scheduling.module.ts. */
+  async hasActiveParentLink(
+    parentId: string,
+    studentId: string,
+  ): Promise<boolean> {
+    const row = await this.db
+      .selectFrom('parent_child_links')
+      .select('id')
+      .where('parent_id', '=', parentId)
+      .where('student_id', '=', studentId)
+      .where('status', '=', 'active')
+      .executeTakeFirst();
+    return row !== undefined;
+  }
+
+  /** Parent-facing sibling of listForStudentBetween — additionally
+   *  surfaces the tutor's display name, since a parent (unlike the
+   *  student, who has /batches/enrolled for that) has no other route to
+   *  it. */
+  listForStudentBetweenWithTutor(studentId: string, from: Date, to: Date) {
+    return this.db
+      .selectFrom('class_sessions')
+      .innerJoin('batches', 'batches.id', 'class_sessions.batch_id')
+      .innerJoin(
+        'enrollments',
+        'enrollments.batch_id',
+        'class_sessions.batch_id',
+      )
+      .leftJoin(
+        'profiles_tutor',
+        'profiles_tutor.user_id',
+        'class_sessions.tutor_id',
+      )
+      .select([
+        'class_sessions.id',
+        'class_sessions.batch_id',
+        'class_sessions.scheduled_start_utc',
+        'class_sessions.timezone',
+        'class_sessions.duration_min',
+        'class_sessions.meeting_url',
+        'class_sessions.status',
+        'batches.title as batch_title',
+        'profiles_tutor.display_name as tutor_display_name',
+      ])
+      .where('enrollments.student_id', '=', studentId)
+      .where('enrollments.status', '=', 'active')
+      .where('class_sessions.scheduled_start_utc', '>=', from)
+      .where('class_sessions.scheduled_start_utc', '<', to)
+      .orderBy('class_sessions.scheduled_start_utc')
+      .execute();
+  }
+
   /** Feeds the trial-end value-recap paywall (blueprint §5). */
   async countCompletedForTutor(tutorId: string): Promise<number> {
     const row = await this.db
