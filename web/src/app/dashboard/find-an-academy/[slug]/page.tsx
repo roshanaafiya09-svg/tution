@@ -38,8 +38,10 @@ export default function TeacherAcademyProfilePage() {
     setNotFound(false);
     Promise.all([
       api.get<PublicAcademyPage>(`/marketplace/academies/${slug}`),
-      api.get<TutorJoinRequestSummary[]>('/marketplace/academies/me/join-requests'),
-      api.get<{ id: string; slug: string }[]>('/marketplace/academies/me/memberships'),
+      api.get<TutorJoinRequestSummary[]>('/marketplace/academies/me/join-requests').catch(() => [] as TutorJoinRequestSummary[]),
+      api
+        .get<{ id: string; slug: string }[]>('/marketplace/academies/me/memberships')
+        .catch(() => [] as { id: string; slug: string }[]),
     ])
       .then(([pageRes, requests, memberships]) => {
         setPage(pageRes);

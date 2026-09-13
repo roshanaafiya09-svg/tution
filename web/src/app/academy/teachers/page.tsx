@@ -41,8 +41,8 @@ export default function AcademyTeachersPage() {
     try {
       const [activeRes, pendingRes, removedRes] = await Promise.all([
         api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active'),
-        api.get<AcademyPendingRequest[]>('/academy/me/teachers/pending'),
-        api.get<AcademyRemovedTeacher[]>('/academy/me/teachers/removed'),
+        api.get<AcademyPendingRequest[]>('/academy/me/teachers/pending').catch(() => [] as AcademyPendingRequest[]),
+        api.get<AcademyRemovedTeacher[]>('/academy/me/teachers/removed').catch(() => [] as AcademyRemovedTeacher[]),
       ]);
       setActive(activeRes);
       setPending(pendingRes);

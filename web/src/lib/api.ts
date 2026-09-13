@@ -142,6 +142,36 @@ async function refreshTokens(): Promise<boolean> {
   return true;
 }
 
+/**
+ * Transient-failure retry for idempotent GETs only. The production
+ * backend runs on Render's free plan, which sleeps when idle and briefly
+ * answers 502/503 (or drops the connection) while waking or redeploying —
+ * without this, one such blip among a page's parallel loads failed the
+ * whole page with "Something went wrong". Mutations are never retried:
+ * a POST that timed out may still have been applied.
+ */
+const RETRYABLE_STATUS = new Set([502, 503, 504]);
+const RETRY_DELAYS_MS = [500, 1500];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(url: string, init: RequestInit, retry: boolean): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const canRetry = retry && attempt < RETRY_DELAYS_MS.length;
+    try {
+      const res = await fetch(url, init);
+      if (!canRetry || !RETRYABLE_STATUS.has(res.status)) return res;
+    } catch (err) {
+      // fetch() only rejects on network failure (offline, reset, CORS
+      // preflight lost to a cold start) — never on an HTTP error status.
+      if (!canRetry) throw err;
+    }
+    await sleep(RETRY_DELAYS_MS[attempt]);
+  }
+}
+
 async function request<T>(
   method: string,
   path: string,
@@ -152,12 +182,16 @@ async function request<T>(
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
-  const res = await fetch(`${getApiUrl()}${path}`, {
-    method,
-    headers,
-    credentials: 'include',
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const res = await fetchWithRetry(
+    `${getApiUrl()}${path}`,
+    {
+      method,
+      headers,
+      credentials: 'include',
+      body: body === undefined ? undefined : JSON.stringify(body),
+    },
+    method === 'GET',
+  );
 
   if (res.status === 401 && retryOn401 && (await refreshTokens())) {
     return request<T>(method, path, body, false);
@@ -174,8 +208,59 @@ async function request<T>(
   return (text === '' ? null : JSON.parse(text)) as T;
 }
 
+/**
+ * Identical GETs issued while one is already in flight share that one
+ * request — the shell and the page both asking for /auth/me on mount, or
+ * several tiles asking for /catalog/subjects, cost one round trip.
+ * /catalog/* is platform reference data (subjects, curricula, grades)
+ * that almost every page loads and that changes only on a deploy, so it
+ * is additionally kept for a few minutes across page navigations.
+ */
+const inflightGets = new Map<string, Promise<unknown>>();
+const STATIC_GET_TTL_MS = 10 * 60 * 1000;
+const staticGetCache = new Map<string, { at: number; value: unknown }>();
+
+function isStaticPath(path: string): boolean {
+  return path.startsWith('/catalog/');
+}
+
+function cachedStatic<T>(path: string): T | undefined {
+  const hit = staticGetCache.get(path);
+  if (hit && Date.now() - hit.at < STATIC_GET_TTL_MS) return hit.value as T;
+  return undefined;
+}
+
+function dedupedGet<T>(path: string, run: () => Promise<T>): Promise<T> {
+  if (isStaticPath(path)) {
+    const hit = cachedStatic<T>(path);
+    if (hit !== undefined) return Promise.resolve(hit);
+  }
+  const existing = inflightGets.get(path);
+  if (existing) return existing as Promise<T>;
+  const pending = run()
+    .then((value) => {
+      if (isStaticPath(path)) staticGetCache.set(path, { at: Date.now(), value });
+      return value;
+    })
+    .finally(() => inflightGets.delete(path));
+  inflightGets.set(path, pending);
+  return pending;
+}
+
+let warmedUp = false;
+
+/** Fire-and-forget wake-up ping for a sleeping backend — see ApiWarmup.
+ *  A plain credential-less CORS GET: `no-cors` would be blocked (and
+ *  logged as a console error) by the backend's same-origin
+ *  Cross-Origin-Resource-Policy header. */
+export function warmUpApi(): void {
+  if (warmedUp || !API_URL) return;
+  warmedUp = true;
+  fetch(`${API_URL}/health`).catch(() => undefined);
+}
+
 export const api = {
-  get: <T>(path: string) => request<T>('GET', path),
+  get: <T>(path: string) => dedupedGet<T>(path, () => request<T>('GET', path)),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
@@ -227,10 +312,12 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
 
 /** Unauthenticated GET — used by the login flow's Telegram-link polling,
  *  which runs before any session exists. */
-export async function apiGetPublic<T>(path: string): Promise<T> {
-  const res = await fetch(`${getApiUrl()}${path}`);
-  if (!res.ok) return parseError(res);
-  return (await res.json()) as T;
+export function apiGetPublic<T>(path: string): Promise<T> {
+  return dedupedGet<T>(path, async () => {
+    const res = await fetchWithRetry(`${getApiUrl()}${path}`, {}, true);
+    if (!res.ok) return parseError(res);
+    return (await res.json()) as T;
+  });
 }
 
 export function formatMinor(minor: number, currency = 'INR'): string {

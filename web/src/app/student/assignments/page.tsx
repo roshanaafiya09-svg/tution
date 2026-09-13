@@ -20,8 +20,8 @@ export default function StudentAssignmentsPage() {
     setSubjects(null);
     Promise.all([
       api.get<StudentAssignmentSummary[]>('/assignments/me'),
-      api.get<Batch[]>('/batches/enrolled'),
-      apiGetPublic<Subject[]>('/catalog/subjects'),
+      api.get<Batch[]>('/batches/enrolled').catch(() => [] as Batch[]),
+      apiGetPublic<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
     ])
       .then(([a, b, s]) => {
         setAssignments(a);

@@ -64,7 +64,11 @@ export default function StudentDetailPage() {
   const load = useCallback(() => {
     setLoadError(false);
     setStudent(undefined);
-    Promise.all([loadRoster(), api.get<Session[]>('/sessions/me'), api.get<ThreadSummary[]>('/messages/mine')])
+    Promise.all([
+      loadRoster(),
+      api.get<Session[]>('/sessions/me').catch(() => [] as Session[]),
+      api.get<ThreadSummary[]>('/messages/mine').catch(() => [] as ThreadSummary[]),
+    ])
       .then(async ([roster, sessionRows, threadRows]) => {
         const match = roster.students.find((s) => s.studentId === studentId) ?? null;
         setStudent(match);

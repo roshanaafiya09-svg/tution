@@ -47,9 +47,9 @@ export default function StudentBatchesPage() {
     setAnnouncementsCount(null);
     Promise.all([
       api.get<Batch[]>('/batches/enrolled'),
-      apiGetPublic<Subject[]>('/catalog/subjects'),
-      api.get<Session[]>('/sessions/upcoming'),
-      api.get<AttendanceHistoryEntry[]>('/attendance/me/history'),
+      apiGetPublic<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
+      api.get<Session[]>('/sessions/upcoming').catch(() => [] as Session[]),
+      api.get<AttendanceHistoryEntry[]>('/attendance/me/history').catch(() => [] as AttendanceHistoryEntry[]),
     ])
       .then(async ([b, s, sess, hist]) => {
         setBatches(b);

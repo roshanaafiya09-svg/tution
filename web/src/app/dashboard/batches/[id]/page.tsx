@@ -142,7 +142,7 @@ function StudentsTab({ batchId }: { batchId: string }) {
     try {
       const [s, inv] = await Promise.all([
         api.get<Enrollment[]>(`/batches/${batchId}/students`),
-        api.get<Invite[]>(`/invites/batch/${batchId}`),
+        api.get<Invite[]>(`/invites/batch/${batchId}`).catch(() => [] as Invite[]),
       ]);
       setStudents(s);
       setInvites(inv);

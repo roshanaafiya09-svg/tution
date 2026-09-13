@@ -20,7 +20,10 @@ export default function StudentQuizzesPage() {
     setLoadError(false);
     setBatches(null);
     setSubjects(null);
-    Promise.all([api.get<Batch[]>('/batches/enrolled'), apiGetPublic<Subject[]>('/catalog/subjects')])
+    Promise.all([
+      api.get<Batch[]>('/batches/enrolled'),
+      apiGetPublic<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
+    ])
       .then(([list, subs]) => {
         setBatches(list);
         setSubjects(subs);

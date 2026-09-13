@@ -88,13 +88,13 @@ export default function MarketplacePage() {
     try {
       const [loc, pot, own, subj, tutorSubj, rules, prof, requests] = await Promise.all([
         api.get<TutorLocation | null>('/marketplace/locations/me'),
-        api.get<ProofOfTeaching>('/marketplace/proof-of-teaching/me'),
+        api.get<ProofOfTeaching>('/marketplace/proof-of-teaching/me').catch(() => null),
         api.get<Booking[]>('/marketplace/bookings/tutor'),
-        api.get<Subject[]>('/catalog/subjects'),
+        api.get<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
         api.get<TutorSubject[]>('/tutor-subjects/me'),
-        api.get<AvailabilityRule[]>('/availability/me'),
+        api.get<AvailabilityRule[]>('/availability/me').catch(() => [] as AvailabilityRule[]),
         api.get<TutorProfile | null>('/profiles/tutor/me'),
-        api.get<ContactRequest[]>('/marketplace/discovery/contact-requests/me'),
+        api.get<ContactRequest[]>('/marketplace/discovery/contact-requests/me').catch(() => [] as ContactRequest[]),
       ]);
       setLocation(loc);
       setProofOfTeaching(pot);

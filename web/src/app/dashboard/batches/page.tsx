@@ -72,10 +72,10 @@ export default function BatchesPage() {
     setBatches(null);
     Promise.all([
       api.get<Batch[]>('/batches/me'),
-      api.get<Subject[]>('/catalog/subjects'),
-      api.get<Curriculum[]>('/catalog/curricula'),
-      api.get<Session[]>('/sessions/me'),
-      api.get<FeeEntry[]>(`/fees/period?period=${currentPeriod()}`),
+      api.get<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
+      api.get<Curriculum[]>('/catalog/curricula').catch(() => [] as Curriculum[]),
+      api.get<Session[]>('/sessions/me').catch(() => [] as Session[]),
+      api.get<FeeEntry[]>(`/fees/period?period=${currentPeriod()}`).catch(() => [] as FeeEntry[]),
     ])
       .then(([b, subs, curr, sess, fees]) => {
         setBatches(b);

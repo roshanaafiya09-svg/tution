@@ -70,7 +70,7 @@ export default function AvailabilityPage() {
     try {
       const [r, e] = await Promise.all([
         api.get<AvailabilityRule[]>('/availability/me'),
-        api.get<AvailabilityException[]>('/availability/exceptions/me'),
+        api.get<AvailabilityException[]>('/availability/exceptions/me').catch(() => [] as AvailabilityException[]),
       ]);
       setRules(r);
       setExceptions(e);

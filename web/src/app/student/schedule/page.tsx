@@ -53,8 +53,8 @@ export default function StudentSchedulePage() {
     const { from, to } = rangeFor(range);
     Promise.all([
       api.get<Session[]>(`/sessions/upcoming?from=${from.toISOString()}&to=${to.toISOString()}`),
-      api.get<Batch[]>('/batches/enrolled'),
-      apiGetPublic<Subject[]>('/catalog/subjects'),
+      api.get<Batch[]>('/batches/enrolled').catch(() => [] as Batch[]),
+      apiGetPublic<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
     ])
       .then(([s, b, subs]) => {
         setSessions(s);

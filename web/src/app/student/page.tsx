@@ -103,7 +103,7 @@ export default function StudentTodayPage() {
       api.get<Session[]>('/sessions/upcoming'),
       api.get<StudentAssignmentSummary[]>('/assignments/me'),
       api.get<Batch[]>('/batches/enrolled'),
-      apiGetPublic<Subject[]>('/catalog/subjects'),
+      apiGetPublic<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
       api.get<AttendanceSummary>('/attendance/me/summary'),
     ]);
 

@@ -19,7 +19,7 @@ export default function StudentAttendancePage() {
     Promise.all([
       api.get<AttendanceSummary>('/attendance/me/summary'),
       api.get<AttendanceHistoryEntry[]>('/attendance/me/history'),
-      api.get<Batch[]>('/batches/enrolled'),
+      api.get<Batch[]>('/batches/enrolled').catch(() => [] as Batch[]),
     ])
       .then(([summaryRes, rows, batches]) => {
         setSummary(summaryRes);

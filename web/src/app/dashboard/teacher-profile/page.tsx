@@ -197,35 +197,47 @@ export default function TeacherProfilePage() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [localPreview, setLocalPreview] = useState<string | null>(null);
 
+  /** Only the profile itself is required to render this page — every
+   *  other call feeds a secondary tile and falls back to an empty value
+   *  on failure, so one slow or failed endpoint can no longer blank the
+   *  whole page. Everything fires in a single wave: the rating lookup
+   *  chains off /auth/me alone instead of waiting for all nine calls. */
   const load = useCallback(async () => {
     setLoadError(false);
     try {
-      const [meRes, prof, subj, tutorSubj, loc, avail, batches, memberships, requests] = await Promise.all([
-        api.get<Me>('/auth/me'),
-        api.get<TutorProfile | null>('/profiles/tutor/me'),
-        api.get<Subject[]>('/catalog/subjects'),
-        api.get<TutorSubject[]>('/tutor-subjects/me'),
-        api.get<TutorLocation | null>('/marketplace/locations/me'),
-        api.get<unknown[]>('/availability/me'),
-        api.get<OpenBatch[]>('/batches/me/open'),
-        api.get<TutorAcademyAffiliation[]>('/marketplace/academies/me/memberships'),
-        api.get<TutorJoinRequestSummary[]>('/marketplace/academies/me/join-requests'),
-      ]);
+      const [prof, subj, tutorSubj, loc, avail, batches, memberships, requests, pot, reviewSummary] =
+        await Promise.all([
+          api.get<TutorProfile | null>('/profiles/tutor/me'),
+          api.get<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
+          api.get<TutorSubject[]>('/tutor-subjects/me').catch(() => [] as TutorSubject[]),
+          api.get<TutorLocation | null>('/marketplace/locations/me').catch(() => null),
+          api.get<unknown[]>('/availability/me').catch(() => null),
+          api.get<OpenBatch[]>('/batches/me/open').catch(() => [] as OpenBatch[]),
+          api
+            .get<TutorAcademyAffiliation[]>('/marketplace/academies/me/memberships')
+            .catch(() => [] as TutorAcademyAffiliation[]),
+          api
+            .get<TutorJoinRequestSummary[]>('/marketplace/academies/me/join-requests')
+            .catch(() => [] as TutorJoinRequestSummary[]),
+          api.get<ProofOfTeaching>('/marketplace/proof-of-teaching/me').catch(() => null),
+          api
+            .get<Me>('/auth/me')
+            .then((me) =>
+              api.get<{ reviews: unknown[]; summary: ReviewSummary }>(`/marketplace/reviews/tutor/${me.id}`),
+            )
+            .then((r) => r.summary)
+            .catch(() => null),
+        ]);
       setProfile(prof);
       setSubjects(subj);
       setTutorSubjects(tutorSubj);
       setLocation(loc);
-      setAvailabilityCount(avail.length);
+      setAvailabilityCount(avail ? avail.length : null);
       setOpenBatches(batches);
       setAcademies(memberships);
       setJoinRequests(requests);
-
-      const [pot, reviews] = await Promise.all([
-        api.get<ProofOfTeaching>('/marketplace/proof-of-teaching/me'),
-        api.get<{ reviews: unknown[]; summary: ReviewSummary }>(`/marketplace/reviews/tutor/${meRes.id}`),
-      ]);
       setProofOfTeaching(pot);
-      setRating(reviews.summary);
+      setRating(reviewSummary);
     } catch {
       setLoadError(true);
     }

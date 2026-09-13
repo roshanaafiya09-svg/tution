@@ -53,7 +53,10 @@ export default function BatchWorkspaceLayout({ children }: { children: React.Rea
     setLoadError(false);
     setBatches(null);
     setSubjects(null);
-    Promise.all([api.get<Batch[]>('/batches/enrolled'), apiGetPublic<Subject[]>('/catalog/subjects')])
+    Promise.all([
+      api.get<Batch[]>('/batches/enrolled'),
+      apiGetPublic<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
+    ])
       .then(([b, s]) => {
         setBatches(b);
         setSubjects(s);

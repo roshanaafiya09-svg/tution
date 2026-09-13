@@ -63,9 +63,9 @@ export default function BatchOverviewTab() {
     Promise.all([
       api.get<Session[]>('/sessions/upcoming'),
       api.get<StudentAssignmentSummary[]>('/assignments/me'),
-      api.get<StudentQuizSummary[]>(`/quizzes/batch/${batch.id}`),
-      api.get<Material[]>(`/materials/batch/${batch.id}`),
-      api.get<Announcement[]>(`/announcements/batch/${batch.id}`),
+      api.get<StudentQuizSummary[]>(`/quizzes/batch/${batch.id}`).catch(() => [] as StudentQuizSummary[]),
+      api.get<Material[]>(`/materials/batch/${batch.id}`).catch(() => [] as Material[]),
+      api.get<Announcement[]>(`/announcements/batch/${batch.id}`).catch(() => [] as Announcement[]),
     ])
       .then(([allSessions, allAssignments, quizzesRes, materialsRes, announcementsRes]) => {
         setSessions(allSessions.filter((s) => s.batch_id === batch.id));

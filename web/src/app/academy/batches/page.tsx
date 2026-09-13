@@ -67,8 +67,8 @@ export default function AcademyBatchesPage() {
       const [batchRows, teacherRows, subjectRows, curriculumRows] = await Promise.all([
         api.get<AcademyManagedBatch[]>('/academy/me/batches'),
         api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active'),
-        api.get<Subject[]>('/catalog/subjects'),
-        api.get<Curriculum[]>('/catalog/curricula'),
+        api.get<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
+        api.get<Curriculum[]>('/catalog/curricula').catch(() => [] as Curriculum[]),
       ]);
       setBatches(batchRows);
       setTeachers(teacherRows);

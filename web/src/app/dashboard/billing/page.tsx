@@ -32,7 +32,7 @@ export default function BillingPage() {
     Promise.all([
       api.get<SubscriptionRecap>('/subscriptions/recap'),
       api.get<Record<string, SubscriptionPlan>>('/subscriptions/plans'),
-      api.get<Payout[]>('/payouts/me'),
+      api.get<Payout[]>('/payouts/me').catch(() => [] as Payout[]),
     ])
       .then(([r, p, po]) => {
         setRecap(r);
