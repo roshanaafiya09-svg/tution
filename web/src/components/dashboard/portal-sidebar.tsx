@@ -18,6 +18,11 @@ export interface PortalNavItem {
   /** Match on exact pathname only — for index routes like /dashboard whose
    *  prefix would otherwise swallow every child page. */
   exact?: boolean;
+  /** Small numeric pill rendered next to the label — optional and unused
+   *  by most portals' static nav configs; a wrapper component sets it
+   *  per-render for a dynamic count (see academy-nav.ts's
+   *  withNotificationsBadge). Purely additive, no-op when unset. */
+  badge?: number;
 }
 
 export interface PortalNavGroup {
@@ -76,7 +81,12 @@ function NavLink({
         )}
         aria-hidden
       />
-      {!collapsed && <span className="truncate">{item.label}</span>}
+      {!collapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
+      {!collapsed && !!item.badge && (
+        <span className="ml-auto flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-error px-1 text-[10px] font-semibold leading-none text-white">
+          {item.badge > 9 ? '9+' : item.badge}
+        </span>
+      )}
     </Link>
   );
 

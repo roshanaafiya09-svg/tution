@@ -1,4 +1,6 @@
 import {
+  BarChart3,
+  Bell,
   Building2,
   Calendar,
   CalendarClock,
@@ -10,6 +12,7 @@ import {
   GraduationCap,
   Home,
   Images,
+  Megaphone,
   MessageCircle,
   Settings,
   ShieldCheck,
@@ -18,6 +21,7 @@ import {
   Users,
   type LucideIcon,
 } from 'lucide-react';
+import type { AppNotification } from '@/lib/types';
 
 export interface AcademyNavItem {
   href: string;
@@ -26,6 +30,10 @@ export interface AcademyNavItem {
   /** Match on exact pathname only — for index routes like /academy whose
    *  prefix would otherwise swallow every child page. */
   exact?: boolean;
+  /** Small numeric pill rendered next to the label (e.g. unread
+   *  notification count). Set per-render by the sidebar wrapper, not
+   *  baked into the static config below — see academy-sidebar.tsx. */
+  badge?: number;
 }
 
 export interface AcademyNavGroup {
@@ -68,6 +76,17 @@ export const ACADEMY_NAV: AcademyNavGroup[] = [
       { href: '/academy/holidays', label: 'Holidays', icon: CalendarRange },
     ],
   },
+  {
+    label: 'Communication',
+    items: [
+      { href: '/academy/announcements', label: 'Announcements', icon: Megaphone },
+      { href: '/academy/notifications', label: 'Notifications', icon: Bell },
+    ],
+  },
+  {
+    label: 'Reports',
+    items: [{ href: '/academy/reports', label: 'Reports', icon: BarChart3 }],
+  },
 ];
 
 /** Pinned to the bottom of the rail, above the sign-out affordance — same
@@ -93,4 +112,44 @@ export function academyPageTitle(pathname: string): string {
     (a, b) => b.href.length - a.href.length,
   )[0];
   return match?.label ?? 'Academy Portal';
+}
+
+/** Clones ACADEMY_NAV with `count` set on the Notifications item's
+ *  `badge` — a pure per-render transform, not baked into the static nav
+ *  config, since the count changes independently of navigation. Returns
+ *  the original array unchanged when there's nothing to show, so callers
+ *  can pass this straight into PortalSidebarConfig either way. */
+export function withNotificationsBadge(count: number): AcademyNavGroup[] {
+  if (count <= 0) return ACADEMY_NAV;
+  return ACADEMY_NAV.map((group) => ({
+    ...group,
+    items: group.items.map((item) =>
+      item.href === '/academy/notifications' ? { ...item, badge: count } : item,
+    ),
+  }));
+}
+
+/** `NotificationsBell`'s `resolveHref` for the Academy Portal — mirrors
+ *  `studentNotificationHref`'s doc comment (student-nav.ts): the same
+ *  notification `type` routes differently per portal, so this mapping
+ *  lives here rather than inside the shared bell component. Payload
+ *  shapes are set server-side by each caller's own `notify()` call
+ *  (`academies.service.ts` for the join-request/contact-request types,
+ *  `teacher-leave.service.ts` for the leave-request type).
+ *
+ *  `academy_announcement` deliberately resolves to null — that type only
+ *  ever reaches OTHER portals' recipients (teachers/students/parents),
+ *  never the academy admin's own feed, since an admin never gets
+ *  notified about their own broadcast. */
+export function academyNotificationHref(notification: AppNotification): string | null {
+  switch (notification.type) {
+    case 'academy_join_request':
+      return '/academy/teachers';
+    case 'teacher_leave_requested':
+      return '/academy/leave-requests';
+    case 'academy_contact_request_received':
+      return '/academy/contact-requests';
+    default:
+      return null;
+  }
 }

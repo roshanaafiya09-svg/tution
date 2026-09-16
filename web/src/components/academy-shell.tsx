@@ -24,7 +24,7 @@ import {
   SIDEBAR_WIDTH_COLLAPSED,
   SIDEBAR_WIDTH_EXPANDED,
 } from '@/components/dashboard/academy-sidebar';
-import { academyPageTitle } from '@/components/dashboard/academy-nav';
+import { academyNotificationHref, academyPageTitle } from '@/components/dashboard/academy-nav';
 
 const COLLAPSE_KEY = 'scholar.academySidebarCollapsed';
 
@@ -89,6 +89,21 @@ export function AcademyShell({ children }: { children: React.ReactNode }) {
   // this — see AcademySetupRequired's doc comment for why.
   const [hasAcademy, setHasAcademy] = useState<boolean | null>(null);
 
+  // Shared unread-notifications poll — one interval for this whole shell,
+  // consumed by both the sidebar's Notifications badge and the header
+  // bell (via its controlled `unreadCount`/`onRead` props), instead of
+  // each polling /notifications/unread-count independently.
+  const [unreadCount, setUnreadCount] = useState(0);
+  const refreshUnreadCount = useCallback(async () => {
+    try {
+      const { count } = await api.get<{ count: number }>('/notifications/unread-count');
+      setUnreadCount(count);
+    } catch {
+      // Best-effort background poll — a transient failure shouldn't
+      // surface as an unhandled rejection; the next tick retries.
+    }
+  }, []);
+
   useEffect(() => {
     setCollapsedPref(window.localStorage.getItem(COLLAPSE_KEY) === '1');
   }, []);
@@ -138,6 +153,13 @@ export function AcademyShell({ children }: { children: React.ReactNode }) {
     })();
   }, [router]);
 
+  useEffect(() => {
+    if (!me) return;
+    void refreshUnreadCount();
+    const interval = setInterval(() => void refreshUnreadCount(), 30_000);
+    return () => clearInterval(interval);
+  }, [me, refreshUnreadCount]);
+
   function signOut() {
     if (posthog.__loaded) posthog.reset();
     router.replace('/login');
@@ -166,8 +188,17 @@ export function AcademyShell({ children }: { children: React.ReactNode }) {
   return (
     <AcademyDashboardContext.Provider value={{ hasAcademy, markAcademyCreated: () => setHasAcademy(true) }}>
       <div className="min-h-screen bg-background">
-        <AcademySidebar collapsed={collapsed} onToggleCollapse={toggleCollapsed} canToggle={isDesktop} />
-        <AcademySidebarDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+        <AcademySidebar
+          collapsed={collapsed}
+          onToggleCollapse={toggleCollapsed}
+          canToggle={isDesktop}
+          unreadCount={unreadCount}
+        />
+        <AcademySidebarDrawer
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          unreadCount={unreadCount}
+        />
 
         <div
           className="flex min-h-screen flex-col transition-[padding] duration-base"
@@ -202,7 +233,11 @@ export function AcademyShell({ children }: { children: React.ReactNode }) {
               </div>
 
               <div className="flex shrink-0 items-center gap-1">
-                <NotificationsBell />
+                <NotificationsBell
+                  resolveHref={academyNotificationHref}
+                  unreadCount={unreadCount}
+                  onRead={() => void refreshUnreadCount()}
+                />
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>

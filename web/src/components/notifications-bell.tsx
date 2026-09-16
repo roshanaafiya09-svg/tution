@@ -19,16 +19,34 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui';
  */
 export type NotificationHrefResolver = (notification: AppNotification) => string | null;
 
-export function NotificationsBell({ resolveHref }: { resolveHref?: NotificationHrefResolver } = {}) {
+export function NotificationsBell({
+  resolveHref,
+  unreadCount: controlledUnreadCount,
+  onRead,
+}: {
+  resolveHref?: NotificationHrefResolver;
+  /** When supplied (Academy shell shares one poll across the bell and
+   *  the sidebar's nav badge — see academy-shell.tsx), this component
+   *  skips its own internal 30s poll and just renders the given value.
+   *  Omitted (every other portal, unchanged): self-polls exactly as
+   *  before. */
+  unreadCount?: number;
+  /** Called after a mark-read/mark-all-read action so the parent's
+   *  shared count can refresh immediately rather than waiting for its
+   *  next poll tick. Only meaningful alongside a controlled `unreadCount`. */
+  onRead?: () => void;
+} = {}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [selfPolledCount, setSelfPolledCount] = useState(0);
   const [notifications, setNotifications] = useState<AppNotification[] | null>(null);
+  const isControlled = controlledUnreadCount !== undefined;
+  const unreadCount = isControlled ? controlledUnreadCount : selfPolledCount;
 
   const loadCount = useCallback(async () => {
     try {
       const { count } = await api.get<{ count: number }>('/notifications/unread-count');
-      setUnreadCount(count);
+      setSelfPolledCount(count);
     } catch {
       // Best-effort background poll (every 30s) — a transient failure
       // (session refresh in flight, brief network blip) shouldn't
@@ -37,10 +55,11 @@ export function NotificationsBell({ resolveHref }: { resolveHref?: NotificationH
   }, []);
 
   useEffect(() => {
+    if (isControlled) return;
     void loadCount();
     const interval = setInterval(() => void loadCount(), 30_000);
     return () => clearInterval(interval);
-  }, [loadCount]);
+  }, [isControlled, loadCount]);
 
   async function handleOpenChange(next: boolean) {
     setOpen(next);
@@ -52,7 +71,8 @@ export function NotificationsBell({ resolveHref }: { resolveHref?: NotificationH
   async function markRead(id: string) {
     await api.post(`/notifications/${id}/read`);
     setNotifications(await api.get<AppNotification[]>('/notifications'));
-    await loadCount();
+    if (isControlled) onRead?.();
+    else await loadCount();
   }
 
   async function handleSelect(n: AppNotification) {
@@ -67,7 +87,8 @@ export function NotificationsBell({ resolveHref }: { resolveHref?: NotificationH
   async function markAllRead() {
     await api.post('/notifications/read-all');
     setNotifications(await api.get<AppNotification[]>('/notifications'));
-    await loadCount();
+    if (isControlled) onRead?.();
+    else await loadCount();
   }
 
   return (

@@ -1050,6 +1050,206 @@ export interface AppNotification {
   created_at: string;
 }
 
+// --- Academy Dashboard > Communication > Announcements (migration 0037) ---
+
+export type AcademyAnnouncementAudience =
+  | 'academy'
+  | 'teachers'
+  | 'students'
+  | 'parents'
+  | 'batch'
+  | 'teacher'
+  | 'student';
+export type AcademyAnnouncementStatus = 'draft' | 'published' | 'archived';
+
+export interface AcademyAnnouncement {
+  id: string;
+  academy_id: string;
+  created_by: string;
+  title: string;
+  body: string;
+  audience_type: AcademyAnnouncementAudience;
+  audience_batch_id: string | null;
+  audience_teacher_id: string | null;
+  audience_student_id: string | null;
+  status: AcademyAnnouncementStatus;
+  recipient_count: number | null;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateAnnouncementInput {
+  title: string;
+  body: string;
+  audienceType: AcademyAnnouncementAudience;
+  audienceBatchId?: string;
+  audienceTeacherId?: string;
+  audienceStudentId?: string;
+  publishNow?: boolean;
+}
+
+// --- Academy Dashboard > Reports ---
+
+export interface AcademyReportSummary {
+  teacherCount: number;
+  studentsCount: number;
+  batchCount: number;
+  activeBatchCount: number;
+  sessionsToday: number;
+  teachersToday: (string | null)[];
+  pendingLeaveCount: number;
+  upcomingHolidaysCount: number;
+  contactRequestsByStatus: Record<string, number>;
+}
+
+export interface AcademyStudentReportRow {
+  studentId: string;
+  displayName: string | null;
+  batchId: string;
+  batchTitle: string;
+  tutorId: string;
+  tutorDisplayName: string | null;
+  gradeLevel: string | null;
+  joinedAt: string;
+  attendance: { total: number; present: number; late: number; absent: number; rate: number | null } | null;
+}
+
+export interface AcademyStudentsReport {
+  totalStudents: number;
+  newStudentsInRange: number;
+  studentsByBatch: { batchId: string; count: number }[];
+  studentsByTeacher: { tutorId: string; tutorDisplayName: string | null; count: number }[];
+  rows: AcademyStudentReportRow[];
+}
+
+export interface AcademyTeacherReportRow {
+  tutorId: string;
+  tutorDisplayName: string | null;
+  classCount: number;
+  completedCount: number;
+  cancelledCount: number;
+  pendingLeaveCount: number;
+  approvedLeaveCount: number;
+  rejectedLeaveCount: number;
+}
+
+export interface AcademyTeachersReport {
+  totalTeachers: number;
+  rows: AcademyTeacherReportRow[];
+}
+
+export interface AcademyBatchReportRow {
+  batchId: string;
+  title: string;
+  tutorId: string;
+  tutorDisplayName: string | null;
+  subjectId: string;
+  gradeLevelId: string;
+  status: 'active' | 'archived';
+  capacity: number;
+  enrolledCount: number;
+  upcomingSessionCount: number;
+}
+
+export interface AcademyBatchesReport {
+  totalBatches: number;
+  activeBatches: number;
+  rows: AcademyBatchReportRow[];
+}
+
+export interface AcademyAbsentStudentRow {
+  sessionId: string;
+  studentId: string;
+  displayName: string | null;
+  batchId: string;
+  batchTitle: string;
+  tutorId: string;
+  tutorDisplayName: string | null;
+  subjectId: string;
+  scheduledStartUtc: string;
+  timezone: string;
+  status: 'absent';
+}
+
+export interface AcademyAttendanceReport {
+  totalAbsences: number;
+  rows: AcademyAbsentStudentRow[];
+}
+
+export interface AcademySessionReportRow {
+  sessionId: string;
+  scheduledStartUtc: string;
+  timezone: string;
+  batchId: string;
+  batchTitle: string;
+  subjectId: string;
+  tutorId: string;
+  tutorDisplayName: string | null;
+  status: 'scheduled' | 'completed' | 'cancelled';
+  cancellationReason: ClassCancellationReason | null;
+}
+
+export interface AcademySessionsReport {
+  total: number;
+  completed: number;
+  cancelled: number;
+  scheduled: number;
+  byTeacher: { tutorId: string; tutorDisplayName: string | null; count: number }[];
+  byBatch: { batchId: string; count: number }[];
+  byDate: { date: string; count: number }[];
+  rows: AcademySessionReportRow[];
+}
+
+export interface AcademyLeaveReportRow {
+  id: string;
+  tutorId: string;
+  tutorDisplayName: string | null;
+  startDate: string;
+  endDate: string;
+  leaveType: 'full_day' | 'specific_classes';
+  reason: string | null;
+  status: LeaveStatus;
+  classesAffected: number;
+}
+
+export interface AcademyLeaveReport {
+  pendingCount: number;
+  approvedCount: number;
+  rejectedCount: number;
+  rows: AcademyLeaveReportRow[];
+}
+
+export interface AcademyHolidayReportRow {
+  id: string;
+  type: HolidayType;
+  name: string;
+  startDate: string;
+  endDate: string;
+  affectedClasses: number;
+}
+
+export interface AcademyHolidaysReport {
+  governmentCount: number;
+  academyCount: number;
+  rows: AcademyHolidayReportRow[];
+}
+
+export interface AcademyContactRequestReportRow {
+  id: string;
+  createdAt: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  status: ContactRequestStatus;
+}
+
+export interface AcademyContactRequestsReport {
+  total: number;
+  byStatus: Record<string, number>;
+  rows: AcademyContactRequestReportRow[];
+}
+
 export type QuizDraftStatus = 'pending_review' | 'approved' | 'rejected';
 export type QuizDifficulty = 'easy' | 'medium' | 'hard';
 
