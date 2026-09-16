@@ -105,6 +105,10 @@ export function studentNotificationHref(notification: AppNotification): string |
       return typeof payload.batchId === 'string'
         ? `/student/batches/${payload.batchId}/announcements`
         : '/student/announcements';
+    case 'academy_announcement':
+      return typeof payload.announcementId === 'string'
+        ? `/student/announcements/${payload.announcementId}`
+        : null;
     default:
       return null;
   }

@@ -1089,6 +1089,19 @@ export interface CreateAnnouncementInput {
   publishNow?: boolean;
 }
 
+/** Recipient-facing shape (GET /announcements/:id) — a teacher/student/
+ *  parent reading the announcement they were sent. Deliberately leaner
+ *  than AcademyAnnouncement (no audience/status/recipient-count fields —
+ *  those are the admin's own targeting details, not the recipient's
+ *  concern). */
+export interface AcademyAnnouncementForRecipient {
+  id: string;
+  title: string;
+  body: string;
+  academyName: string | null;
+  publishedAt: string | null;
+}
+
 // --- Academy Dashboard > Reports ---
 
 export interface AcademyReportSummary {

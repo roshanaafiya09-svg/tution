@@ -27,7 +27,7 @@ import {
   SIDEBAR_WIDTH_COLLAPSED,
   SIDEBAR_WIDTH_EXPANDED,
 } from '@/components/dashboard/parent-sidebar';
-import { parentPageTitle } from '@/components/dashboard/parent-nav';
+import { parentNotificationHref, parentPageTitle } from '@/components/dashboard/parent-nav';
 
 const COLLAPSE_KEY = 'scholar.parentSidebarCollapsed';
 
@@ -174,7 +174,7 @@ export function ParentShell({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className={cn('flex shrink-0 items-center gap-1')}>
-              <NotificationsBell />
+              <NotificationsBell resolveHref={parentNotificationHref} />
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

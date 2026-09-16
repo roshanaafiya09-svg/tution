@@ -28,7 +28,7 @@ import {
   SIDEBAR_WIDTH_EXPANDED,
 } from '@/components/dashboard/teacher-sidebar';
 import { QuickSearch } from '@/components/dashboard/quick-search';
-import { teacherPageTitle } from '@/components/dashboard/teacher-nav';
+import { teacherNotificationHref, teacherPageTitle } from '@/components/dashboard/teacher-nav';
 
 const COLLAPSE_KEY = 'scholar.teacherSidebarCollapsed';
 
@@ -194,7 +194,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 <Search className="h-[18px] w-[18px]" aria-hidden />
               </button>
 
-              <NotificationsBell />
+              <NotificationsBell resolveHref={teacherNotificationHref} />
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

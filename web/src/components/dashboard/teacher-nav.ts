@@ -11,6 +11,7 @@ import {
   Home,
   Layers,
   ListChecks,
+  Megaphone,
   MessagesSquare,
   School,
   Settings,
@@ -21,6 +22,7 @@ import {
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
+import type { AppNotification } from '@/lib/types';
 
 export interface TeacherNavItem {
   href: string;
@@ -89,6 +91,7 @@ const SECONDARY_ROUTES: TeacherNavItem[] = [
   { href: '/dashboard/find-an-academy', label: 'Find an Academy', icon: School },
   { href: '/dashboard/sessions', label: 'Class', icon: CalendarDays },
   { href: '/dashboard/assignments', label: 'Assignment', icon: FileCheck2 },
+  { href: '/dashboard/announcements', label: 'Announcement', icon: Megaphone },
 ];
 
 const ALL_ITEMS: TeacherNavItem[] = [
@@ -108,4 +111,19 @@ export function teacherPageTitle(pathname: string): string {
     (a, b) => b.href.length - a.href.length,
   )[0];
   return match?.label ?? 'Teacher Portal';
+}
+
+/** `NotificationsBell`'s `resolveHref` for the Teacher Portal — see
+ *  studentNotificationHref's doc comment (student-nav.ts) for why this
+ *  mapping lives per-portal rather than in the shared bell component.
+ *  Deliberately scoped to just the one new type this was built for
+ *  (Academy Dashboard Announcements) rather than retrofitting every
+ *  existing notification type Teacher already receives — those keep
+ *  falling through to the existing no-op default. */
+export function teacherNotificationHref(notification: AppNotification): string | null {
+  if (notification.type === 'academy_announcement') {
+    const id = notification.payload.announcementId;
+    return typeof id === 'string' ? `/dashboard/announcements/${id}` : null;
+  }
+  return null;
 }

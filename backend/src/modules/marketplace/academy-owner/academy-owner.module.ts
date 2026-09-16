@@ -27,6 +27,8 @@ import { AcademyOwnerAnnouncementsService } from './academy-owner-announcements.
 import { AcademyAnnouncementsRepository } from './academy-announcements.repository';
 import { AcademyOwnerReportsController } from './academy-owner-reports.controller';
 import { AcademyOwnerReportsService } from './academy-owner-reports.service';
+import { AnnouncementRecipientController } from './announcement-recipient.controller';
+import { AnnouncementRecipientService } from './announcement-recipient.service';
 
 /**
  * The self-serve Academy Dashboard (migration 0031) — closes the gap
@@ -60,6 +62,7 @@ import { AcademyOwnerReportsService } from './academy-owner-reports.service';
     AcademyOwnerAttendanceController,
     AcademyOwnerAnnouncementsController,
     AcademyOwnerReportsController,
+    AnnouncementRecipientController,
   ],
   providers: [
     AcademyOwnerService,
@@ -72,6 +75,7 @@ import { AcademyOwnerReportsService } from './academy-owner-reports.service';
     AcademyOwnerAnnouncementsService,
     AcademyAnnouncementsRepository,
     AcademyOwnerReportsService,
+    AnnouncementRecipientService,
   ],
 })
 export class AcademyOwnerModule {}

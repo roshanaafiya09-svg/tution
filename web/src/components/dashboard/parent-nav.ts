@@ -1,5 +1,6 @@
-import { Building2, CircleUser, Home, MessagesSquare, Search, Settings, Sparkles, User, UserPlus } from 'lucide-react';
+import { Building2, CircleUser, Home, Megaphone, MessagesSquare, Search, Settings, Sparkles, User, UserPlus } from 'lucide-react';
 import { isPortalNavItemActive, type PortalNavGroup, type PortalNavItem } from './portal-sidebar';
+import type { AppNotification } from '@/lib/types';
 
 /** The Parent Portal's information architecture, in sidebar order — mirrors
  *  academy-nav.ts's ACADEMY_NAV shape, with Parent's own nav items. */
@@ -38,7 +39,10 @@ export const PARENT_NAV_FOOTER: PortalNavItem[] = [
 
 /** Routes with no rail entry of their own but that still need a resolved
  *  header title — the child-detail pages, reached only via cards on Today. */
-const SECONDARY_ROUTES: PortalNavItem[] = [{ href: '/parent/child', label: 'Child', icon: User }];
+const SECONDARY_ROUTES: PortalNavItem[] = [
+  { href: '/parent/child', label: 'Child', icon: User },
+  { href: '/parent/announcements', label: 'Announcement', icon: Megaphone },
+];
 
 const ALL_ITEMS: PortalNavItem[] = [
   ...PARENT_NAV.flatMap((group) => group.items),
@@ -57,4 +61,18 @@ export function parentPageTitle(pathname: string): string {
     (a, b) => b.href.length - a.href.length,
   )[0];
   return match?.label ?? 'Parent Portal';
+}
+
+/** `NotificationsBell`'s `resolveHref` for the Parent Portal — see
+ *  studentNotificationHref's doc comment (student-nav.ts) for why this
+ *  mapping lives per-portal. Deliberately scoped to just the one new
+ *  type this was built for (Academy Dashboard Announcements) — every
+ *  other existing notification type Parent already receives keeps
+ *  falling through to the existing no-op default. */
+export function parentNotificationHref(notification: AppNotification): string | null {
+  if (notification.type === 'academy_announcement') {
+    const id = notification.payload.announcementId;
+    return typeof id === 'string' ? `/parent/announcements/${id}` : null;
+  }
+  return null;
 }

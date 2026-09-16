@@ -70,6 +70,19 @@ export class AcademyAnnouncementsRepository {
       .execute();
   }
 
+  /** Unscoped lookup — used only by AnnouncementRecipientService, where
+   *  the caller isn't an academy owner and has no academyId to scope by.
+   *  Authorization there comes from a different source entirely (proof
+   *  of having actually received a notification about this id), not
+   *  from this query, so it deliberately doesn't take one. */
+  findById(id: string) {
+    return this.db
+      .selectFrom('academy_announcements')
+      .selectAll()
+      .where('id', '=', id)
+      .executeTakeFirst();
+  }
+
   /** Ownership lookup for read/update/publish/archive/delete — mirrors
    *  TeacherLeaveRepository.findForAcademy exactly. */
   findForAcademy(id: string, academyId: string) {

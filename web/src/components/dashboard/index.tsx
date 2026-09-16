@@ -27,6 +27,7 @@ export {
   TEACHER_NAV_FOOTER,
   isNavItemActive,
   teacherPageTitle,
+  teacherNotificationHref,
   type TeacherNavItem,
   type TeacherNavGroup,
 } from './teacher-nav';
