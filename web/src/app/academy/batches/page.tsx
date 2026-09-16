@@ -7,10 +7,12 @@ import { api, formatMinor } from '@/lib/api';
 import type {
   AcademyActiveTeacher,
   AcademyManagedBatch,
+  AcademyTodaySession,
   Curriculum,
   GradeLevel,
   Subject,
 } from '@/lib/types';
+import { sessionDateTime } from '@/lib/session-labels';
 import {
   Button,
   CardSkeleton,
@@ -46,6 +48,7 @@ export default function AcademyBatchesPage() {
   const { hasAcademy } = useAcademyDashboard();
   const [batches, setBatches] = useState<AcademyManagedBatch[] | null>(null);
   const [teachers, setTeachers] = useState<AcademyActiveTeacher[]>([]);
+  const [nextClassByBatch, setNextClassByBatch] = useState<Map<string, AcademyTodaySession>>(new Map());
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [curricula, setCurricula] = useState<Curriculum[]>([]);
   const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>([]);
@@ -64,16 +67,27 @@ export default function AcademyBatchesPage() {
     }
     setLoadError(false);
     try {
-      const [batchRows, teacherRows, subjectRows, curriculumRows] = await Promise.all([
+      const [batchRows, teacherRows, subjectRows, curriculumRows, sessionRows] = await Promise.all([
         api.get<AcademyManagedBatch[]>('/academy/me/batches'),
         api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active'),
         api.get<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
         api.get<Curriculum[]>('/catalog/curricula').catch(() => [] as Curriculum[]),
+        // Same 14-day-ahead window /academy/me/sessions defaults to — reused
+        // here (and by Today/Timetable) rather than each page picking its own.
+        api.get<AcademyTodaySession[]>('/academy/me/sessions').catch(() => [] as AcademyTodaySession[]),
       ]);
       setBatches(batchRows);
       setTeachers(teacherRows);
       setSubjects(subjectRows);
       setCurricula(curriculumRows);
+
+      const nextByBatch = new Map<string, AcademyTodaySession>();
+      for (const s of sessionRows.filter((s) => s.status === 'scheduled').sort(
+        (a, b) => new Date(a.scheduledStartUtc).getTime() - new Date(b.scheduledStartUtc).getTime(),
+      )) {
+        if (!nextByBatch.has(s.batchId)) nextByBatch.set(s.batchId, s);
+      }
+      setNextClassByBatch(nextByBatch);
     } catch {
       setLoadError(true);
     }
@@ -281,6 +295,11 @@ export default function AcademyBatchesPage() {
                     {batch.enrolledCount}/{batch.capacity} students · {formatMinor(batch.feeMinor, batch.currency)}/
                     {batch.feePeriod === 'monthly' ? 'month' : batch.feePeriod}
                   </p>
+                  {nextClassByBatch.has(batch.id) && (
+                    <p className="text-xs text-brand-600 dark:text-brand-300">
+                      Next: {sessionDateTime(nextClassByBatch.get(batch.id)!)}
+                    </p>
+                  )}
                 </Link>
               </AcademyCard>
             ))}

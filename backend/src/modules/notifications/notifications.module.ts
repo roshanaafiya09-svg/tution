@@ -9,6 +9,8 @@ import { DeviceTokensRepository } from './device-tokens/device-tokens.repository
 import { PUSH_PROVIDER } from './push/push-provider.interface';
 import { ConsolePushProvider } from './push/console-push.provider';
 import { FcmPushProvider } from './push/fcm-push.provider';
+import { WHATSAPP_PROVIDER } from './whatsapp/whatsapp-provider.interface';
+import { ConsoleWhatsAppProvider } from './whatsapp/console-whatsapp.provider';
 
 const pushLogger = new Logger('NotificationsModule');
 
@@ -48,6 +50,15 @@ const pushLogger = new Logger('NotificationsModule');
         );
         return consoleProvider;
       },
+    },
+    ConsoleWhatsAppProvider,
+    // No real WhatsAppProvider exists yet (see whatsapp-provider.interface.ts)
+    // — this factory is still shaped like PUSH_PROVIDER's so a future
+    // Meta Cloud API provider drops in the same way FcmPushProvider did,
+    // with zero change to NotificationsService or any caller of notify().
+    {
+      provide: WHATSAPP_PROVIDER,
+      useExisting: ConsoleWhatsAppProvider,
     },
   ],
   exports: [NotificationsService],

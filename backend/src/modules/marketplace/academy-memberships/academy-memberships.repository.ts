@@ -60,6 +60,45 @@ export class AcademyMembershipsRepository {
       .execute();
   }
 
+  /** Single active member with their full profile — the Academy Dashboard's
+   *  Teacher Detail page (Main > Teachers > :id). Unlike listActiveForAcademy
+   *  (a lean roster-card projection), this selects the whole
+   *  profiles_tutor row so the detail page can show qualifications,
+   *  languages, methodology, achievements, certifications — no salary/fee
+   *  fields are selected, that stays out of scope. */
+  findActiveWithProfile(academyId: string, tutorId: string) {
+    return this.db
+      .selectFrom('academy_memberships')
+      .innerJoin(
+        'profiles_tutor',
+        'profiles_tutor.user_id',
+        'academy_memberships.tutor_id',
+      )
+      .select([
+        'academy_memberships.id as membership_id',
+        'academy_memberships.tutor_id',
+        'academy_memberships.joined_at',
+        'academy_memberships.status as membership_status',
+        'profiles_tutor.display_name',
+        'profiles_tutor.slug as tutor_slug',
+        'profiles_tutor.headline',
+        'profiles_tutor.bio',
+        'profiles_tutor.avatar_object_key',
+        'profiles_tutor.years_experience',
+        'profiles_tutor.verification_status',
+        'profiles_tutor.qualifications',
+        'profiles_tutor.languages',
+        'profiles_tutor.teaching_mode',
+        'profiles_tutor.methodology',
+        'profiles_tutor.achievements',
+        'profiles_tutor.certifications',
+      ])
+      .where('academy_memberships.academy_id', '=', academyId)
+      .where('academy_memberships.tutor_id', '=', tutorId)
+      .where('academy_memberships.status', '=', 'active')
+      .executeTakeFirst();
+  }
+
   /** A teacher's own "Teaching under" list — additive to their existing
    *  profile, and also feeds the bidirectional badge on the public
    *  tutor page (Find a Teacher -> Teacher Profile -> View Academy). */
@@ -104,6 +143,22 @@ export class AcademyMembershipsRepository {
       .where('academy_memberships.status', '=', 'left')
       .orderBy('academy_memberships.left_at', 'desc')
       .execute();
+  }
+
+  /** Distinct academies a set of tutors are currently active members of
+   *  — Holiday & Teacher Leave feature's student/parent-facing "which
+   *  academies' holidays are relevant to me" resolution (a student's
+   *  academies are their enrolled batches' tutors' academies). */
+  async listActiveAcademyIdsForTutors(tutorIds: string[]): Promise<string[]> {
+    if (tutorIds.length === 0) return [];
+    const rows = await this.db
+      .selectFrom('academy_memberships')
+      .select('academy_id')
+      .distinct()
+      .where('tutor_id', 'in', tutorIds)
+      .where('status', '=', 'active')
+      .execute();
+    return rows.map((r) => r.academy_id);
   }
 
   countActiveForAcademy(academyId: string) {

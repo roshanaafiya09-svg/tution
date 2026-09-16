@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import {
   appConfig,
   authConfig,
@@ -50,6 +51,8 @@ import { AcademyReviewsModule } from './modules/marketplace/academy-reviews/acad
 import { AcademiesModule } from './modules/marketplace/academies/academies.module';
 import { AcademyOwnerModule } from './modules/marketplace/academy-owner/academy-owner.module';
 import { AcademyVerificationModule } from './modules/marketplace/academy-verification/academy-verification.module';
+import { HolidaysModule } from './modules/holidays/holidays.module';
+import { RemindersModule } from './modules/reminders/reminders.module';
 
 /**
  * Dev-only Super Admin auto-login (see src/dev/dev-auto-login.controller.ts).
@@ -110,6 +113,11 @@ if (process.env.NODE_ENV !== 'production') {
     // one client. Relies on trustProxy (see main.ts) to key correctly on
     // the real client IP behind Render's proxy, not shared infra IPs.
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]),
+    // Holiday & Teacher Leave Management's 10-minute class reminder and
+    // daily government-holiday sweep (RemindersModule) — this codebase
+    // had no cron/queue infra before this feature; forRoot() here is
+    // the one-time registration @nestjs/schedule needs.
+    ScheduleModule.forRoot(),
     DatabaseModule,
     RedisModule,
     AnalyticsModule,
@@ -140,6 +148,8 @@ if (process.env.NODE_ENV !== 'production') {
     AcademiesModule,
     AcademyOwnerModule,
     AcademyVerificationModule,
+    HolidaysModule,
+    RemindersModule,
   ],
   providers: [
     {

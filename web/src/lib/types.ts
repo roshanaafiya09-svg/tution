@@ -82,12 +82,15 @@ export interface AvailableBatch {
   seatsRemaining: number;
 }
 
+export type ContactRequestStatus = 'new' | 'contacted' | 'interested' | 'joined' | 'not_interested';
+
 export interface ContactRequest {
   id: string;
   requester_id: string;
   requester_role: 'student' | 'parent';
   message: string | null;
   read_at: string | null;
+  status: ContactRequestStatus;
   created_at: string;
   email: string | null;
   phone_e164: string;
@@ -110,6 +113,12 @@ export interface Batch {
   tutor_display_name?: string | null;
 }
 
+export type ClassCancellationReason =
+  | 'government_holiday'
+  | 'academy_holiday'
+  | 'teacher_leave'
+  | 'manual';
+
 export interface Session {
   id: string;
   batch_id: string;
@@ -122,6 +131,76 @@ export interface Session {
   /** Only present on GET /sessions/student/:studentId (the parent-facing
    *  route) — the tutor's profiles_tutor.display_name, null if unset. */
   tutor_display_name?: string | null;
+  /** Holiday & Teacher Leave feature (migration 0035) — set alongside
+   *  status='cancelled' to say why; null for a plain manual cancel that
+   *  predates this feature. */
+  cancellation_reason?: ClassCancellationReason | null;
+  substitute_tutor_id?: string | null;
+  substitute_display_name?: string | null;
+}
+
+// --- Holiday & Teacher Leave Management (migration 0035) ---
+
+export type HolidayType = 'government_holiday' | 'academy_holiday';
+export type HolidayScope = 'academy' | 'batches';
+
+/** `state_code = null` means a national holiday (applies regardless of
+ *  the academy's own state) — see the migration's doc comment. */
+export interface Holiday {
+  id: string;
+  type: HolidayType;
+  name: string;
+  start_date: string;
+  end_date: string;
+  country_code: string;
+  state_code: string | null;
+  academy_id: string | null;
+  scope: HolidayScope;
+  description: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EffectiveHolidays {
+  governmentHolidays: Holiday[];
+  academyHolidays: Holiday[];
+}
+
+export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+
+export interface TeacherLeaveRequest {
+  id: string;
+  tutor_id: string;
+  academy_id: string;
+  start_date: string;
+  end_date: string;
+  leave_type: 'full_day' | 'specific_classes';
+  reason: string | null;
+  status: LeaveStatus;
+  decided_by: string | null;
+  decided_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Academy admin's view of a leave request — same row, plus the
+ *  requesting teacher's display name (GET /academy/me/leave-requests). */
+export interface AcademyLeaveRequest extends TeacherLeaveRequest {
+  tutor_display_name: string | null;
+}
+
+/** One of a leave request's affected classes (GET /leave/:id/sessions
+ *  and GET /academy/me/leave-requests/:id/sessions). */
+export interface LeaveAffectedSession {
+  session_id: string;
+  scheduled_start_utc: string;
+  timezone: string;
+  duration_min: number;
+  status: 'scheduled' | 'completed' | 'cancelled';
+  substitute_tutor_id: string | null;
+  batch_id: string;
+  batch_title: string;
 }
 
 export interface Enrollment {
@@ -472,6 +551,11 @@ export interface AcademyManagedSession {
   duration_min: number;
   meeting_url: string | null;
   status: 'scheduled' | 'completed' | 'cancelled';
+  /** class_sessions.selectAll() already returns these (Holiday & Teacher
+   *  Leave feature) — just under-typed here until the Schedule tab needed
+   *  them. */
+  cancellation_reason?: ClassCancellationReason | null;
+  substitute_tutor_id?: string | null;
 }
 
 /** Cross-academy session shape (camelCase, teacher/subject attributed) —
@@ -489,6 +573,9 @@ export interface AcademyTodaySession {
   timezone: string;
   durationMin: number;
   status: 'scheduled' | 'completed' | 'cancelled';
+  cancellationReason?: ClassCancellationReason | null;
+  substituteTutorId?: string | null;
+  substituteDisplayName?: string | null;
 }
 
 export interface AcademyManagedEnrollment {
@@ -502,6 +589,9 @@ export interface AcademyManagedEnrollment {
   batchTitle: string;
   tutorId: string;
   tutorDisplayName: string | null;
+  subjectId?: string;
+  gradeLevelId?: string;
+  gradeLevel?: string | null;
 }
 
 export interface AcademyBatch {
@@ -538,6 +628,16 @@ export interface AcademyOwnerProfile {
   logoUrl: string | null;
   coverUrl: string | null;
   location: { city: string; areaLabel: string | null; lat: number; lng: number } | null;
+  /** Holiday & Teacher Leave Management (migration 0035). */
+  countryCode: string;
+  stateCode: string;
+  autoObserveGovtHolidays: boolean;
+}
+
+export interface AcademySettingsUpdate {
+  countryCode: string;
+  stateCode: string;
+  autoObserveGovtHolidays: boolean;
 }
 
 /** Derived from active members' tutor_subjects, not an editable field —
@@ -609,6 +709,173 @@ export interface AcademyRemovedTeacher {
   avatarUrl: string | null;
   joinedAt: string;
   leftAt: string | null;
+}
+
+/** Shape of AttendanceRepository.summaryForStudent — distinct from the
+ *  AttendanceSummary type below (student/parent attendance history's
+ *  `rate` field comes from a different endpoint). */
+export interface AcademyAttendanceSummary {
+  total: number;
+  present: number;
+  late: number;
+  absent: number;
+  attendanceRate: number | null;
+}
+
+/** Main > Teachers > :id */
+export interface AcademyTeacherDetail {
+  tutorId: string;
+  displayName: string | null;
+  slug: string;
+  headline: string | null;
+  bio: string | null;
+  avatarUrl: string | null;
+  yearsExperience: number | null;
+  verificationStatus: 'pending' | 'verified' | 'rejected';
+  qualifications: string | null;
+  languages: string[] | null;
+  teachingMode: TeachingMode | null;
+  methodology: string | null;
+  achievements: string | null;
+  certifications: string | null;
+  joinedAt: string;
+  active: boolean;
+  subjects: { subjectId: string; name: string; gradeMin: number; gradeMax: number }[];
+  batches: {
+    id: string;
+    title: string;
+    subjectId: string;
+    gradeLevelId: string;
+    status: 'active' | 'archived';
+    enrolledCount: number;
+  }[];
+  upcomingClasses: {
+    id: string;
+    batchId: string;
+    batchTitle: string;
+    subjectId: string;
+    scheduledStartUtc: string;
+    timezone: string;
+    durationMin: number;
+    status: 'scheduled' | 'completed' | 'cancelled';
+  }[];
+  leaveHistory: {
+    id: string;
+    startDate: string;
+    endDate: string;
+    leaveType: 'full_day' | 'specific_classes';
+    status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+    reason: string | null;
+  }[];
+}
+
+/** Main > Students > :id */
+export interface AcademyStudentDetail {
+  studentId: string;
+  displayName: string | null;
+  phoneE164: string;
+  gradeLevel: string | null;
+  enrollments: {
+    enrollmentId: string;
+    batchId: string;
+    batchTitle: string;
+    subjectId: string;
+    gradeLevelId: string;
+    tutorId: string;
+    tutorDisplayName: string | null;
+    status: 'active' | 'left';
+    joinedAt: string;
+    attendance: AcademyAttendanceSummary | null;
+  }[];
+  parents: { parentId: string; phoneE164: string; email: string | null }[];
+}
+
+/** Main > Parents list */
+export interface AcademyParentSummary {
+  parentId: string;
+  phoneE164: string;
+  email: string | null;
+  childrenCount: number;
+  children: { studentId: string; displayName: string | null; status: string }[];
+}
+
+/** Main > Parents > :id */
+export interface AcademyParentDetail {
+  parentId: string;
+  phoneE164: string;
+  email: string | null;
+  children: {
+    studentId: string;
+    displayName: string | null;
+    gradeLevel: string | null;
+    batches: {
+      batchId: string;
+      batchTitle: string;
+      tutorId: string;
+      tutorDisplayName: string | null;
+      status: 'active' | 'left';
+      attendance: AcademyAttendanceSummary | null;
+    }[];
+  }[];
+}
+
+/** Main > Academic > Attendance — Today's summary cards. */
+export interface AcademyAttendanceTodaySummary {
+  classesToday: number;
+  classesCompleted: number;
+  studentsExpected: number;
+  present: number;
+  absent: number;
+  attendancePercent: number | null;
+  teachersToday: (string | null)[];
+}
+
+/** Main > Academic > Attendance — one table row per session. */
+export interface AcademyAttendanceRow {
+  sessionId: string;
+  scheduledStartUtc: string;
+  batchId: string;
+  batchTitle: string;
+  tutorId: string;
+  tutorDisplayName: string | null;
+  totalStudents: number;
+  present: number;
+  absent: number;
+  attendancePercent: number | null;
+  status: 'scheduled' | 'completed' | 'cancelled';
+  cancellationReason: ClassCancellationReason | null;
+}
+
+export interface AcademyStudentAttendanceHistoryRow {
+  id: string;
+  session_id: string;
+  status: 'present' | 'absent' | 'late';
+  joined_at: string | null;
+  method: 'join_tap' | 'manual';
+  batch_id: string;
+  scheduled_start_utc: string;
+}
+
+/** Main > Academic > Attendance > student drill-down. */
+export interface AcademyStudentAttendance {
+  summary: { total: number; present: number; late: number; absent: number; rate: number | null };
+  history: AcademyStudentAttendanceHistoryRow[];
+}
+
+/** Main > Academic > Attendance > batch drill-down (also feeds the Batch
+ *  Detail page's enriched Students tab). */
+export interface AcademyBatchAttendance {
+  batchId: string;
+  students: { studentId: string; displayName: string | null; summary: AcademyAttendanceSummary }[];
+  recentHistory: {
+    id: string;
+    session_id: string;
+    scheduled_start_utc: string;
+    student_id: string;
+    display_name: string | null;
+    status: 'present' | 'absent' | 'late';
+    method: 'join_tap' | 'manual';
+  }[];
 }
 
 /** A tutor's own request to join an academy — all statuses, backs the

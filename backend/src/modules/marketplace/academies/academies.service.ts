@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { AcademiesRepository } from './academies.repository';
@@ -64,6 +65,8 @@ function academySortComparator(
  */
 @Injectable()
 export class AcademiesService {
+  private readonly logger = new Logger(AcademiesService.name);
+
   constructor(
     private readonly academiesRepository: AcademiesRepository,
     private readonly academyLocationsRepository: AcademyLocationsRepository,
@@ -281,10 +284,13 @@ export class AcademiesService {
   }
 
   /** A student or parent reaching out before any relationship exists —
-   *  mirrors DiscoveryService.contactTutor, but does NOT call
-   *  NotificationsService.notify(): no academy-owner user exists yet to
-   *  notify (see migration 0030's doc comment). Leads are visible to
-   *  superadmin only, via AcademyAdminController. */
+   *  mirrors DiscoveryService.contactTutor. Notifies the academy's
+   *  owner if one exists (same "known gap until an owner exists" posture
+   *  as requestToJoin below) — this used to be persist-only because no
+   *  academy-owner user existed yet at all; the Academy Dashboard owner
+   *  role has since shipped, so the lead is now also a real notification,
+   *  not just a superadmin-visible row. Wrapped in try/catch: a
+   *  notification-delivery failure must never fail the lead itself. */
   async contactAcademy(
     slug: string,
     requesterId: string,
@@ -295,12 +301,30 @@ export class AcademiesService {
     if (!academy) {
       throw new NotFoundException('Academy not found');
     }
-    await this.academyContactRequestsRepository.create({
+    const request = await this.academyContactRequestsRepository.create({
       academyId: academy.id,
       requesterId,
       requesterRole,
       message: dto.message ?? null,
     });
+
+    if (academy.owner_user_id) {
+      try {
+        await this.notificationsService.notify({
+          userIds: [academy.owner_user_id],
+          type: 'academy_contact_request_received',
+          title: 'New contact request',
+          body: `A ${requesterRole} wants to connect with your academy.`,
+          payload: { academyId: academy.id, requestId: request.id },
+        });
+      } catch (err) {
+        this.logger.warn(
+          `Failed to notify academy owner of contact request ${request.id}: ${err}`,
+        );
+      }
+    }
+
+    return request;
   }
 
   /** A teacher's own "Teaching under" list — used by their profile page

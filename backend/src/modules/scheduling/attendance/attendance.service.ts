@@ -55,6 +55,17 @@ export class AttendanceService {
       sessionId,
     );
 
+    // Holiday & Teacher Leave feature: a cancelled class (whether a
+    // manual cancel, a declared holiday, or approved teacher leave)
+    // must never produce an attendance row — there's nothing to mark,
+    // and a stray 'absent' here would be a false absence against a
+    // class that never ran.
+    if (session.status === 'cancelled') {
+      throw new BadRequestException(
+        'This class was cancelled — attendance cannot be marked',
+      );
+    }
+
     // A tutor can only mark students actually enrolled in this session's
     // batch — mirrors the same check joinSession() already enforces on
     // the student's own self-check-in path below.

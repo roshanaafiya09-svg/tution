@@ -19,6 +19,8 @@ import { AcademyOwnerBatchesService } from './academy-owner-batches.service';
 import { UpsertAcademyDto } from '../academies/dto/upsert-academy.dto';
 import { AcademyImageUploadUrlDto } from '../academies/dto/academy-image-upload-url.dto';
 import { ReorderAcademyPhotosDto } from '../academies/dto/reorder-academy-photos.dto';
+import { UpdateAcademySettingsDto } from './dto/update-academy-settings.dto';
+import { UpdateContactRequestStatusDto } from './dto/update-contact-request-status.dto';
 
 /**
  * Self-serve Academy Dashboard — class-level guard mirrors
@@ -37,11 +39,39 @@ export class AcademyOwnerController {
   ) {}
 
   /** Every student currently enrolled across the academy's active
-   *  teachers' batches — Classes -> Students, not a top-level nav item
-   *  per the spec (students belong under Classes, not their own section). */
+   *  teachers' batches — the academy-wide student directory backing the
+   *  Main "Students" nav item. Optional filters narrow the in-memory list
+   *  (the roster is bounded to one academy, so no need to push filtering
+   *  into SQL). */
   @Get('me/students')
-  listStudents(@CurrentUser() user: AccessTokenPayload) {
-    return this.academyOwnerBatchesService.listStudentsAcrossAcademy(user.sub);
+  listStudents(
+    @CurrentUser() user: AccessTokenPayload,
+    @Query('q') q?: string,
+    @Query('batchId') batchId?: string,
+    @Query('tutorId') tutorId?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.academyOwnerBatchesService.listStudentsAcrossAcademy(user.sub, {
+      q,
+      batchId,
+      tutorId,
+      status,
+    });
+  }
+
+  /** Single student's detail view — academy-wide, not scoped to one batch.
+   *  Ownership is derived the same way as the list above: the student must
+   *  have an active enrollment in one of the academy's active teachers'
+   *  batches. */
+  @Get('me/students/:studentId')
+  getStudentDetail(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('studentId') studentId: string,
+  ) {
+    return this.academyOwnerBatchesService.getStudentDetail(
+      user.sub,
+      studentId,
+    );
   }
 
   /** Powers Today's "Classes happening today"/"Upcoming Classes" — a
@@ -95,6 +125,17 @@ export class AcademyOwnerController {
     @Body() dto: UpsertAcademyDto,
   ) {
     return this.academyOwnerService.updateProfile(user.sub, dto);
+  }
+
+  @Put('me/settings')
+  updateSettings(
+    @CurrentUser() user: AccessTokenPayload,
+    @Body() dto: UpdateAcademySettingsDto,
+  ) {
+    return this.academyOwnerService.updateSettings(
+      user.sub,
+      dto.autoObserveGovtHolidays,
+    );
   }
 
   @Post('me/logo-upload-url')
@@ -157,6 +198,19 @@ export class AcademyOwnerController {
     return this.academyOwnerService.listRemovedTeachers(user.sub);
   }
 
+  /** Single teacher's detail view — profile, academy membership, teaching
+   *  load, and leave history at this academy. No salary/fees. Registered
+   *  after the literal 'active'/'pending'/'removed' routes above so those
+   *  keep matching first — Nest resolves routes in declaration order, same
+   *  as Express. */
+  @Get('me/teachers/:tutorId')
+  getTeacherDetail(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('tutorId') tutorId: string,
+  ) {
+    return this.academyOwnerService.getTeacherDetail(user.sub, tutorId);
+  }
+
   @Post('me/teachers/:requestId/accept')
   acceptRequest(
     @CurrentUser() user: AccessTokenPayload,
@@ -192,5 +246,18 @@ export class AcademyOwnerController {
     @Param('id') id: string,
   ) {
     return this.academyOwnerService.markContactRequestRead(user.sub, id);
+  }
+
+  @Put('me/contact-requests/:id/status')
+  updateContactRequestStatus(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id') id: string,
+    @Body() dto: UpdateContactRequestStatusDto,
+  ) {
+    return this.academyOwnerService.updateContactRequestStatus(
+      user.sub,
+      id,
+      dto.status,
+    );
   }
 }

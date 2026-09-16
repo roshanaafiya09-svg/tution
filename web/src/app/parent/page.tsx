@@ -67,6 +67,21 @@ function isSessionToday(session: Session, now: Date): boolean {
   return new Date(session.scheduled_start_utc).toDateString() === now.toDateString();
 }
 
+/** Holiday & Teacher Leave feature — see the identical helper in
+ *  dashboard/page.tsx for why this says why rather than just "cancelled". */
+function cancellationBadgeLabel(session: Session): string | null {
+  if (session.status !== 'cancelled') return null;
+  switch (session.cancellation_reason) {
+    case 'government_holiday':
+    case 'academy_holiday':
+      return 'holiday';
+    case 'teacher_leave':
+      return 'leave';
+    default:
+      return null;
+  }
+}
+
 /** A day back (to still catch a class that started earlier today) to two
  *  weeks ahead — same window shape the Teacher/Academy dashboards use for
  *  their own "today's classes" derivation. */
@@ -435,7 +450,12 @@ export default function ParentTodayPage() {
                           {session.tutor_display_name ?? 'Teacher'} · {session.duration_min} min
                         </span>
                       </span>
-                      <StatusBadge status={session.status} />
+                      <StatusBadge status={cancellationBadgeLabel(session) ?? session.status} />
+                      {session.substitute_display_name && (
+                        <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                          Covered by {session.substitute_display_name}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </ParentCard>

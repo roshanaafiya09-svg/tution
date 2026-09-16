@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Kysely } from 'kysely';
 import { KYSELY_CONNECTION } from '../../../database/database.module';
-import type { DB } from '../../../database/types';
+import type { AcademyContactRequestStatus, DB } from '../../../database/types';
 import { newId } from '../../../database/id';
 
 export interface NewAcademyContactRequest {
@@ -13,10 +13,11 @@ export interface NewAcademyContactRequest {
 
 /**
  * "Contact Academy" leads from Find an Academy — mirrors
- * ContactRequestsRepository (teacher_contact_requests) exactly, but
- * persist-only: no academy-owner user exists yet to notify, see
- * migration 0030's doc comment. Surfaced to superadmin only, via
- * AcademyAdminController.
+ * ContactRequestsRepository (teacher_contact_requests). Surfaced to
+ * superadmin via AcademyAdminController, and (since the Academy
+ * Dashboard owner role shipped) to the owning academy admin via
+ * AcademyOwnerService/AcademyOwnerController — AcademiesService.
+ * contactAcademy also notifies the owner when one exists.
  */
 @Injectable()
 export class AcademyContactRequestsRepository {
@@ -59,6 +60,7 @@ export class AcademyContactRequestsRepository {
         'academy_contact_requests.requester_role',
         'academy_contact_requests.message',
         'academy_contact_requests.read_at',
+        'academy_contact_requests.status',
         'academy_contact_requests.created_at',
         'users.email',
         'users.phone_e164',
@@ -73,6 +75,15 @@ export class AcademyContactRequestsRepository {
     return this.db
       .updateTable('academy_contact_requests')
       .set({ read_at: new Date() })
+      .where('id', '=', id)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
+
+  updateStatus(id: string, status: AcademyContactRequestStatus) {
+    return this.db
+      .updateTable('academy_contact_requests')
+      .set({ status })
       .where('id', '=', id)
       .returningAll()
       .executeTakeFirstOrThrow();

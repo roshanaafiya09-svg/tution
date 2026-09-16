@@ -2,6 +2,8 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { NotificationsRepository } from './notifications.repository';
 import { PUSH_PROVIDER } from './push/push-provider.interface';
 import type { PushProvider } from './push/push-provider.interface';
+import { WHATSAPP_PROVIDER } from './whatsapp/whatsapp-provider.interface';
+import type { WhatsAppProvider } from './whatsapp/whatsapp-provider.interface';
 
 export interface NotifyInput {
   userIds: string[];
@@ -18,12 +20,16 @@ export class NotificationsService {
   constructor(
     private readonly repository: NotificationsRepository,
     @Inject(PUSH_PROVIDER) private readonly push: PushProvider,
+    @Inject(WHATSAPP_PROVIDER) private readonly whatsapp: WhatsAppProvider,
   ) {}
 
   /**
-   * Writes the in-app notification rows, then pushes. A dropped push must
+   * Writes the in-app notification rows, then fans out to every other
+   * channel (push, WhatsApp). A dropped delivery on any one channel must
    * never fail the action that triggered it (posting an announcement,
-   * say), so send() errors are caught and logged rather than propagated.
+   * approving a leave request, say), so each send() is caught and
+   * logged independently rather than propagated — one channel failing
+   * never blocks another from trying.
    */
   async notify(input: NotifyInput): Promise<void> {
     if (input.userIds.length === 0) return;
@@ -47,6 +53,21 @@ export class NotificationsService {
     } catch (err) {
       this.logger.error(
         'Push delivery failed',
+        err instanceof Error ? err.stack : err,
+      );
+    }
+
+    try {
+      await this.whatsapp.send(
+        input.userIds.map((userId) => ({
+          userId,
+          title: input.title,
+          body: input.body,
+        })),
+      );
+    } catch (err) {
+      this.logger.error(
+        'WhatsApp delivery failed',
         err instanceof Error ? err.stack : err,
       );
     }

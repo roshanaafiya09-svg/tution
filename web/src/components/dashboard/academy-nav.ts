@@ -1,7 +1,12 @@
 import {
   Building2,
+  Calendar,
   CalendarClock,
+  CalendarDays,
+  CalendarOff,
+  CalendarRange,
   CircleUser,
+  ClipboardCheck,
   GraduationCap,
   Home,
   Images,
@@ -9,6 +14,7 @@ import {
   Settings,
   ShieldCheck,
   Star,
+  UserRound,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -37,6 +43,8 @@ export const ACADEMY_NAV: AcademyNavGroup[] = [
     items: [
       { href: '/academy', label: 'Today', icon: Home, exact: true },
       { href: '/academy/teachers', label: 'Teachers', icon: Users },
+      { href: '/academy/students', label: 'Students', icon: GraduationCap },
+      { href: '/academy/parents', label: 'Parents', icon: UserRound },
       { href: '/academy/contact-requests', label: 'Contact Requests', icon: MessageCircle },
     ],
   },
@@ -50,10 +58,14 @@ export const ACADEMY_NAV: AcademyNavGroup[] = [
     ],
   },
   {
-    label: 'Classes',
+    label: 'Academic',
     items: [
       { href: '/academy/batches', label: 'Batches', icon: CalendarClock },
-      { href: '/academy/students', label: 'Students', icon: GraduationCap },
+      { href: '/academy/timetable', label: 'Timetable', icon: CalendarDays },
+      { href: '/academy/attendance', label: 'Attendance', icon: ClipboardCheck },
+      { href: '/academy/calendar', label: 'Calendar', icon: Calendar },
+      { href: '/academy/leave-requests', label: 'Leave Requests', icon: CalendarOff },
+      { href: '/academy/holidays', label: 'Holidays', icon: CalendarRange },
     ],
   },
 ];

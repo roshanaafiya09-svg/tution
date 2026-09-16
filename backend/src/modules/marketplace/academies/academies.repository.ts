@@ -153,6 +153,27 @@ export class AcademiesRepository {
       .executeTakeFirstOrThrow();
   }
 
+  /** Holiday & Teacher Leave Management (migration 0035) — the academy's
+   *  "Automatically observe [state] Government Holidays" setting. */
+  setAutoObserveGovtHolidays(id: string, enabled: boolean) {
+    return this.db
+      .updateTable('academies')
+      .set({ auto_observe_govt_holidays: enabled })
+      .where('id', '=', id)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
+
+  /** Every academy currently opted into automatic government-holiday
+   *  observance — the daily reminders cron's sweep list. */
+  listAutoObservingGovtHolidays() {
+    return this.db
+      .selectFrom('academies')
+      .selectAll()
+      .where('auto_observe_govt_holidays', '=', true)
+      .execute();
+  }
+
   /** Superadmin list/search — mirrors AdminRepository.listTeachers'
    *  optional-`q` shape. */
   listAll(q?: string) {

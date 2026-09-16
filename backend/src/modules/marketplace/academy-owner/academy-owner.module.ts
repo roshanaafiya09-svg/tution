@@ -8,10 +8,25 @@ import { AcademyMembershipsModule } from '../academy-memberships/academy-members
 import { AcademyReviewsModule } from '../academy-reviews/academy-reviews.module';
 import { NotificationsModule } from '../../notifications/notifications.module';
 import { CatalogModule } from '../../catalog/catalog.module';
+import { HolidaysModule } from '../../holidays/holidays.module';
 import { AcademyOwnerController } from './academy-owner.controller';
 import { AcademyOwnerService } from './academy-owner.service';
 import { AcademyOwnerBatchesController } from './academy-owner-batches.controller';
 import { AcademyOwnerBatchesService } from './academy-owner-batches.service';
+import { AcademyOwnerLeaveController } from './academy-owner-leave.controller';
+import { AcademyOwnerLeaveService } from './academy-owner-leave.service';
+import { AcademyOwnerHolidaysController } from './academy-owner-holidays.controller';
+import { AcademyOwnerHolidaysService } from './academy-owner-holidays.service';
+import { AcademyOwnerParentsController } from './academy-owner-parents.controller';
+import { AcademyOwnerParentsService } from './academy-owner-parents.service';
+import { AcademyOwnerParentsRepository } from './academy-owner-parents.repository';
+import { AcademyOwnerAttendanceController } from './academy-owner-attendance.controller';
+import { AcademyOwnerAttendanceService } from './academy-owner-attendance.service';
+import { AcademyOwnerAnnouncementsController } from './academy-owner-announcements.controller';
+import { AcademyOwnerAnnouncementsService } from './academy-owner-announcements.service';
+import { AcademyAnnouncementsRepository } from './academy-announcements.repository';
+import { AcademyOwnerReportsController } from './academy-owner-reports.controller';
+import { AcademyOwnerReportsService } from './academy-owner-reports.service';
 
 /**
  * The self-serve Academy Dashboard (migration 0031) — closes the gap
@@ -34,8 +49,29 @@ import { AcademyOwnerBatchesService } from './academy-owner-batches.service';
     StorageModule,
     NotificationsModule,
     CatalogModule,
+    HolidaysModule,
   ],
-  controllers: [AcademyOwnerController, AcademyOwnerBatchesController],
-  providers: [AcademyOwnerService, AcademyOwnerBatchesService],
+  controllers: [
+    AcademyOwnerController,
+    AcademyOwnerBatchesController,
+    AcademyOwnerLeaveController,
+    AcademyOwnerHolidaysController,
+    AcademyOwnerParentsController,
+    AcademyOwnerAttendanceController,
+    AcademyOwnerAnnouncementsController,
+    AcademyOwnerReportsController,
+  ],
+  providers: [
+    AcademyOwnerService,
+    AcademyOwnerBatchesService,
+    AcademyOwnerLeaveService,
+    AcademyOwnerHolidaysService,
+    AcademyOwnerParentsService,
+    AcademyOwnerParentsRepository,
+    AcademyOwnerAttendanceService,
+    AcademyOwnerAnnouncementsService,
+    AcademyAnnouncementsRepository,
+    AcademyOwnerReportsService,
+  ],
 })
 export class AcademyOwnerModule {}

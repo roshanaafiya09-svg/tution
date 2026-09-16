@@ -83,6 +83,22 @@ function isToday(session: Session): boolean {
   return start.toDateString() === now.toDateString();
 }
 
+/** Holiday & Teacher Leave feature: a cancelled session's status badge
+ *  says *why* rather than a generic "cancelled" — matches the spec's
+ *  explicit status vocabulary (Holiday, Cancelled, Substitute Assigned). */
+function cancellationBadgeLabel(session: Session): string | null {
+  if (session.status !== 'cancelled') return null;
+  switch (session.cancellation_reason) {
+    case 'government_holiday':
+    case 'academy_holiday':
+      return 'holiday';
+    case 'teacher_leave':
+      return 'leave';
+    default:
+      return null;
+  }
+}
+
 const NOTIFICATION_ICON: Record<string, { icon: LucideIcon; tone: ActivityItem['tone'] }> = {
   new_message: { icon: MessageSquareText, tone: 'info' },
 };
@@ -496,7 +512,12 @@ export default function TodayPage() {
                         {students !== null ? ` · ${students} student${students === 1 ? '' : 's'}` : ''}
                       </span>
                     </span>
-                    <StatusBadge status={session.status} />
+                    <StatusBadge status={cancellationBadgeLabel(session) ?? session.status} />
+                    {session.substitute_display_name && (
+                      <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                        Covered by {session.substitute_display_name}
+                      </span>
+                    )}
                     <span className="flex shrink-0 flex-wrap items-center gap-2">
                       {safeHref(session.meeting_url) && session.status === 'scheduled' && (
                         <a

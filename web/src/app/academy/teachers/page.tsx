@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { UserMinus, UserCheck, UserX, Users } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AcademyActiveTeacher, AcademyPendingRequest, AcademyRemovedTeacher } from '@/lib/types';
@@ -20,6 +21,7 @@ const TABS: { key: Tab; label: string }[] = [
 
 export default function AcademyTeachersPage() {
   const toast = useToast();
+  const router = useRouter();
   const { hasAcademy } = useAcademyDashboard();
   const [tab, setTab] = useState<Tab>('active');
   const [active, setActive] = useState<AcademyActiveTeacher[] | null>(null);
@@ -121,7 +123,12 @@ export default function AcademyTeachersPage() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {active.map((t) => (
-              <AcademyCard key={t.membershipId} className="flex items-start gap-3">
+              <AcademyCard
+                key={t.membershipId}
+                interactive
+                onClick={() => router.push(`/academy/teachers/${t.tutorId}`)}
+                className="flex items-start gap-3"
+              >
                 <Avatar name={t.displayName} url={t.avatarUrl} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
@@ -140,13 +147,17 @@ export default function AcademyTeachersPage() {
                       href={`/t/${t.slug}`}
                       target="_blank"
                       rel="noreferrer"
+                      onClick={(e) => e.stopPropagation()}
                       className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-300"
                     >
                       View Profile
                     </a>
                     <button
                       type="button"
-                      onClick={() => setConfirmTarget({ kind: 'remove', id: t.membershipId, name: t.displayName ?? 'This teacher' })}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmTarget({ kind: 'remove', id: t.membershipId, name: t.displayName ?? 'This teacher' });
+                      }}
                       className="flex items-center gap-1 text-xs font-medium text-error hover:underline dark:text-error-dark"
                     >
                       <UserMinus className="h-3 w-3" aria-hidden />

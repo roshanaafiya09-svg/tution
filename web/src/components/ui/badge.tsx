@@ -42,6 +42,9 @@ const STATUS_STYLES: Record<string, string> = {
   overdue: 'bg-error-bg text-error dark:bg-error/15 dark:text-error-dark',
   under_review: 'bg-info-bg text-info dark:bg-info/15 dark:text-info-dark',
   needs_manual_review: 'bg-warning-bg text-warning dark:bg-warning/15 dark:text-warning-dark',
+  holiday: 'bg-info-bg text-info dark:bg-info/15 dark:text-info-dark',
+  leave: 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400',
+  'substitute assigned': 'bg-info-bg text-info dark:bg-info/15 dark:text-info-dark',
 };
 
 const DOT_STYLES: Record<string, string> = {

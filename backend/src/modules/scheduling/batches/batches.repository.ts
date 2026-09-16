@@ -123,9 +123,8 @@ export class BatchesRepository {
   /** Bulk sibling of listEnrollments — every enrollment (active or left)
    *  across a set of batch ids in one grouped query, backing the Teacher
    *  Dashboard's roster load (previously one /batches/:id/students call
-   *  per batch). Unlike listEnrollmentsForTutors, this intentionally
-   *  includes non-active enrollments — the roster marks former students
-   *  as "left" rather than dropping them. */
+   *  per batch) — the roster marks former students as "left" rather than
+   *  dropping them. */
   listEnrollmentsForBatches(batchIds: string[]) {
     return this.db
       .selectFrom('enrollments')
@@ -151,6 +150,37 @@ export class BatchesRepository {
       )
       .orderBy('enrollments.joined_at')
       .execute();
+  }
+
+  /** Distinct students enrolled (active) across a specific set of
+   *  batches — Holiday & Teacher Leave feature's batch-scoped holiday
+   *  notification targeting (only those batches' students/parents, not
+   *  the whole academy). */
+  async listDistinctStudentIdsForBatches(
+    batchIds: string[],
+  ): Promise<string[]> {
+    if (batchIds.length === 0) return [];
+    const rows = await this.db
+      .selectFrom('enrollments')
+      .select('student_id')
+      .distinct()
+      .where('batch_id', 'in', batchIds)
+      .where('status', '=', 'active')
+      .execute();
+    return rows.map((r) => r.student_id);
+  }
+
+  /** Distinct owning tutors across a set of batches — same batch-scoped
+   *  holiday feature, for notifying only the relevant teacher(s). */
+  async listDistinctTutorIdsForBatches(batchIds: string[]): Promise<string[]> {
+    if (batchIds.length === 0) return [];
+    const rows = await this.db
+      .selectFrom('batches')
+      .select('tutor_id')
+      .distinct()
+      .where('id', 'in', batchIds)
+      .execute();
+    return rows.map((r) => r.tutor_id);
   }
 
   findEnrollment(batchId: string, studentId: string) {
@@ -311,11 +341,14 @@ export class BatchesRepository {
       .execute();
   }
 
-  /** Every active enrollment across a set of tutors' batches, joined with
-   *  the student's identity and batch title — backs the Academy
-   *  Dashboard's Students page (Classes -> Students). */
-  listEnrollmentsForTutors(tutorIds: string[]) {
-    return this.db
+  /** Every enrollment across a set of tutors' batches, joined with the
+   *  student's identity, grade, and batch title — backs the Academy
+   *  Dashboard's academy-wide Students directory (Main > Students). Omit
+   *  `status` for every enrollment (active and left, like
+   *  listEnrollmentsForBatches); pass it to narrow to one status — the
+   *  Students page's default view. */
+  listEnrollmentsForTutors(tutorIds: string[], status?: 'active' | 'left') {
+    let query = this.db
       .selectFrom('enrollments')
       .innerJoin('batches', 'batches.id', 'enrollments.batch_id')
       .innerJoin('users', 'users.id', 'enrollments.student_id')
@@ -332,17 +365,21 @@ export class BatchesRepository {
         'batches.id as batch_id',
         'batches.title as batch_title',
         'batches.tutor_id',
+        'batches.subject_id',
+        'batches.grade_level_id',
         'users.phone_e164',
         'profiles_student.display_name',
+        'profiles_student.grade_level',
       ])
       .where(
         'batches.tutor_id',
         'in',
         tutorIds.length ? tutorIds : ['00000000-0000-0000-0000-000000000000'],
-      )
-      .where('enrollments.status', '=', 'active')
-      .orderBy('enrollments.joined_at', 'desc')
-      .execute();
+      );
+    if (status) {
+      query = query.where('enrollments.status', '=', status);
+    }
+    return query.orderBy('enrollments.joined_at', 'desc').execute();
   }
 
   listOpenWithSeatsForTutors(tutorIds: string[]) {

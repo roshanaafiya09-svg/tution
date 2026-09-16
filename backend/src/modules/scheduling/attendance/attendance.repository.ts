@@ -343,6 +343,91 @@ export class AttendanceRepository {
     return rows.map((r) => r.parent_id);
   }
 
+  /** Reverse of listActiveParentIdsForStudent — a parent's own actively-
+   *  linked children. Holiday & Teacher Leave feature's parent-facing
+   *  "which academies are relevant to me" resolution. */
+  async listActiveChildIdsForParent(parentId: string): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom('parent_child_links')
+      .select('student_id')
+      .where('parent_id', '=', parentId)
+      .where('status', '=', 'active')
+      .execute();
+    return rows.map((r) => r.student_id);
+  }
+
+  /** Bulk sibling of listActiveParentIdsForStudent — the Holiday &
+   *  Teacher Leave feature resolves an affected class's whole roster in
+   *  one shot rather than one query per student. */
+  async listActiveParentIdsForStudents(
+    studentIds: string[],
+  ): Promise<string[]> {
+    if (studentIds.length === 0) return [];
+    const rows = await this.db
+      .selectFrom('parent_child_links')
+      .select('parent_id')
+      .distinct()
+      .where('student_id', 'in', studentIds)
+      .where('status', '=', 'active')
+      .execute();
+    return rows.map((r) => r.parent_id);
+  }
+
+  /** Bulk sibling of summaryForStudentBetween — the Academy Dashboard
+   *  Reports "Students" report needs one attendance-rate row per student
+   *  across a date range; this is the same grouped-aggregate query keyed
+   *  by student_id in one round trip instead of looping
+   *  summaryForStudentBetween per student. */
+  async summaryForStudentsBetween(studentIds: string[], from: Date, to: Date) {
+    if (studentIds.length === 0) return [];
+    const rows = await this.db
+      .selectFrom('attendance')
+      .innerJoin('class_sessions', 'class_sessions.id', 'attendance.session_id')
+      .select((eb) => [
+        'attendance.student_id',
+        eb.fn.countAll().as('total'),
+        eb.fn
+          .sum(
+            eb
+              .case()
+              .when('attendance.status', '=', 'present')
+              .then(1)
+              .else(0)
+              .end(),
+          )
+          .as('present'),
+        eb.fn
+          .sum(
+            eb
+              .case()
+              .when('attendance.status', '=', 'late')
+              .then(1)
+              .else(0)
+              .end(),
+          )
+          .as('late'),
+      ])
+      .where('attendance.student_id', 'in', studentIds)
+      .where('class_sessions.scheduled_start_utc', '>=', from)
+      .where('class_sessions.scheduled_start_utc', '<', to)
+      .groupBy('attendance.student_id')
+      .execute();
+
+    return rows.map((row) => {
+      const total = Number(row.total);
+      const present = Number(row.present ?? 0);
+      const late = Number(row.late ?? 0);
+      return {
+        studentId: row.student_id,
+        total,
+        present,
+        late,
+        absent: total - present - late,
+        rate: total === 0 ? null : Math.round(((present + late) / total) * 100),
+      };
+    });
+  }
+
   /** Attendance % and counts for a student in one batch — feeds the student progress view. */
   async summaryForStudent(studentId: string, batchId: string) {
     const row = await this.db

@@ -7,9 +7,12 @@ import {
   Building2,
   CalendarClock,
   CalendarDays,
+  CalendarOff,
+  ClipboardCheck,
   GraduationCap,
   Images,
   MessageCircle,
+  PartyPopper,
   ShieldCheck,
   Star,
   UserCheck,
@@ -19,9 +22,12 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { GREETING, dayPeriod, todayLabel } from '@/lib/greeting';
 import { useCachedFetch } from '@/lib/use-cached-fetch';
+import { cancellationBadgeLabel, isToday, sessionDateTime, sessionTime } from '@/lib/session-labels';
 import type {
   AcademyActiveTeacher,
+  AcademyAttendanceTodaySummary,
   AcademyKycVerificationStatus,
+  AcademyLeaveRequest,
   AcademyManagedBatch,
   AcademyOwnerProfile,
   AcademyOwnerStats,
@@ -29,6 +35,7 @@ import type {
   AcademyPhoto,
   AcademyTodaySession,
   ContactRequest,
+  EffectiveHolidays,
   Review,
   Subject,
 } from '@/lib/types';
@@ -52,28 +59,6 @@ function academyContextLine(
   return parts.join(' · ');
 }
 
-function isToday(session: AcademyTodaySession): boolean {
-  return new Date(session.scheduledStartUtc).toDateString() === new Date().toDateString();
-}
-
-function sessionTime(session: AcademyTodaySession): string {
-  return new Date(session.scheduledStartUtc).toLocaleTimeString('en-IN', {
-    timeZone: session.timezone,
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
-
-function sessionDateTime(session: AcademyTodaySession): string {
-  return new Date(session.scheduledStartUtc).toLocaleString('en-IN', {
-    timeZone: session.timezone,
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
 
 interface AcademyBundle {
   profile: AcademyOwnerProfile;
@@ -87,6 +72,9 @@ interface AcademyBundle {
   photos: AcademyPhoto[];
   kyc: AcademyKycVerificationStatus | null;
   reviews: Review[];
+  pendingLeaveRequests: AcademyLeaveRequest[];
+  todaysHolidays: EffectiveHolidays;
+  attendanceToday: AcademyAttendanceTodaySummary | null;
 }
 
 export default function AcademyTodayPage() {
@@ -96,6 +84,7 @@ export default function AcademyTodayPage() {
     if (hasAcademy === false) return null;
     try {
       const profileRes = await api.get<AcademyOwnerProfile>('/academy/me');
+      const today = new Date().toISOString().slice(0, 10);
       const [
         statsRes,
         pendingRes,
@@ -107,6 +96,9 @@ export default function AcademyTodayPage() {
         photosRes,
         kycRes,
         reviewsRes,
+        pendingLeaveRes,
+        todaysHolidaysRes,
+        attendanceTodayRes,
       ] = await Promise.all([
         api.get<AcademyOwnerStats>('/academy/me/stats'),
         api.get<AcademyPendingRequest[]>('/academy/me/teachers/pending').catch(() => [] as AcademyPendingRequest[]),
@@ -121,6 +113,11 @@ export default function AcademyTodayPage() {
           .get<{ reviews: Review[] }>(`/marketplace/academy-reviews/academy/${profileRes.id}`)
           .then((r) => r.reviews)
           .catch(() => [] as Review[]),
+        api.get<AcademyLeaveRequest[]>('/academy/me/leave-requests/pending').catch(() => [] as AcademyLeaveRequest[]),
+        api
+          .get<EffectiveHolidays>(`/academy/me/holidays?from=${today}&to=${today}`)
+          .catch(() => ({ governmentHolidays: [], academyHolidays: [] }) as EffectiveHolidays),
+        api.get<AcademyAttendanceTodaySummary>('/academy/me/attendance/today').catch(() => null),
       ]);
       return {
         profile: profileRes,
@@ -134,6 +131,9 @@ export default function AcademyTodayPage() {
         photos: photosRes,
         kyc: kycRes,
         reviews: reviewsRes,
+        pendingLeaveRequests: pendingLeaveRes,
+        todaysHolidays: todaysHolidaysRes,
+        attendanceToday: attendanceTodayRes,
       };
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) return null;
@@ -154,6 +154,9 @@ export default function AcademyTodayPage() {
   const photos = bundle?.photos ?? [];
   const kyc = bundle?.kyc ?? null;
   const reviews = bundle?.reviews ?? [];
+  const pendingLeaveRequests = bundle?.pendingLeaveRequests ?? [];
+  const todaysHolidays = bundle?.todaysHolidays ?? { governmentHolidays: [], academyHolidays: [] };
+  const attendanceToday = bundle?.attendanceToday ?? null;
 
   if (hasAcademy === false) {
     return <WelcomeCard period={dayPeriod(new Date())} />;
@@ -245,6 +248,41 @@ export default function AcademyTodayPage() {
       tone: 'info',
     });
   }
+  if (pendingLeaveRequests.length > 0) {
+    actionItems.push({
+      key: 'leave',
+      href: '/academy/leave-requests',
+      icon: CalendarOff,
+      label: `${pendingLeaveRequests.length} pending leave ${pendingLeaveRequests.length === 1 ? 'request' : 'requests'}`,
+      meta: 'Approve or reject before affected classes start',
+      tone: 'info',
+    });
+  }
+
+  /** Holiday & Teacher Leave feature — a compact grouped summary of the
+   *  same per-session cancellation/substitute data already shown inline in
+   *  Upcoming Classes above, so admins get a "what's different about today"
+   *  rollup without re-reading every row. Only ever built from today's
+   *  sessions — no separate endpoint. */
+  const teacherLeaveToday = Array.from(
+    todaySessions
+      .filter((s) => s.cancellationReason === 'teacher_leave' || s.substituteTutorId != null)
+      .reduce((map, s) => {
+        const entry = map.get(s.tutorId) ?? {
+          tutorId: s.tutorId,
+          teacherName: s.tutorDisplayName ?? 'A teacher',
+          affectedCount: 0,
+          substituteName: s.substituteDisplayName ?? null,
+        };
+        entry.affectedCount += 1;
+        if (s.substituteDisplayName) entry.substituteName = s.substituteDisplayName;
+        map.set(s.tutorId, entry);
+        return map;
+      }, new Map<string, { tutorId: string; teacherName: string; affectedCount: number; substituteName: string | null }>())
+      .values(),
+  );
+
+  const todaysHolidayName = todaysHolidays.governmentHolidays[0]?.name ?? todaysHolidays.academyHolidays[0]?.name ?? null;
 
   const activity: ActivityItem[] = [
     ...activeTeachers.map((t) => ({
@@ -300,6 +338,15 @@ export default function AcademyTodayPage() {
         </AcademyHero>
       </div>
 
+      {todaysHolidayName && (
+        <div className="animate-fade-up rounded-xl border border-info-bg bg-info-bg/60 px-4 py-3 dark:border-info/20 dark:bg-info/10" style={{ animationDelay: '30ms' }}>
+          <p className="flex items-center gap-2 text-sm font-medium text-info dark:text-info-dark">
+            <PartyPopper className="h-4 w-4" aria-hidden />
+            Holiday — Today is {todaysHolidayName}
+          </p>
+        </div>
+      )}
+
       <section className="animate-fade-up" style={{ animationDelay: '60ms' }}>
         <SectionHeader eyebrow="Overview" title="Today's summary" />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -308,7 +355,53 @@ export default function AcademyTodayPage() {
           <StatCard icon={GraduationCap} label="Students attending today" value={studentsToday} />
           <StatCard icon={MessageCircle} label="Pending contact requests" value={stats.unreadContactRequestCount} />
         </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            icon={CalendarClock}
+            label="Active batches today"
+            value={new Set(todaySessions.filter((s) => s.status !== 'cancelled').map((s) => s.batchId)).size}
+          />
+          <StatCard
+            icon={UserCheck}
+            label="Teachers teaching today"
+            value={new Set(todaySessions.filter((s) => s.status !== 'cancelled').map((s) => s.tutorId)).size}
+          />
+          <StatCard
+            icon={ClipboardCheck}
+            label="Today's attendance"
+            value={attendanceToday?.attendancePercent == null ? '—' : `${attendanceToday.attendancePercent}%`}
+          />
+        </div>
       </section>
+
+      {teacherLeaveToday.length > 0 && (
+        <section className="animate-fade-up" style={{ animationDelay: '80ms' }}>
+          <SectionHeader eyebrow="Today" title="Teacher leave" />
+          <div className="grid gap-3 sm:grid-cols-2">
+            {teacherLeaveToday.map((entry) => (
+              <AcademyCard key={entry.tutorId} className="flex items-start gap-3">
+                <CalendarOff className="mt-0.5 h-4 w-4 shrink-0 text-neutral-400" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{entry.teacherName}</p>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    {entry.affectedCount} affected {entry.affectedCount === 1 ? 'class' : 'classes'}
+                  </p>
+                  <div className="mt-1.5">
+                    {entry.substituteName ? (
+                      <StatusBadge status="substitute assigned" />
+                    ) : (
+                      <StatusBadge status="cancelled" />
+                    )}
+                  </div>
+                  {entry.substituteName && (
+                    <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">Covered by {entry.substituteName}</p>
+                  )}
+                </div>
+              </AcademyCard>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="animate-fade-up" style={{ animationDelay: '100ms' }}>
         <SectionHeader eyebrow="Your classroom" title="Upcoming classes" action={{ href: '/academy/batches', label: 'All batches' }} />
@@ -335,7 +428,12 @@ export default function AcademyTodayPage() {
                       {session.tutorDisplayName ?? 'Teacher'} · {session.durationMin} min
                     </span>
                   </span>
-                  <StatusBadge status={session.status} />
+                  <StatusBadge status={cancellationBadgeLabel(session) ?? session.status} />
+                  {session.substituteDisplayName && (
+                    <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                      Covered by {session.substituteDisplayName}
+                    </span>
+                  )}
                   <Link
                     href={`/academy/batches/${session.batchId}`}
                     className="shrink-0 text-sm font-medium text-brand-600 hover:underline dark:text-brand-300"

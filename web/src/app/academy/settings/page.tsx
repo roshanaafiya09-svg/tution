@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Building2, CircleUser, ShieldCheck } from 'lucide-react';
+import { Building2, CalendarRange, CircleUser, ShieldCheck } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AcademyOwnerProfile } from '@/lib/types';
-import { CardSkeleton, ErrorState, StatusBadge } from '@/components/ui';
+import { CardSkeleton, ErrorState, Field, Select, StatusBadge, useToast } from '@/components/ui';
 import { AcademyCard, AcademyPageIntro, AcademySectionHeader, AcademySetupRequired } from '@/components/academy';
 import { useAcademyDashboard } from '@/components/academy-shell';
 
@@ -16,9 +16,11 @@ const VERIFICATION_COPY: Record<string, string> = {
 };
 
 export default function AcademySettingsPage() {
+  const toast = useToast();
   const { hasAcademy } = useAcademyDashboard();
   const [profile, setProfile] = useState<AcademyOwnerProfile | null>(null);
   const [loadError, setLoadError] = useState(false);
+  const [savingHolidaySetting, setSavingHolidaySetting] = useState(false);
 
   const load = useCallback(async () => {
     if (hasAcademy === false) return;
@@ -33,6 +35,22 @@ export default function AcademySettingsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function updateAutoObserveGovtHolidays(enabled: boolean) {
+    if (!profile) return;
+    setSavingHolidaySetting(true);
+    const previous = profile.autoObserveGovtHolidays;
+    setProfile({ ...profile, autoObserveGovtHolidays: enabled });
+    try {
+      await api.put('/academy/me/settings', { autoObserveGovtHolidays: enabled });
+      toast({ title: enabled ? 'Government holidays will now apply automatically' : 'Government holidays turned off', variant: 'success' });
+    } catch {
+      setProfile({ ...profile, autoObserveGovtHolidays: previous });
+      toast({ title: 'Could not save that setting', variant: 'error' });
+    } finally {
+      setSavingHolidaySetting(false);
+    }
+  }
 
   return (
     <div>
@@ -63,6 +81,32 @@ export default function AcademySettingsPage() {
                   className="mt-2 inline-block text-sm font-medium text-brand-600 hover:underline dark:text-brand-300"
                 >
                   Manage verification
+                </Link>
+              </div>
+            </AcademyCard>
+
+            <AcademySectionHeader title="Holidays" className="mt-8" />
+            <AcademyCard className="mb-8 flex items-start gap-3">
+              <CalendarRange className="mt-0.5 h-5 w-5 shrink-0 text-brand-500 dark:text-brand-300" aria-hidden />
+              <div className="min-w-0 flex-1">
+                <Field
+                  label="Automatically observe government holidays"
+                  hint={`Applies ${profile.stateCode} government holidays to your academy's schedule automatically. Off by default — you can still declare your own holidays any time from Holidays.`}
+                >
+                  <Select
+                    value={profile.autoObserveGovtHolidays ? 'on' : 'off'}
+                    onChange={(e) => void updateAutoObserveGovtHolidays(e.target.value === 'on')}
+                    disabled={savingHolidaySetting}
+                  >
+                    <option value="off">Off</option>
+                    <option value="on">On</option>
+                  </Select>
+                </Field>
+                <Link
+                  href="/academy/holidays"
+                  className="mt-2 inline-block text-sm font-medium text-brand-600 hover:underline dark:text-brand-300"
+                >
+                  Manage holidays
                 </Link>
               </div>
             </AcademyCard>

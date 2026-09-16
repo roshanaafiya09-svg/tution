@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -27,6 +28,13 @@ export class SessionsService {
       dto.recurrenceRule ?? null,
     );
 
+    await this.assertNoConflicts(
+      tutorId,
+      dto.batchId,
+      occurrences,
+      dto.durationMin,
+    );
+
     return this.repository.createSeries(
       occurrences.map((scheduledStartUtc) => ({
         batchId: dto.batchId,
@@ -39,6 +47,38 @@ export class SessionsService {
         recurrenceParentId: null,
       })),
     );
+  }
+
+  /** Checked before creating a session (or every occurrence of a
+   *  recurring series) — a scheduled class must not overlap another
+   *  scheduled class for the same tutor, nor another scheduled class for
+   *  the same batch. Sequential per-occurrence checks (rather than one
+   *  batched query) mirror the existing per-session loop
+   *  TeacherLeaveService.applySubstitute already uses for the same kind
+   *  of overlap check. */
+  private async assertNoConflicts(
+    tutorId: string,
+    batchId: string,
+    occurrences: Date[],
+    durationMin: number,
+  ): Promise<void> {
+    for (const start of occurrences) {
+      const end = new Date(start.getTime() + durationMin * 60_000);
+      const [tutorConflict, batchConflict] = await Promise.all([
+        this.repository.hasScheduledOverlapForTutor(tutorId, start, end),
+        this.repository.hasScheduledOverlapForBatch(batchId, start, end),
+      ]);
+      if (tutorConflict) {
+        throw new BadRequestException(
+          `This teacher already has a class scheduled at ${start.toISOString()}`,
+        );
+      }
+      if (batchConflict) {
+        throw new BadRequestException(
+          `This batch already has a class scheduled at ${start.toISOString()}`,
+        );
+      }
+    }
   }
 
   async listForBatch(tutorId: string, batchId: string) {
@@ -92,7 +132,7 @@ export class SessionsService {
       return { cancelled: 'series' as const };
     }
 
-    await this.repository.updateStatus(sessionId, 'cancelled');
+    await this.repository.setHolidayOrLeaveCancellation(sessionId, 'manual');
     return { cancelled: 'single' as const };
   }
 

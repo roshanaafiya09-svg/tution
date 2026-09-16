@@ -10,6 +10,8 @@ import { BatchesService } from '../../scheduling/batches/batches.service';
 import { SessionsService } from '../../scheduling/sessions/sessions.service';
 import { SessionsRepository } from '../../scheduling/sessions/sessions.repository';
 import { InvitesService } from '../../scheduling/invites/invites.service';
+import { AttendanceRepository } from '../../scheduling/attendance/attendance.repository';
+import { AcademyOwnerParentsRepository } from './academy-owner-parents.repository';
 import type { CreateBatchDto } from '../../scheduling/batches/dto/create-batch.dto';
 import type { UpdateBatchDto } from '../../scheduling/batches/dto/update-batch.dto';
 import type { CreateSessionDto } from '../../scheduling/sessions/dto/create-session.dto';
@@ -38,6 +40,8 @@ export class AcademyOwnerBatchesService {
     private readonly sessionsService: SessionsService,
     private readonly sessionsRepository: SessionsRepository,
     private readonly invitesService: InvitesService,
+    private readonly attendanceRepository: AttendanceRepository,
+    private readonly academyOwnerParentsRepository: AcademyOwnerParentsRepository,
   ) {}
 
   private async resolveOwnAcademy(ownerUserId: string) {
@@ -222,20 +226,53 @@ export class AcademyOwnerBatchesService {
       timezone: r.timezone,
       durationMin: r.duration_min,
       status: r.status,
+      cancellationReason: r.cancellation_reason,
+      substituteTutorId: r.substitute_tutor_id,
+      substituteDisplayName: r.substitute_display_name,
     }));
   }
 
-  async listStudentsAcrossAcademy(ownerUserId: string) {
+  /** Academy-wide student directory (Main > Students). `filters.status`
+   *  defaults to 'active' (the page's default view, matching this
+   *  endpoint's original behavior); pass status:'left' or omit filters
+   *  entirely for the "Inactive" / "All" views. `q`/`batchId`/`tutorId`
+   *  narrow the already-fetched rows in-memory — one academy's roster is a
+   *  bounded dataset, no need to push filtering into SQL. */
+  async listStudentsAcrossAcademy(
+    ownerUserId: string,
+    filters?: {
+      q?: string;
+      batchId?: string;
+      tutorId?: string;
+      status?: string;
+    },
+  ) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
     const activeTeachers =
       await this.academyMembershipsRepository.listActiveForAcademy(academy.id);
     const teacherNames = new Map(
       activeTeachers.map((t) => [t.tutor_id, t.display_name]),
     );
+    const status =
+      filters?.status === 'active' || filters?.status === 'left'
+        ? filters.status
+        : filters?.status === 'all'
+          ? undefined
+          : 'active';
     const rows = await this.batchesRepository.listEnrollmentsForTutors(
       activeTeachers.map((t) => t.tutor_id),
+      status,
     );
-    return rows.map((r) => ({
+
+    const q = filters?.q?.trim().toLowerCase();
+    const filtered = rows.filter((r) => {
+      if (q && !(r.display_name ?? '').toLowerCase().includes(q)) return false;
+      if (filters?.batchId && r.batch_id !== filters.batchId) return false;
+      if (filters?.tutorId && r.tutor_id !== filters.tutorId) return false;
+      return true;
+    });
+
+    return filtered.map((r) => ({
       enrollmentId: r.enrollment_id,
       studentId: r.student_id,
       displayName: r.display_name,
@@ -246,6 +283,77 @@ export class AcademyOwnerBatchesService {
       batchTitle: r.batch_title,
       tutorId: r.tutor_id,
       tutorDisplayName: teacherNames.get(r.tutor_id) ?? null,
+      subjectId: r.subject_id,
+      gradeLevelId: r.grade_level_id,
+      gradeLevel: r.grade_level,
     }));
+  }
+
+  /** Single student's detail view (Main > Students > :id) — every
+   *  enrollment this student has across the academy's active teachers'
+   *  batches (any status, so a student who left one batch but is active in
+   *  another still shows correctly), plus linked parent(s)
+   *  (AcademyOwnerParentsRepository, same table the Parents feature reads)
+   *  and a per-batch attendance summary. 404s if the student has no
+   *  enrollment anywhere in this academy — the same ownership boundary
+   *  listStudentsAcrossAcademy enforces implicitly by only ever listing
+   *  this academy's own roster. */
+  async getStudentDetail(ownerUserId: string, studentId: string) {
+    const academy = await this.resolveOwnAcademy(ownerUserId);
+    const activeTeachers =
+      await this.academyMembershipsRepository.listActiveForAcademy(academy.id);
+    const teacherNames = new Map(
+      activeTeachers.map((t) => [t.tutor_id, t.display_name]),
+    );
+    const rows = await this.batchesRepository.listEnrollmentsForTutors(
+      activeTeachers.map((t) => t.tutor_id),
+    );
+    const enrollments = rows.filter((r) => r.student_id === studentId);
+    if (enrollments.length === 0) {
+      throw new NotFoundException(
+        "That student isn't enrolled with your academy",
+      );
+    }
+
+    const [links, attendanceSummaries] = await Promise.all([
+      this.academyOwnerParentsRepository.listActiveLinksForStudents([
+        studentId,
+      ]),
+      Promise.all(
+        enrollments.map(async (e) => ({
+          batchId: e.batch_id,
+          summary: await this.attendanceRepository
+            .summaryForStudent(studentId, e.batch_id)
+            .catch(() => null),
+        })),
+      ),
+    ]);
+
+    const first = enrollments[0];
+    return {
+      studentId,
+      displayName: first.display_name,
+      phoneE164: first.phone_e164,
+      gradeLevel: first.grade_level,
+      enrollments: enrollments.map((e) => ({
+        enrollmentId: e.enrollment_id,
+        batchId: e.batch_id,
+        batchTitle: e.batch_title,
+        subjectId: e.subject_id,
+        gradeLevelId: e.grade_level_id,
+        tutorId: e.tutor_id,
+        tutorDisplayName: teacherNames.get(e.tutor_id) ?? null,
+        status: e.status,
+        joinedAt: e.joined_at,
+        attendance:
+          attendanceSummaries.find((a) => a.batchId === e.batch_id)?.summary ??
+          null,
+      })),
+      parents: links.map((l) => ({
+        parentId: l.parent_id,
+        phoneE164: l.phone_e164,
+        email: l.email,
+      })),
+    };
   }
 }

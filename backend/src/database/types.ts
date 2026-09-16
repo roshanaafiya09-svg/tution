@@ -207,6 +207,9 @@ export interface InvitesTable {
   updated_at: GeneratedTimestamp;
 }
 
+export type ClassSessionCancellationReason =
+  'government_holiday' | 'academy_holiday' | 'teacher_leave' | 'manual';
+
 export interface ClassSessionsTable {
   id: string;
   batch_id: string;
@@ -218,6 +221,38 @@ export interface ClassSessionsTable {
   recurrence_rule: string | null;
   recurrence_parent_id: string | null;
   status: Generated<'scheduled' | 'completed' | 'cancelled'>;
+  /** Set alongside status='cancelled' to say *why* — a holiday/leave-
+   *  cancelled session is still just `status: 'cancelled'` everywhere
+   *  else in the codebase; this is the one additional signal the
+   *  Holiday & Leave feature reads/writes. Null for a plain manual
+   *  tutor cancellation predating this feature. All four columns below
+   *  are nullable with no DB default other than NULL, so — like
+   *  UsersTable.email above — they're optional on insert via this
+   *  ColumnType form; existing callers (e.g. SessionsRepository.
+   *  createSeries) that never mention them keep compiling unchanged. */
+  cancellation_reason: ColumnType<
+    ClassSessionCancellationReason | null,
+    ClassSessionCancellationReason | null | undefined,
+    ClassSessionCancellationReason | null
+  >;
+  holiday_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  teacher_leave_request_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  /** Set (status stays 'scheduled') when a substitute covers the
+   *  original tutor's class during approved leave — the class still
+   *  runs, so it's deliberately not treated as a cancellation. */
+  substitute_tutor_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
 }
@@ -652,6 +687,13 @@ export interface AcademiesTable {
   contact_phone: string | null;
   contact_email: string | null;
   website_url: string | null;
+  /** Holiday & Leave Management (migration 0035) — country/state this
+   *  academy observes government holidays for. Only 'IN'/'TN' data
+   *  exists in V1, but every read goes through these columns rather
+   *  than a hardcoded 'TN' check, so a second state is pure data. */
+  country_code: Generated<string>;
+  state_code: Generated<string>;
+  auto_observe_govt_holidays: Generated<boolean>;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
 }
@@ -732,9 +774,14 @@ export interface AcademyReviewsTable {
 }
 
 /** "Contact Academy" leads from Find an Academy — mirrors
- *  teacher_contact_requests, but persist-only (no NotificationsService
- *  fan-out) since no academy-owner user exists yet to notify. Visible
- *  to superadmin via GET /admin/academies/:id/contact-requests. */
+ *  teacher_contact_requests. Visible to superadmin via
+ *  GET /admin/academies/:id/contact-requests, and (once the Academy
+ *  Dashboard owner role shipped) to the owning academy admin via
+ *  GET /academy/me/contact-requests — AcademiesService.contactAcademy
+ *  now also notifies academy.owner_user_id when one is set. */
+export type AcademyContactRequestStatus =
+  'new' | 'contacted' | 'interested' | 'joined' | 'not_interested';
+
 export interface AcademyContactRequestsTable {
   id: string;
   academy_id: string;
@@ -743,6 +790,8 @@ export interface AcademyContactRequestsTable {
   message: string | null;
   read_at: Timestamp | null;
   created_at: GeneratedTimestamp;
+  /** Minimal status pipeline (migration 0036), additive to read_at. */
+  status: Generated<AcademyContactRequestStatus>;
 }
 
 /** A tutor's request to join an academy (migration 0031) — deliberately
@@ -758,6 +807,99 @@ export interface AcademyMembershipRequestsTable {
   status: Generated<'pending' | 'accepted' | 'rejected'>;
   message: string | null;
   decided_at: Timestamp | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+// --- Holiday & Teacher Leave Management (migration 0035) ---
+
+export type HolidayType = 'government_holiday' | 'academy_holiday';
+export type HolidayScope = 'academy' | 'batches';
+
+/** `state_code = null` means a NATIONAL holiday (applies to every
+ *  academy regardless of state) — see the migration's doc comment.
+ *  `academy_id = null` for government holidays; set for academy-
+ *  declared ones. Country/state columns exist from V1 so a second
+ *  Indian state is pure data later, per the feature spec. */
+export interface HolidaysTable {
+  id: string;
+  type: HolidayType;
+  name: string;
+  start_date: string;
+  end_date: string;
+  country_code: Generated<string>;
+  state_code: string | null;
+  academy_id: string | null;
+  scope: Generated<HolidayScope>;
+  description: string | null;
+  created_by: string | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+/** Populated only when an academy holiday's scope = 'batches'. */
+export interface HolidayBatchesTable {
+  holiday_id: string;
+  batch_id: string;
+}
+
+export interface TeacherLeaveRequestsTable {
+  id: string;
+  tutor_id: string;
+  academy_id: string;
+  start_date: string;
+  end_date: string;
+  leave_type: 'full_day' | 'specific_classes';
+  reason: string | null;
+  status: Generated<'pending' | 'approved' | 'rejected' | 'cancelled'>;
+  decided_by: string | null;
+  decided_at: Timestamp | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+/** Snapshotted at request-creation time — the exact set of sessions a
+ *  leave request affects, frozen so the teacher's own view and the
+ *  academy admin's approval screen always agree, and approval never
+ *  has to recompute a date-range query. */
+export interface TeacherLeaveRequestSessionsTable {
+  id: string;
+  leave_request_id: string;
+  session_id: string;
+}
+
+// --- Academy Announcements (migration 0037) ---
+
+export type AcademyAnnouncementAudience =
+  | 'academy'
+  | 'teachers'
+  | 'students'
+  | 'parents'
+  | 'batch'
+  | 'teacher'
+  | 'student';
+export type AcademyAnnouncementStatus = 'draft' | 'published' | 'archived';
+
+/** A separate, deliberately distinct concept from AnnouncementsTable
+ *  (tutor-authored, single-batch, always-published) — see migration
+ *  0037's doc comment. `audience_*_id` columns are only ever set for
+ *  the matching `audience_type` ('batch'/'teacher'/'student'); a
+ *  cross-column CHECK in the migration enforces this at the DB level.
+ *  `recipient_count`/`published_at` are set exactly once, atomically,
+ *  by the draft->published transition. */
+export interface AcademyAnnouncementsTable {
+  id: string;
+  academy_id: string;
+  created_by: string;
+  title: string;
+  body: string;
+  audience_type: AcademyAnnouncementAudience;
+  audience_batch_id: string | null;
+  audience_teacher_id: string | null;
+  audience_student_id: string | null;
+  status: Generated<AcademyAnnouncementStatus>;
+  recipient_count: number | null;
+  published_at: Timestamp | null;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
 }
@@ -823,4 +965,11 @@ export interface DB {
   academy_contact_requests: AcademyContactRequestsTable;
   academy_kyc_verifications: AcademyKycVerificationsTable;
   academy_membership_requests: AcademyMembershipRequestsTable;
+
+  holidays: HolidaysTable;
+  holiday_batches: HolidayBatchesTable;
+  teacher_leave_requests: TeacherLeaveRequestsTable;
+  teacher_leave_request_sessions: TeacherLeaveRequestSessionsTable;
+
+  academy_announcements: AcademyAnnouncementsTable;
 }

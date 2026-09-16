@@ -14,13 +14,16 @@ import { AcademyMembershipsRepository } from '../academy-memberships/academy-mem
 import { AcademyMembershipRequestsRepository } from '../academy-memberships/academy-membership-requests.repository';
 import { AcademyReviewsService } from '../academy-reviews/academy-reviews.service';
 import { BatchesRepository } from '../../scheduling/batches/batches.repository';
+import { SessionsRepository } from '../../scheduling/sessions/sessions.repository';
 import { BookingsService } from '../bookings/bookings.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { TutorSubjectsRepository } from '../../catalog/tutor-subjects/tutor-subjects.repository';
+import { TeacherLeaveRepository } from '../../holidays/teacher-leave.repository';
 import { STORAGE_PROVIDER } from '../../../common/storage/storage-provider.interface';
 import type { StorageProvider } from '../../../common/storage/storage-provider.interface';
 import { randomSlugSuffix, slugify } from '../../identity/profiles/slug.util';
 import type { UpsertAcademyDto } from '../academies/dto/upsert-academy.dto';
+import type { AcademyContactRequestStatus } from '../../../database/types';
 import {
   AcademyImageUploadUrlDto,
   MAX_ACADEMY_IMAGE_BYTES,
@@ -63,9 +66,11 @@ export class AcademyOwnerService {
     private readonly academyMembershipRequestsRepository: AcademyMembershipRequestsRepository,
     private readonly academyReviewsService: AcademyReviewsService,
     private readonly batchesRepository: BatchesRepository,
+    private readonly sessionsRepository: SessionsRepository,
     private readonly bookingsService: BookingsService,
     private readonly notificationsService: NotificationsService,
     private readonly tutorSubjectsRepository: TutorSubjectsRepository,
+    private readonly teacherLeaveRepository: TeacherLeaveRepository,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
   ) {}
 
@@ -140,6 +145,26 @@ export class AcademyOwnerService {
             lng: location.lng,
           }
         : null,
+      countryCode: academy.country_code,
+      stateCode: academy.state_code,
+      autoObserveGovtHolidays: academy.auto_observe_govt_holidays,
+    };
+  }
+
+  /** Holiday & Teacher Leave Management's Academy Setting (spec §8) —
+   *  the only setting on this dashboard today, hence its own small
+   *  method rather than folding into updateProfile's broader
+   *  UpsertAcademyDto shape. */
+  async updateSettings(ownerUserId: string, autoObserveGovtHolidays: boolean) {
+    const academy = await this.resolveOwnAcademy(ownerUserId);
+    const updated = await this.academiesRepository.setAutoObserveGovtHolidays(
+      academy.id,
+      autoObserveGovtHolidays,
+    );
+    return {
+      countryCode: updated.country_code,
+      stateCode: updated.state_code,
+      autoObserveGovtHolidays: updated.auto_observe_govt_holidays,
     };
   }
 
@@ -406,6 +431,98 @@ export class AcademyOwnerService {
     );
   }
 
+  /** Academy Dashboard > Teachers > :id. Composes the full profile
+   *  (findActiveWithProfile), this academy's batches for the teacher
+   *  (BatchesRepository.listForTutors, filtered to one tutor — same method
+   *  the roster views use), the next 14 days of classes
+   *  (SessionsRepository.listForTutorsBetween), subjects
+   *  (TutorSubjectsRepository, same as getAcademicInfo), and this
+   *  academy's leave history for the teacher. Deliberately never selects
+   *  salary/commission/fee fields — out of scope. */
+  async getTeacherDetail(ownerUserId: string, tutorId: string) {
+    const academy = await this.resolveOwnAcademy(ownerUserId);
+    const member =
+      await this.academyMembershipsRepository.findActiveWithProfile(
+        academy.id,
+        tutorId,
+      );
+    if (!member) {
+      throw new NotFoundException(
+        "That teacher isn't an active member of your academy",
+      );
+    }
+
+    const now = new Date();
+    const twoWeeksOut = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+    const [avatarUrl, batches, upcomingSessions, subjects, leaveRequests] =
+      await Promise.all([
+        member.avatar_object_key
+          ? this.storage.createDownloadUrl(member.avatar_object_key)
+          : Promise.resolve(null),
+        this.batchesRepository.listForTutors([tutorId]),
+        this.sessionsRepository.listForTutorsBetween(
+          [tutorId],
+          now,
+          twoWeeksOut,
+        ),
+        this.tutorSubjectsRepository.listForTutors([tutorId]),
+        this.teacherLeaveRepository
+          .listForTutor(tutorId)
+          .then((rows) => rows.filter((r) => r.academy_id === academy.id)),
+      ]);
+
+    return {
+      tutorId: member.tutor_id,
+      displayName: member.display_name,
+      slug: member.tutor_slug,
+      headline: member.headline,
+      bio: member.bio,
+      avatarUrl,
+      yearsExperience: member.years_experience,
+      verificationStatus: member.verification_status,
+      qualifications: member.qualifications,
+      languages: member.languages,
+      teachingMode: member.teaching_mode,
+      methodology: member.methodology,
+      achievements: member.achievements,
+      certifications: member.certifications,
+      joinedAt: member.joined_at,
+      active: member.membership_status === 'active',
+      subjects: subjects.map((s) => ({
+        subjectId: s.subject_id,
+        name: s.subject_name_i18n.en,
+        gradeMin: s.grade_min,
+        gradeMax: s.grade_max,
+      })),
+      batches: batches.map((b) => ({
+        id: b.id,
+        title: b.title,
+        subjectId: b.subject_id,
+        gradeLevelId: b.grade_level_id,
+        status: b.status,
+        enrolledCount: Number(b.enrolled_count),
+      })),
+      upcomingClasses: upcomingSessions.map((s) => ({
+        id: s.id,
+        batchId: s.batch_id,
+        batchTitle: s.batch_title,
+        subjectId: s.subject_id,
+        scheduledStartUtc: s.scheduled_start_utc,
+        timezone: s.timezone,
+        durationMin: s.duration_min,
+        status: s.status,
+      })),
+      leaveHistory: leaveRequests.map((r) => ({
+        id: r.id,
+        startDate: r.start_date,
+        endDate: r.end_date,
+        leaveType: r.leave_type,
+        status: r.status,
+        reason: r.reason,
+      })),
+    };
+  }
+
   async acceptRequest(ownerUserId: string, requestId: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
     const request =
@@ -502,6 +619,29 @@ export class AcademyOwnerService {
       );
     }
     return this.academyContactRequestsRepository.markRead(requestId);
+  }
+
+  /** Minimal status pipeline (migration 0036), additive to markContactRequestRead
+   *  above — read_at still powers the unread badge, status is the admin's
+   *  own New/Contacted/Interested/Joined/Not Interested tracking. */
+  async updateContactRequestStatus(
+    ownerUserId: string,
+    requestId: string,
+    status: AcademyContactRequestStatus,
+  ) {
+    const academy = await this.resolveOwnAcademy(ownerUserId);
+    const request =
+      await this.academyContactRequestsRepository.findById(requestId);
+    if (!request) throw new NotFoundException('Contact request not found');
+    if (request.academy_id !== academy.id) {
+      throw new ForbiddenException(
+        'That contact request belongs to another academy',
+      );
+    }
+    return this.academyContactRequestsRepository.updateStatus(
+      requestId,
+      status,
+    );
   }
 
   private assertSize(sizeBytes: number): void {
