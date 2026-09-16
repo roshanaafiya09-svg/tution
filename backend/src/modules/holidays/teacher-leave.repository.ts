@@ -136,6 +136,16 @@ export class TeacherLeaveRepository {
       .executeTakeFirst();
   }
 
+  /** Atomic pending -> {approved,rejected,cancelled} transition, guarded
+   *  by `where status = 'pending'` on the UPDATE itself rather than a
+   *  separate read-then-write status check — two concurrent decisions on
+   *  the same request (a double-click, or an approve racing a reject)
+   *  could otherwise both pass an application-level "is it still
+   *  pending" check and both go on to cancel sessions / assign a
+   *  substitute / send notifications. Returns undefined (not a thrown
+   *  error) when no matching pending row exists, so the caller can tell
+   *  "already decided by someone else" apart from "not found"/"wrong
+   *  academy" via the earlier findForAcademy/getOwnedForTutor call. */
   setStatus(
     id: string,
     status: 'approved' | 'rejected' | 'cancelled',
@@ -145,7 +155,8 @@ export class TeacherLeaveRepository {
       .updateTable('teacher_leave_requests')
       .set({ status, decided_by: decidedBy, decided_at: new Date() })
       .where('id', '=', id)
+      .where('status', '=', 'pending')
       .returningAll()
-      .executeTakeFirstOrThrow();
+      .executeTakeFirst();
   }
 }

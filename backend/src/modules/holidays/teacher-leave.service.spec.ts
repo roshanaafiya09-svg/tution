@@ -14,6 +14,7 @@ jest.mock('kysely', () => ({
 
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
@@ -70,7 +71,12 @@ function buildService(overrides: {
     listSessionIdsForRequest:
       overrides.listSessionIdsForRequest ??
       jest.fn().mockResolvedValue([SESSION.id]),
-    setStatus: overrides.setStatus ?? jest.fn().mockResolvedValue(undefined),
+    // Truthy by default — matches a real successful atomic transition.
+    // Override with a `mockResolvedValue(undefined)` mock to simulate
+    // the "already decided by someone else" race.
+    setStatus:
+      overrides.setStatus ??
+      jest.fn().mockResolvedValue({ id: REQUEST_ID, status: 'approved' }),
     create:
       overrides.create ??
       jest.fn().mockResolvedValue({ id: REQUEST_ID, status: 'pending' }),
@@ -358,6 +364,61 @@ describe('TeacherLeaveService.approve', () => {
       service.approve(ACADEMY_ID, REQUEST_ID, 'admin-1'),
     ).rejects.toThrow(BadRequestException);
   });
+
+  it('never cancels sessions or notifies when a concurrent decision wins the race', async () => {
+    // Regression test for the setStatus TOCTOU: findForAcademy still
+    // reports 'pending' (read before the race), but the atomic UPDATE
+    // itself finds the row already decided and matches zero rows —
+    // setStatus returning undefined models exactly that.
+    const findForAcademy = jest.fn().mockResolvedValue({
+      id: REQUEST_ID,
+      tutor_id: TUTOR_ID,
+      status: 'pending',
+      start_date: '2026-09-20',
+      end_date: '2026-09-20',
+    });
+    const setStatus = jest.fn().mockResolvedValue(undefined);
+    const setHolidayOrLeaveCancellation = jest.fn();
+    const notify = jest.fn();
+    const { service } = buildService({
+      findForAcademy,
+      setStatus,
+      setHolidayOrLeaveCancellation,
+      notify,
+    });
+
+    await expect(
+      service.approve(ACADEMY_ID, REQUEST_ID, 'admin-1'),
+    ).rejects.toThrow(ConflictException);
+
+    expect(setHolidayOrLeaveCancellation).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('still validates a substitute before attempting to claim the decision', async () => {
+    // A bad substitute must fail before setStatus is ever called, so a
+    // failed approval attempt never leaves the request half-decided.
+    const findForAcademy = jest.fn().mockResolvedValue({
+      id: REQUEST_ID,
+      tutor_id: TUTOR_ID,
+      status: 'pending',
+      start_date: '2026-09-20',
+      end_date: '2026-09-20',
+    });
+    const setStatus = jest.fn();
+    const findActiveMembership = jest.fn().mockResolvedValue(undefined);
+    const { service } = buildService({
+      findForAcademy,
+      setStatus,
+      findActiveMembership,
+    });
+
+    await expect(
+      service.approve(ACADEMY_ID, REQUEST_ID, 'admin-1', 'substitute-1'),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(setStatus).not.toHaveBeenCalled();
+  });
 });
 
 describe('TeacherLeaveService.reject', () => {
@@ -380,6 +441,70 @@ describe('TeacherLeaveService.reject', () => {
         userIds: [TUTOR_ID],
         type: 'teacher_leave_rejected',
       }),
+    );
+  });
+
+  it('never notifies when a concurrent decision wins the race', async () => {
+    const findForAcademy = jest.fn().mockResolvedValue({
+      id: REQUEST_ID,
+      tutor_id: TUTOR_ID,
+      status: 'pending',
+      start_date: '2026-09-20',
+      end_date: '2026-09-20',
+    });
+    const setStatus = jest.fn().mockResolvedValue(undefined);
+    const notify = jest.fn();
+    const { service } = buildService({ findForAcademy, setStatus, notify });
+
+    await expect(
+      service.reject(ACADEMY_ID, REQUEST_ID, 'admin-1'),
+    ).rejects.toThrow(ConflictException);
+    expect(notify).not.toHaveBeenCalled();
+  });
+});
+
+describe('TeacherLeaveService.withdraw', () => {
+  it('cancels a pending request the tutor owns', async () => {
+    const findById = jest.fn().mockResolvedValue({
+      id: REQUEST_ID,
+      tutor_id: TUTOR_ID,
+      status: 'pending',
+    });
+    const setStatus = jest
+      .fn()
+      .mockResolvedValue({ id: REQUEST_ID, status: 'cancelled' });
+    const { service } = buildService({ findById, setStatus });
+
+    const result = await service.withdraw(TUTOR_ID, REQUEST_ID);
+
+    expect(setStatus).toHaveBeenCalledWith(REQUEST_ID, 'cancelled', null);
+    expect(result.status).toBe('cancelled');
+  });
+
+  it('refuses to withdraw a request that has already been decided', async () => {
+    const findById = jest.fn().mockResolvedValue({
+      id: REQUEST_ID,
+      tutor_id: TUTOR_ID,
+      status: 'approved',
+    });
+    const { service } = buildService({ findById });
+
+    await expect(service.withdraw(TUTOR_ID, REQUEST_ID)).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('surfaces a conflict when a concurrent decision wins the race', async () => {
+    const findById = jest.fn().mockResolvedValue({
+      id: REQUEST_ID,
+      tutor_id: TUTOR_ID,
+      status: 'pending',
+    });
+    const setStatus = jest.fn().mockResolvedValue(undefined);
+    const { service } = buildService({ findById, setStatus });
+
+    await expect(service.withdraw(TUTOR_ID, REQUEST_ID)).rejects.toThrow(
+      ConflictException,
     );
   });
 });

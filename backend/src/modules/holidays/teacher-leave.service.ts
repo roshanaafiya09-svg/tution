@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -159,7 +160,13 @@ export class TeacherLeaveService {
     if (request.status !== 'pending') {
       throw new BadRequestException('Only a pending request can be withdrawn');
     }
-    return this.repository.setStatus(id, 'cancelled', null);
+    const updated = await this.repository.setStatus(id, 'cancelled', null);
+    if (!updated) {
+      throw new ConflictException(
+        'This leave request has already been decided',
+      );
+    }
+    return updated;
   }
 
   // --- Academy admin side (academyId already resolved by the caller) ---
@@ -199,7 +206,15 @@ export class TeacherLeaveService {
 
   async reject(academyId: string, id: string, decidedBy: string) {
     const request = await this.getPendingForAcademy(academyId, id);
-    await this.repository.setStatus(id, 'rejected', decidedBy);
+    // Atomic claim of the decision — see setStatus's doc comment. Only
+    // the caller that wins this ever sends the rejection notification
+    // below.
+    const updated = await this.repository.setStatus(id, 'rejected', decidedBy);
+    if (!updated) {
+      throw new ConflictException(
+        'This leave request has already been decided',
+      );
+    }
 
     const dateLabel = this.formatDateLabel(
       request.start_date,
@@ -225,14 +240,32 @@ export class TeacherLeaveService {
     const sessionIds = await this.repository.listSessionIdsForRequest(id);
     const sessions = await this.sessionsRepository.findByIds(sessionIds);
 
+    // Validate first (pure reads, no mutation) — a bad substitute must
+    // fail before the decision is committed below, not after, or the
+    // request would be left 'approved' with no substitute assigned and
+    // no sessions cancelled either.
     if (substituteTutorId) {
-      await this.applySubstitute(
+      await this.validateSubstitute(
         academyId,
-        id,
         request.tutor_id,
         sessions,
         substituteTutorId,
       );
+    }
+
+    // Atomic claim of the decision — see setStatus's doc comment. Only
+    // the caller that wins this ever mutates sessions or sends
+    // notifications below, so a double-click/concurrent decide can never
+    // cancel/reassign the same classes twice.
+    const updated = await this.repository.setStatus(id, 'approved', decidedBy);
+    if (!updated) {
+      throw new ConflictException(
+        'This leave request has already been decided',
+      );
+    }
+
+    if (substituteTutorId) {
+      await this.assignSubstituteToSessions(sessions, substituteTutorId, id);
     } else {
       for (const session of sessions) {
         await this.sessionsRepository.setHolidayOrLeaveCancellation(
@@ -244,8 +277,6 @@ export class TeacherLeaveService {
         );
       }
     }
-
-    await this.repository.setStatus(id, 'approved', decidedBy);
 
     const dateLabel = this.formatDateLabel(
       request.start_date,
@@ -285,13 +316,13 @@ export class TeacherLeaveService {
     }
     const sessionIds = await this.repository.listSessionIdsForRequest(id);
     const sessions = await this.sessionsRepository.findByIds(sessionIds);
-    await this.applySubstitute(
+    await this.validateSubstitute(
       academyId,
-      id,
       request.tutor_id,
       sessions,
       substituteTutorId,
     );
+    await this.assignSubstituteToSessions(sessions, substituteTutorId, id);
     await this.notifyAffectedClasses(
       academyId,
       sessions,
@@ -301,9 +332,14 @@ export class TeacherLeaveService {
     return { ok: true };
   }
 
-  private async applySubstitute(
+  /** Pure validation (no mutation) — active membership, not the tutor
+   *  themself, no scheduling conflict. Split out from the actual
+   *  session-mutation loop below so approve() can run this BEFORE
+   *  committing the pending->approved decision (a bad substitute must
+   *  fail before the decision is atomically claimed, not after) while
+   *  the mutation itself only ever runs once that claim has succeeded. */
+  private async validateSubstitute(
     academyId: string,
-    leaveRequestId: string,
     originalTutorId: string,
     sessions: Array<{
       id: string;
@@ -343,7 +379,13 @@ export class TeacherLeaveService {
         );
       }
     }
+  }
 
+  private async assignSubstituteToSessions(
+    sessions: Array<{ id: string }>,
+    substituteTutorId: string,
+    leaveRequestId: string,
+  ) {
     for (const session of sessions) {
       await this.sessionsRepository.assignSubstitute(
         session.id,
