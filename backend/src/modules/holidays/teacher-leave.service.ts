@@ -174,9 +174,23 @@ export class TeacherLeaveService {
     return this.repository.listForAcademyWithTutor(academyId);
   }
 
-  private async getPendingForAcademy(academyId: string, id: string) {
+  /** Ownership check for any academy-side read/action on one request —
+   *  mirrors getOwnedForTutor's shape on the teacher side. Callers that
+   *  only need to confirm the request belongs to this academy (e.g.
+   *  listing its sessions) should call this directly rather than
+   *  fetching via an unscoped method after a discarded ownership check —
+   *  that gap (resolveOwnAcademy's result thrown away, then
+   *  listSessionsForRequest(id) called with no academyId at all) used to
+   *  let any academy admin view another academy's leave-request session
+   *  detail by guessing/enumerating a requestId. */
+  async getOwnedForAcademy(academyId: string, id: string) {
     const request = await this.repository.findForAcademy(id, academyId);
     if (!request) throw new NotFoundException('Leave request not found');
+    return request;
+  }
+
+  private async getPendingForAcademy(academyId: string, id: string) {
+    const request = await this.getOwnedForAcademy(academyId, id);
     if (request.status !== 'pending') {
       throw new BadRequestException('This request has already been decided');
     }

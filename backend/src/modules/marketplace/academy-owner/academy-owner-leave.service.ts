@@ -38,7 +38,13 @@ export class AcademyOwnerLeaveService {
   }
 
   async listSessions(ownerUserId: string, requestId: string) {
-    await this.resolveOwnAcademy(ownerUserId);
+    const academy = await this.resolveOwnAcademy(ownerUserId);
+    // Ownership check first — listSessionsForRequest itself takes no
+    // academyId and doesn't scope by one, so skipping this (as the old
+    // code did, discarding resolveOwnAcademy's result) let any academy
+    // admin view another academy's leave-request session detail by
+    // guessing/enumerating a requestId.
+    await this.teacherLeaveService.getOwnedForAcademy(academy.id, requestId);
     return this.teacherLeaveService.listSessionsForRequest(requestId);
   }
 
