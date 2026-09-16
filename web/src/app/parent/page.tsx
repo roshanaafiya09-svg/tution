@@ -262,6 +262,27 @@ export default function ParentTodayPage() {
     };
   });
 
+  // Announcements — the same real /notifications feed, filtered to the
+  // academy-wide announcement type (see academy-owner-announcements.service.ts
+  // and parentNotificationHref in parent-nav.ts, which already deep-links
+  // this same payload shape to /parent/announcements/:id).
+  const announcementItems: ActivityItem[] = notifications
+    .filter((n) => n.type === 'academy_announcement')
+    .slice(0, 6)
+    .map((n) => {
+      const payload = n.payload as { announcementId?: string };
+      return {
+        id: n.id,
+        icon: Megaphone,
+        tone: 'brand',
+        title: n.payload.title,
+        detail: n.payload.body,
+        timestamp: n.created_at,
+        href: payload.announcementId ? `/parent/announcements/${payload.announcementId}` : undefined,
+        unread: !n.read_at,
+      };
+    });
+
   const recentThreads = [...threads]
     .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime())
     .slice(0, 3);
@@ -512,11 +533,15 @@ export default function ParentTodayPage() {
 
           <section className="animate-fade-up" style={{ animationDelay: '320ms' }}>
             <ParentSectionHeader eyebrow="Updates" title="Announcements" />
-            <ParentEmptyState
-              icon={Megaphone}
-              title="No announcements yet"
-              description="Updates from your child's tutors will appear here."
-            />
+            {announcementItems.length === 0 ? (
+              <ParentEmptyState
+                icon={Megaphone}
+                title="No announcements yet"
+                description="Updates from your child's academy will appear here."
+              />
+            ) : (
+              <ActivityFeed items={announcementItems} />
+            )}
           </section>
 
           <section className="animate-fade-up" style={{ animationDelay: '360ms' }}>
