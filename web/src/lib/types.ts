@@ -878,6 +878,62 @@ export interface AcademyBatchAttendance {
   }[];
 }
 
+// --- Teacher Attendance (Academic > Attendance > Teacher) — deliberately
+// separate from the AcademyAttendance* family above (student attendance):
+// no shared table, no shared write path. "Not Recorded" means a scheduled
+// class has no attendance record yet — SCHEDULED ≠ PRESENT. */
+
+export type AcademyTeacherAttendanceStatus =
+  | 'present'
+  | 'absent'
+  | 'approved_leave'
+  | 'holiday'
+  | 'cancelled'
+  | 'not_recorded';
+
+export interface AcademyTeacherAttendanceTodaySummary {
+  classesToday: number;
+  teachersExpected: number;
+  present: number;
+  absent: number;
+  onLeave: number;
+  attendancePercent: number | null;
+}
+
+/** One row per (date, teacher). */
+export interface AcademyTeacherAttendanceRow {
+  date: string;
+  teacherId: string;
+  teacherDisplayName: string | null;
+  scheduledClasses: number;
+  present: number;
+  absent: number;
+  approvedLeave: number;
+  attendancePercent: number | null;
+}
+
+export interface AcademyTeacherAttendanceHistoryRow {
+  sessionId: string;
+  scheduledStartUtc: string;
+  batchId: string;
+  batchTitle: string;
+  status: AcademyTeacherAttendanceStatus;
+}
+
+/** Main > Academic > Attendance > Teacher > teacher drill-down. */
+export interface AcademyTeacherAttendance {
+  teacherId: string;
+  teacherDisplayName: string | null;
+  summary: {
+    scheduledClasses: number;
+    present: number;
+    absent: number;
+    approvedLeave: number;
+    attendancePercent: number | null;
+  };
+  history: AcademyTeacherAttendanceHistoryRow[];
+}
+
 /** A tutor's own request to join an academy — all statuses, backs the
  *  Teaching Arrangement pending/declined states and the find-an-academy
  *  "Request to Join" / "Request Pending" button. */

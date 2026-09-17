@@ -44,6 +44,8 @@ const STATUS_STYLES: Record<string, string> = {
   needs_manual_review: 'bg-warning-bg text-warning dark:bg-warning/15 dark:text-warning-dark',
   holiday: 'bg-info-bg text-info dark:bg-info/15 dark:text-info-dark',
   leave: 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400',
+  approved_leave: 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400',
+  not_recorded: 'bg-warning-bg text-warning dark:bg-warning/15 dark:text-warning-dark',
   'substitute assigned': 'bg-info-bg text-info dark:bg-info/15 dark:text-info-dark',
   draft: 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400',
   published: 'bg-success-bg text-success dark:bg-success/15 dark:text-success-dark',

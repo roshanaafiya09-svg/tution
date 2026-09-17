@@ -14,11 +14,17 @@ import { SessionsRepository } from './sessions/sessions.repository';
 import { AttendanceController } from './attendance/attendance.controller';
 import { AttendanceService } from './attendance/attendance.service';
 import { AttendanceRepository } from './attendance/attendance.repository';
+import { TeacherAttendanceRepository } from './attendance/teacher-attendance.repository';
 
 /**
  * Bounded context: batches, enrollments, invite links, class sessions
- * (RRULE recurrence, UTC + IANA timezone), attendance.
- * Owns tables: batches, enrollments, invites, class_sessions, attendance.
+ * (RRULE recurrence, UTC + IANA timezone), student attendance, teacher
+ * attendance.
+ * Owns tables: batches, enrollments, invites, class_sessions, attendance,
+ * teacher_attendance. TeacherAttendanceRepository has no controller/
+ * service of its own here — it's exported for the Academy Owner module's
+ * AcademyOwnerTeacherAttendanceService, the same shape AttendanceRepository
+ * is already reused in.
  * NotificationsModule is imported for the attendance module's repeated-
  * absence alert (NotificationsService.notify()). ParentsModule is
  * deliberately NOT imported here — ParentsModule -> TrustModule ->
@@ -45,6 +51,7 @@ import { AttendanceRepository } from './attendance/attendance.repository';
     SessionsRepository,
     AttendanceService,
     AttendanceRepository,
+    TeacherAttendanceRepository,
   ],
   exports: [
     BatchesService,
@@ -53,6 +60,7 @@ import { AttendanceRepository } from './attendance/attendance.repository';
     SessionsService,
     SessionsRepository,
     AttendanceRepository,
+    TeacherAttendanceRepository,
   ],
 })
 export class SchedulingModule {}

@@ -17,6 +17,7 @@ import {
   Settings,
   ShieldCheck,
   Star,
+  UserCheck,
   UserRound,
   Users,
   type LucideIcon,
@@ -34,6 +35,9 @@ export interface AcademyNavItem {
    *  notification count). Set per-render by the sidebar wrapper, not
    *  baked into the static config below — see academy-sidebar.tsx. */
   badge?: number;
+  /** Expandable/collapsible sub-items (Attendance -> Student/Teacher) —
+   *  see PortalNavItem.children in portal-sidebar.tsx. */
+  children?: AcademyNavItem[];
 }
 
 export interface AcademyNavGroup {
@@ -70,7 +74,15 @@ export const ACADEMY_NAV: AcademyNavGroup[] = [
     items: [
       { href: '/academy/batches', label: 'Batches', icon: CalendarClock },
       { href: '/academy/timetable', label: 'Timetable', icon: CalendarDays },
-      { href: '/academy/attendance', label: 'Attendance', icon: ClipboardCheck },
+      {
+        href: '/academy/attendance',
+        label: 'Attendance',
+        icon: ClipboardCheck,
+        children: [
+          { href: '/academy/attendance', label: 'Student', icon: ClipboardCheck, exact: true },
+          { href: '/academy/attendance/teacher', label: 'Teacher', icon: UserCheck },
+        ],
+      },
       { href: '/academy/calendar', label: 'Calendar', icon: Calendar },
       { href: '/academy/leave-requests', label: 'Leave Requests', icon: CalendarOff },
       { href: '/academy/holidays', label: 'Holidays', icon: CalendarRange },
@@ -97,11 +109,12 @@ export const ACADEMY_NAV_FOOTER: AcademyNavItem[] = [
 ];
 
 const ALL_ITEMS: AcademyNavItem[] = [
-  ...ACADEMY_NAV.flatMap((group) => group.items),
+  ...ACADEMY_NAV.flatMap((group) => group.items.flatMap((item) => item.children ?? [item])),
   ...ACADEMY_NAV_FOOTER,
 ];
 
 export function isAcademyNavItemActive(item: AcademyNavItem, pathname: string): boolean {
+  if (item.children) return item.children.some((child) => isAcademyNavItemActive(child, pathname));
   return item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 

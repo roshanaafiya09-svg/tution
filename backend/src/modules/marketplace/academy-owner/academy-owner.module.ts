@@ -22,6 +22,8 @@ import { AcademyOwnerParentsService } from './academy-owner-parents.service';
 import { AcademyOwnerParentsRepository } from './academy-owner-parents.repository';
 import { AcademyOwnerAttendanceController } from './academy-owner-attendance.controller';
 import { AcademyOwnerAttendanceService } from './academy-owner-attendance.service';
+import { AcademyOwnerTeacherAttendanceController } from './academy-owner-teacher-attendance.controller';
+import { AcademyOwnerTeacherAttendanceService } from './academy-owner-teacher-attendance.service';
 import { AcademyOwnerAnnouncementsController } from './academy-owner-announcements.controller';
 import { AcademyOwnerAnnouncementsService } from './academy-owner-announcements.service';
 import { AcademyAnnouncementsRepository } from './academy-announcements.repository';
@@ -60,6 +62,7 @@ import { AnnouncementRecipientService } from './announcement-recipient.service';
     AcademyOwnerHolidaysController,
     AcademyOwnerParentsController,
     AcademyOwnerAttendanceController,
+    AcademyOwnerTeacherAttendanceController,
     AcademyOwnerAnnouncementsController,
     AcademyOwnerReportsController,
     AnnouncementRecipientController,
@@ -72,6 +75,7 @@ import { AnnouncementRecipientService } from './announcement-recipient.service';
     AcademyOwnerParentsService,
     AcademyOwnerParentsRepository,
     AcademyOwnerAttendanceService,
+    AcademyOwnerTeacherAttendanceService,
     AcademyOwnerAnnouncementsService,
     AcademyAnnouncementsRepository,
     AcademyOwnerReportsService,

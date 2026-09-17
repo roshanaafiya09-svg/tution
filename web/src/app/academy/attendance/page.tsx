@@ -136,8 +136,8 @@ export default function AcademyAttendancePage() {
       <AcademySetupBanner />
       <AcademyPageIntro
         eyebrow="Academy Dashboard"
-        title="Attendance"
-        description="Monitor attendance across every batch in your academy."
+        title="Student Attendance"
+        description="Monitor student attendance across every batch in your academy."
       />
 
       <div className="mt-8">

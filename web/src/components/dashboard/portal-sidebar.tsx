@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
+import { ChevronDown, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
 import type { LucideIcon } from 'lucide-react';
@@ -23,6 +23,12 @@ export interface PortalNavItem {
    *  per-render for a dynamic count (see academy-nav.ts's
    *  withNotificationsBadge). Purely additive, no-op when unset. */
   badge?: number;
+  /** Turns this item into an expandable/collapsible group (e.g. Academy's
+   *  Attendance -> Student/Teacher) instead of a plain link — the parent
+   *  row toggles instead of navigating. Only one level deep; a collapsed
+   *  icon-only rail can't show two levels, so there it links straight to
+   *  the first child instead (see NavLink/SidebarBody below). */
+  children?: PortalNavItem[];
 }
 
 export interface PortalNavGroup {
@@ -32,6 +38,7 @@ export interface PortalNavGroup {
 }
 
 export function isPortalNavItemActive(item: PortalNavItem, pathname: string): boolean {
+  if (item.children) return item.children.some((child) => isPortalNavItemActive(child, pathname));
   return item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
@@ -97,6 +104,61 @@ function NavLink({
       <TooltipTrigger asChild>{link}</TooltipTrigger>
       <TooltipContent side="right">{item.label}</TooltipContent>
     </Tooltip>
+  );
+}
+
+/** An expandable/collapsible nav group (e.g. Attendance -> Student/Teacher)
+ *  — same visual language as a plain NavLink, just with a toggling parent
+ *  row instead of a navigating one. Collapsed (icon) rail has no room for
+ *  two levels, so there the whole group renders as one icon straight to
+ *  its first child (see the caller in SidebarBody). */
+function NavGroupDisclosure({
+  item,
+  onNavigate,
+}: {
+  item: PortalNavItem & { children: PortalNavItem[] };
+  onNavigate?: () => void;
+}) {
+  const pathname = usePathname();
+  const active = isPortalNavItemActive(item, pathname);
+  const [expanded, setExpanded] = useState(active);
+
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        className={cn(
+          'group flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors duration-fast focus-visible:outline-none focus-visible:shadow-focus-ring',
+          active
+            ? 'text-brand-700 dark:text-brand-200'
+            : 'text-neutral-600 hover:bg-neutral-100/80 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-100',
+        )}
+      >
+        <item.icon
+          className={cn(
+            'h-[18px] w-[18px] shrink-0',
+            active ? 'text-brand-600 dark:text-brand-300' : 'text-neutral-400 dark:text-neutral-500',
+          )}
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
+        <ChevronDown
+          className={cn('h-4 w-4 shrink-0 text-neutral-400 transition-transform duration-fast', expanded && 'rotate-180')}
+          aria-hidden
+        />
+      </button>
+      {expanded && (
+        <ul className="mt-0.5 space-y-0.5 border-l border-neutral-200/70 pl-4 dark:border-neutral-800/80">
+          {item.children.map((child) => (
+            <li key={child.href}>
+              <NavLink item={child} collapsed={false} onNavigate={onNavigate} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }
 
@@ -181,11 +243,27 @@ function SidebarBody({
               </p>
             )}
             <ul className={cn('space-y-0.5', collapsed && 'flex flex-col items-center')}>
-              {group.items.map((item) => (
-                <li key={item.href}>
-                  <NavLink item={item} collapsed={collapsed} onNavigate={onNavigate} />
-                </li>
-              ))}
+              {group.items.map((item) => {
+                if (item.children) {
+                  // Collapsed rail has no room for two levels — link
+                  // straight to the first child instead of disclosing.
+                  if (collapsed) {
+                    return (
+                      <li key={item.href}>
+                        <NavLink item={{ ...item, href: item.children[0].href }} collapsed onNavigate={onNavigate} />
+                      </li>
+                    );
+                  }
+                  return (
+                    <NavGroupDisclosure key={item.href} item={{ ...item, children: item.children }} onNavigate={onNavigate} />
+                  );
+                }
+                return (
+                  <li key={item.href}>
+                    <NavLink item={item} collapsed={collapsed} onNavigate={onNavigate} />
+                  </li>
+                );
+              })}
             </ul>
           </div>
         ))}

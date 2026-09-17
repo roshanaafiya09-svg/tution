@@ -269,6 +269,21 @@ export interface AttendanceTable {
   updated_at: GeneratedTimestamp;
 }
 
+/** Teacher Attendance (migration 0038) — deliberately separate from
+ *  AttendanceTable above (student attendance). Only ever holds
+ *  `present`/`absent` rows; Approved Leave/Holiday/Cancelled are derived
+ *  from class_sessions at read time, never stored. See the migration's
+ *  doc comment for the full rationale. */
+export interface TeacherAttendanceTable {
+  id: string;
+  session_id: string;
+  tutor_id: string;
+  status: 'present' | 'absent';
+  marked_by: string;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
 // --- delivery & assessment ---
 
 export interface MaterialsTable {
@@ -924,6 +939,7 @@ export interface DB {
   invites: InvitesTable;
   class_sessions: ClassSessionsTable;
   attendance: AttendanceTable;
+  teacher_attendance: TeacherAttendanceTable;
 
   materials: MaterialsTable;
   assignments: AssignmentsTable;
