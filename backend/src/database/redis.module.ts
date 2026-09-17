@@ -22,6 +22,15 @@ export const REDIS_CONNECTION = 'REDIS_CONNECTION';
           username: url.username || undefined,
           password: url.password || undefined,
           tls: url.protocol === 'rediss:' ? {} : undefined,
+          // Without these, an unreachable Redis makes every command (OTP
+          // send, rate-limit check, /health) hang indefinitely instead of
+          // failing — ioredis's defaults have no command timeout at all,
+          // and ordinarily retry a lost connection forever. Bounding both
+          // means an outage surfaces as a fast, clear error (ServiceUnavailable
+          // from callers) rather than a request that never returns.
+          connectTimeout: 5000,
+          commandTimeout: 5000,
+          maxRetriesPerRequest: 1,
         });
       },
     },

@@ -54,6 +54,9 @@ export class EmailOtpProvider implements OtpProvider {
     try {
       response = await fetch(BREVO_SEND_URL, {
         method: 'POST',
+        // Bounded so a slow/unresponsive Brevo can't hang the request
+        // indefinitely — fetch() has no timeout by default.
+        signal: AbortSignal.timeout(8000),
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
