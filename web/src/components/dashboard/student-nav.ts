@@ -5,10 +5,10 @@ import {
   CalendarCheck,
   CalendarClock,
   CircleUser,
+  ClipboardCheck,
   FileCheck2,
   HelpCircle,
   Home,
-  ListChecks,
   Megaphone,
   Search,
   Settings,
@@ -37,7 +37,7 @@ export const STUDENT_NAV: PortalNavGroup[] = [
       { href: '/student/batches', label: 'My Batches', icon: BookMarked },
       { href: '/student/schedule', label: 'Schedule', icon: CalendarClock },
       { href: '/student/assignments', label: 'Assignments', icon: FileCheck2 },
-      { href: '/student/quizzes', label: 'Quizzes', icon: ListChecks },
+      { href: '/student/assessments', label: 'Assessment', icon: ClipboardCheck },
       { href: '/student/materials', label: 'Materials', icon: BookOpen },
     ],
   },
@@ -101,6 +101,9 @@ export function studentNotificationHref(notification: AppNotification): string |
       return typeof payload.assignmentId === 'string' ? `/student/assignments/${payload.assignmentId}` : null;
     case 'quiz_published':
       return typeof payload.quizId === 'string' ? `/student/quizzes/${payload.quizId}` : null;
+    case 'assessment_published':
+    case 'assessment_result_available':
+      return typeof payload.assessmentId === 'string' ? `/student/assessments/${payload.assessmentId}` : null;
     case 'announcement':
       return typeof payload.batchId === 'string'
         ? `/student/batches/${payload.batchId}/announcements`

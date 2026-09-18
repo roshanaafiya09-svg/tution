@@ -919,6 +919,94 @@ export interface AcademyAnnouncementsTable {
   updated_at: GeneratedTimestamp;
 }
 
+// --- Assessments (migration 0039) ---
+//
+// Deliberately parallel to, not a retrofit of, QuizzesTable/QuizAttemptsTable
+// above — see the migration's doc comment. One assessment can span many
+// batches via AssessmentBatchesTable (mirrors HolidayBatchesTable's
+// composite-primary-key join shape).
+
+export type AssessmentMode = 'online' | 'offline';
+export type AssessmentStatus =
+  | 'draft'
+  | 'scheduled'
+  | 'published'
+  | 'scorecard_pending'
+  | 'completed'
+  | 'overdue';
+
+export interface AssessmentsTable {
+  id: string;
+  tutor_id: string;
+  mode: AssessmentMode;
+  title: string;
+  subject_id: string;
+  status: Generated<AssessmentStatus>;
+  max_score: number | null;
+  question_paper_object_key: string | null;
+  question_paper_mime: string | null;
+  assessment_date: string | null;
+  scorecard_deadline_at: Timestamp | null;
+  available_until: Timestamp | null;
+  week_start_date: string;
+  published_at: Timestamp | null;
+  completed_at: Timestamp | null;
+  completed_late: Generated<boolean>;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+export interface AssessmentBatchesTable {
+  assessment_id: string;
+  batch_id: string;
+}
+
+export interface AssessmentQuestionsTable {
+  id: string;
+  assessment_id: string;
+  order_index: number;
+  question_text: string;
+  choices: JSONColumnType<string[]>;
+  correct_choice_index: number;
+  marks: number;
+  difficulty: 'easy' | 'medium' | 'hard';
+  explanation: string | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+export type AssessmentResultSource = 'online_submission' | 'offline_scorecard';
+
+export interface AssessmentResultsTable {
+  id: string;
+  assessment_id: string;
+  batch_id: string;
+  student_id: string;
+  score: number;
+  max_score: number;
+  source: AssessmentResultSource;
+  answers: JSONColumnType<
+    number[],
+    string | null | undefined,
+    string | null
+  > | null;
+  submitted_at: GeneratedTimestamp;
+}
+
+export interface AssessmentScorecardImportsTable {
+  id: string;
+  assessment_id: string;
+  uploaded_by: string;
+  status: 'success' | 'failed';
+  error_detail: JSONColumnType<
+    Record<string, unknown>,
+    string | null | undefined,
+    string | null
+  > | null;
+  row_count: Generated<number>;
+  created_at: GeneratedTimestamp;
+}
+
 export interface DB {
   users: UsersTable;
   user_roles: UserRolesTable;
@@ -988,4 +1076,10 @@ export interface DB {
   teacher_leave_request_sessions: TeacherLeaveRequestSessionsTable;
 
   academy_announcements: AcademyAnnouncementsTable;
+
+  assessments: AssessmentsTable;
+  assessment_batches: AssessmentBatchesTable;
+  assessment_questions: AssessmentQuestionsTable;
+  assessment_results: AssessmentResultsTable;
+  assessment_scorecard_imports: AssessmentScorecardImportsTable;
 }

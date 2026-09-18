@@ -1488,6 +1488,206 @@ export interface StudentQuizAttemptSummary {
   batch_title: string;
 }
 
+// --- Assessments (Quiz -> Assessment overhaul) ---
+// Deliberately parallel to, not a replacement for, the Quiz* types above
+// — see the backend's migration 0039 doc comment. Teacher-facing GET
+// responses spread the raw assessment row (snake_case columns) alongside
+// a few explicitly-added camelCase fields (batchIds, questions,
+// batches) — same mixed shape QuizDraftDetail already has in this file.
+
+export type AssessmentMode = 'online' | 'offline';
+export type AssessmentStatus =
+  | 'draft'
+  | 'scheduled'
+  | 'published'
+  | 'scorecard_pending'
+  | 'completed'
+  | 'overdue';
+
+export interface AssessmentQuestion {
+  id: string;
+  assessment_id: string;
+  order_index: number;
+  question_text: string;
+  choices: string[];
+  correct_choice_index: number;
+  marks: number;
+  difficulty: QuizDifficulty;
+  explanation: string | null;
+}
+
+export interface AssessmentRow {
+  id: string;
+  tutor_id: string;
+  mode: AssessmentMode;
+  title: string;
+  subject_id: string;
+  status: AssessmentStatus;
+  max_score: number | null;
+  question_paper_object_key: string | null;
+  question_paper_mime: string | null;
+  assessment_date: string | null;
+  scorecard_deadline_at: string | null;
+  available_until: string | null;
+  week_start_date: string;
+  published_at: string | null;
+  completed_at: string | null;
+  completed_late: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OnlineAssessmentDetail extends AssessmentRow {
+  batchIds: string[];
+  questions: AssessmentQuestion[];
+}
+
+export interface OfflineAssessmentDetail extends AssessmentRow {
+  batches: { id: string; title: string }[];
+}
+
+/** GET /assessments/online/student/me — one row per published/completed
+ *  assessment across the student's enrolled batches. */
+export interface StudentOnlineAssessmentSummary {
+  id: string;
+  title: string;
+  subjectId: string;
+  publishedAt: string | null;
+  maxScore: number | null;
+  attempted: boolean;
+  score: number | null;
+}
+
+export interface AssessmentTakeQuestion {
+  id: string;
+  orderIndex: number;
+  questionText: string;
+  choices: string[];
+  marks: number;
+  /** Only present once the student has already attempted this assessment
+   *  (review mode). */
+  correctChoiceIndex?: number;
+  explanation?: string | null;
+  chosenChoiceIndex?: number | null;
+}
+
+export interface AssessmentTakeResponse {
+  assessment: { id: string; title: string };
+  attempted: boolean;
+  score?: number;
+  maxScore?: number | null;
+  submittedAt?: string;
+  questions: AssessmentTakeQuestion[];
+}
+
+export interface AssessmentSubmitResult {
+  id: string;
+  score: number;
+  maxScore: number | null;
+  submittedAt: string;
+  results: {
+    questionId: string;
+    chosenChoiceIndex: number;
+    correctChoiceIndex: number;
+    isCorrect: boolean;
+    marks: number;
+  }[];
+}
+
+export interface ScorecardImportOutcome {
+  status: 'success' | 'failed';
+  rowCount: number;
+  errors: string[];
+  completedAt?: string;
+  completedLate?: boolean;
+}
+
+export interface ScorecardImportRecord {
+  id: string;
+  assessment_id: string;
+  uploaded_by: string;
+  status: 'success' | 'failed';
+  error_detail: { errors: string[]; totalErrorCount: number } | null;
+  row_count: number;
+  created_at: string;
+}
+
+/** GET /academy/me/assessments/weekly-compliance. */
+export interface WeeklyComplianceRow {
+  tutorId: string;
+  teacherDisplayName: string | null;
+  status: AssessmentStatus | 'not_scheduled';
+  assessment: {
+    id: string;
+    title: string;
+    mode: AssessmentMode;
+    batchCount: number;
+    batchNames: string[];
+    assessmentDate: string | null;
+    completedAt: string | null;
+    completedLate: boolean;
+  } | null;
+  additionalAssessmentCount: number;
+}
+
+export interface WeeklyComplianceResponse {
+  weekStartDate: string;
+  summary: {
+    teachers: number;
+    completed: number;
+    pending: number;
+    overdue: number;
+    notScheduled: number;
+  };
+  teachers: WeeklyComplianceRow[];
+}
+
+/** GET /assessments/online/:id/results. */
+export interface AssessmentResult {
+  id: string;
+  assessment_id: string;
+  batch_id: string;
+  student_id: string;
+  score: number;
+  max_score: number;
+  source: 'online_submission' | 'offline_scorecard';
+  submitted_at: string;
+  display_name: string | null;
+}
+
+/** GET /academy/me/assessments/:id. */
+export interface AcademyAssessmentDetail {
+  id: string;
+  title: string;
+  subjectId: string;
+  mode: AssessmentMode;
+  status: AssessmentStatus;
+  assessmentDate: string | null;
+  maxScore: number | null;
+  publishedAt: string | null;
+  completedAt: string | null;
+  completedLate: boolean;
+  hasQuestionPaper: boolean;
+  batches: {
+    id: string;
+    title: string;
+    results: {
+      studentId: string;
+      score: number;
+      maxScore: number;
+      source: 'online_submission' | 'offline_scorecard';
+      submittedAt: string;
+    }[];
+  }[];
+  studentCount: number;
+  scorecardImports: {
+    id: string;
+    status: 'success' | 'failed';
+    rowCount: number;
+    createdAt: string;
+  }[];
+}
+
 /** Shape returned by GET /attendance/me/summary, /attendance/summary/batch/:id
  *  is a distinct (older) per-batch shape and keeps its own `attendanceRate` field. */
 export interface AttendanceSummary {

@@ -14,6 +14,7 @@ import {
   fcmConfig,
   posthogConfig,
   aiConfig,
+  aiAssessmentConfig,
   embeddingsConfig,
   razorpayConfig,
   marketplaceConfig,
@@ -30,6 +31,7 @@ import { CatalogModule } from './modules/catalog/catalog.module';
 import { SchedulingModule } from './modules/scheduling/scheduling.module';
 import { DeliveryModule } from './modules/delivery/delivery.module';
 import { AssessmentModule } from './modules/assessment/assessment.module';
+import { AssessmentsModule } from './modules/assessments/assessments.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { AiModule } from './modules/ai/ai.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -97,6 +99,7 @@ if (process.env.NODE_ENV !== 'production') {
         fcmConfig,
         posthogConfig,
         aiConfig,
+        aiAssessmentConfig,
         embeddingsConfig,
         razorpayConfig,
         marketplaceConfig,
@@ -128,6 +131,7 @@ if (process.env.NODE_ENV !== 'production') {
     SchedulingModule,
     DeliveryModule,
     AssessmentModule,
+    AssessmentsModule,
     BillingModule,
     AiModule,
     NotificationsModule,

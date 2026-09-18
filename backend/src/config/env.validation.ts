@@ -103,6 +103,14 @@ export const envSchema = z.object({
     .positive()
     .default(200_000),
 
+  // --- Gemini (Assessment AI question generation) — optional; falls
+  // back to a deterministic mock provider when unset, same shape as
+  // ANTHROPIC_API_KEY above. Deliberately a separate provider/key from
+  // Claude: the Assessment feature's AssessmentAiService is built to be
+  // provider-swappable, with Gemini as the current default. ---
+  GOOGLE_GEMINI_API_KEY: z.string().optional(),
+  AI_ASSESSMENT_MODEL: z.string().default('gemini-2.5-flash'),
+
   // --- Voyage AI (doubt-solver embeddings) — optional; falls back to a
   // deterministic hashed mock embedding when unset, so RAG retrieval is
   // fully testable pre-commercialization. Claude has no embeddings

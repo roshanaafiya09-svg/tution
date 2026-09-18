@@ -4,13 +4,13 @@ import {
   CalendarDays,
   CalendarOff,
   CircleUser,
+  ClipboardCheck,
   CreditCard,
   FileCheck2,
   FolderOpen,
   Globe,
   Home,
   Layers,
-  ListChecks,
   Megaphone,
   MessagesSquare,
   School,
@@ -61,7 +61,7 @@ export const TEACHER_NAV: TeacherNavGroup[] = [
       { href: '/dashboard/availability', label: 'Availability', icon: CalendarClock },
       { href: '/dashboard/leave', label: 'Leave', icon: CalendarOff },
       { href: '/dashboard/materials', label: 'Materials', icon: FolderOpen },
-      { href: '/dashboard/quizzes', label: 'Quizzes', icon: ListChecks },
+      { href: '/dashboard/assessments', label: 'Assessment', icon: ClipboardCheck },
     ],
   },
   {
@@ -124,6 +124,21 @@ export function teacherNotificationHref(notification: AppNotification): string |
   if (notification.type === 'academy_announcement') {
     const id = notification.payload.announcementId;
     return typeof id === 'string' ? `/dashboard/announcements/${id}` : null;
+  }
+  if (notification.type === 'assessment_completed') {
+    const id = notification.payload.assessmentId;
+    const mode = notification.payload.mode === 'online' ? 'online' : 'offline';
+    return typeof id === 'string' ? `/dashboard/assessments/${mode}/${id}` : null;
+  }
+  if (
+    notification.type === 'assessment_overdue' ||
+    notification.type === 'assessment_scorecard_validation_failed'
+  ) {
+    const id = notification.payload.assessmentId;
+    return typeof id === 'string' ? `/dashboard/assessments/offline/${id}` : null;
+  }
+  if (notification.type === 'assessment_weekly_reminder') {
+    return '/dashboard/assessments';
   }
   return null;
 }

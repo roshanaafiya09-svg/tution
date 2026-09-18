@@ -80,6 +80,14 @@ export const aiConfig = registerAs('ai', () => ({
   ),
 }));
 
+export const aiAssessmentConfig = registerAs('aiAssessment', () => ({
+  // Deliberately separate from `ai` above (Claude) — the Assessment
+  // feature's AssessmentAiService is provider-swappable, Gemini is just
+  // the current default (see modules/ai/assessment-ai/).
+  geminiApiKey: process.env.GOOGLE_GEMINI_API_KEY,
+  model: process.env.AI_ASSESSMENT_MODEL ?? 'gemini-2.5-flash',
+}));
+
 export const embeddingsConfig = registerAs('embeddings', () => ({
   // Voyage AI, not Anthropic — Claude has no embeddings endpoint;
   // Voyage is Anthropic's own recommended embeddings partner. Same

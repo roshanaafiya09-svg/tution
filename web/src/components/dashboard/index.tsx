@@ -22,6 +22,7 @@ export { MetricCard } from './metric-card';
 export { CompletenessCard, type CompletenessItem } from './completeness-card';
 export { OnboardingChecklist } from './onboarding-checklist';
 export { ConversationList } from './conversation-list';
+export { BatchMultiSelect } from './batch-multi-select';
 export {
   TEACHER_NAV,
   TEACHER_NAV_FOOTER,

@@ -14,6 +14,7 @@ import {
   Images,
   Megaphone,
   MessageCircle,
+  NotebookPen,
   Settings,
   ShieldCheck,
   Star,
@@ -86,6 +87,7 @@ export const ACADEMY_NAV: AcademyNavGroup[] = [
       { href: '/academy/calendar', label: 'Calendar', icon: Calendar },
       { href: '/academy/leave-requests', label: 'Leave Requests', icon: CalendarOff },
       { href: '/academy/holidays', label: 'Holidays', icon: CalendarRange },
+      { href: '/academy/assessments', label: 'Assessment', icon: NotebookPen },
     ],
   },
   {

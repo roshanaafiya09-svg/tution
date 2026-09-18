@@ -9,6 +9,7 @@ import { AcademyReviewsModule } from '../academy-reviews/academy-reviews.module'
 import { NotificationsModule } from '../../notifications/notifications.module';
 import { CatalogModule } from '../../catalog/catalog.module';
 import { HolidaysModule } from '../../holidays/holidays.module';
+import { AssessmentsModule } from '../../assessments/assessments.module';
 import { AcademyOwnerController } from './academy-owner.controller';
 import { AcademyOwnerService } from './academy-owner.service';
 import { AcademyOwnerBatchesController } from './academy-owner-batches.controller';
@@ -31,6 +32,8 @@ import { AcademyOwnerReportsController } from './academy-owner-reports.controlle
 import { AcademyOwnerReportsService } from './academy-owner-reports.service';
 import { AnnouncementRecipientController } from './announcement-recipient.controller';
 import { AnnouncementRecipientService } from './announcement-recipient.service';
+import { AcademyOwnerAssessmentsController } from './academy-owner-assessments.controller';
+import { AcademyOwnerAssessmentsService } from './academy-owner-assessments.service';
 
 /**
  * The self-serve Academy Dashboard (migration 0031) — closes the gap
@@ -54,6 +57,7 @@ import { AnnouncementRecipientService } from './announcement-recipient.service';
     NotificationsModule,
     CatalogModule,
     HolidaysModule,
+    AssessmentsModule,
   ],
   controllers: [
     AcademyOwnerController,
@@ -66,6 +70,7 @@ import { AnnouncementRecipientService } from './announcement-recipient.service';
     AcademyOwnerAnnouncementsController,
     AcademyOwnerReportsController,
     AnnouncementRecipientController,
+    AcademyOwnerAssessmentsController,
   ],
   providers: [
     AcademyOwnerService,
@@ -80,6 +85,7 @@ import { AnnouncementRecipientService } from './announcement-recipient.service';
     AcademyAnnouncementsRepository,
     AcademyOwnerReportsService,
     AnnouncementRecipientService,
+    AcademyOwnerAssessmentsService,
   ],
 })
 export class AcademyOwnerModule {}

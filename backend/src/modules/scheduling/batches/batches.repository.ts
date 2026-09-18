@@ -183,6 +183,19 @@ export class BatchesRepository {
     return rows.map((r) => r.tutor_id);
   }
 
+  /** Every tutor with at least one active batch — the Assessment weekly
+   *  compliance reminder's candidate pool (a tutor with no batches has
+   *  nothing to assess, so isn't nudged). */
+  async listDistinctTutorIdsWithActiveBatches(): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom('batches')
+      .select('tutor_id')
+      .distinct()
+      .where('status', '=', 'active')
+      .execute();
+    return rows.map((r) => r.tutor_id);
+  }
+
   findEnrollment(batchId: string, studentId: string) {
     return this.db
       .selectFrom('enrollments')

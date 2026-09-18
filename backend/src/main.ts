@@ -37,18 +37,32 @@ async function bootstrap() {
   // silently broke two things: DPDP consent records (parent-links
   // controller stashes request.ip as the legally-relevant IP at the
   // moment consent was granted) and any future IP-based rate limiting.
-  const adapter = new FastifyAdapter({ trustProxy: true });
+  // find-my-way's default maxParamLength (100) is too tight for the
+  // dev-only local-upload/local-download :objectKey param once an object
+  // key has two UUID segments (e.g. assessment-question-papers/{tutorId}/
+  // {assessmentId}/{random}.ext, URL-encoded) — Supabase Storage in
+  // production never routes through this param at all, so this only
+  // affects local dev.
+  const adapter = new FastifyAdapter({ trustProxy: true, maxParamLength: 300 });
 
   // Raw binary bodies for the dev-only local upload endpoint that stands
   // in for Supabase Storage's presigned PUT (see LocalStorageProvider).
   // In production uploads go straight to storage and never reach the API.
-  adapter
-    .getInstance()
-    .addContentTypeParser(
-      ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'],
-      { parseAs: 'buffer' },
-      (_request, body, done) => done(null, body),
-    );
+  adapter.getInstance().addContentTypeParser(
+    [
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      // Offline assessment question papers (DOC/DOCX) and scorecards
+      // (XLSX) — same dev-only local-upload path as the mimes above.
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ],
+    { parseAs: 'buffer' },
+    (_request, body, done) => done(null, body),
+  );
 
   // Overrides Fastify's built-in JSON parser to also stash the exact raw
   // bytes on the request — HMAC webhook signature verification (Razorpay)
