@@ -1,4 +1,4 @@
-import { Global, Module } from '@nestjs/common';
+import { Global, Logger, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Kysely, PostgresDialect } from 'kysely';
 import { Pool } from 'pg';
@@ -19,6 +19,12 @@ configurePgTypeParsers();
         const pool = new Pool({
           connectionString: config.getOrThrow<string>('database.url'),
           max: 10,
+          // Without keep-alive a socket killed by a proxy/VM pause (Docker
+          // Desktop after sleep, Neon idle suspend) sits in the pool
+          // looking healthy, and the next request on it fails with
+          // ECONNRESET.
+          keepAlive: true,
+          keepAliveInitialDelayMillis: 10_000,
           // Neon rejects unencrypted connections outright, so transport is
           // already encrypted regardless of this option — but without an
           // explicit `ssl` config, verification of *which* server we're
@@ -36,6 +42,15 @@ configurePgTypeParsers();
             process.env.NODE_ENV === 'production'
               ? { rejectUnauthorized: true }
               : undefined,
+        });
+
+        // pg-pool re-emits errors from idle clients; with no listener an
+        // idle-socket reset becomes an uncaught exception. It has already
+        // dropped the dead client, so logging is all that's needed.
+        pool.on('error', (err) => {
+          new Logger('Database').warn(
+            `Idle pooled connection dropped: ${err.message}`,
+          );
         });
 
         return new Kysely<DB>({
