@@ -16,6 +16,7 @@ import { STORAGE_PROVIDER } from '../../../common/storage/storage-provider.inter
 import type { StorageProvider } from '../../../common/storage/storage-provider.interface';
 import { extractPdfText } from '../../ai/quizzes/pdf-text';
 import { academicWeekStart } from '../academic-week.util';
+import { readUploadedObject } from '../storage-errors.util';
 import type { CreateOnlineAssessmentDto } from '../dto/create-online-assessment.dto';
 import type { UpdateAssessmentQuestionDto } from '../dto/update-assessment-question.dto';
 
@@ -81,7 +82,11 @@ export class OnlineAssessmentsService {
       );
     }
 
-    const fileBytes = await this.storage.read(material.object_key);
+    const fileBytes = await readUploadedObject(
+      this.storage,
+      material.object_key,
+      'material',
+    );
     const materialText = await extractPdfText(fileBytes);
 
     const questions = await this.assessmentAi.generateQuestions(
@@ -211,9 +216,36 @@ export class OnlineAssessmentsService {
     return this.getWithQuestions(tutorId, assessmentId);
   }
 
-  /** Every published online assessment across the student's enrolled
-   *  batches — mirrors StudentQuizzesService.listForOwnEnrolledBatches. */
+  /** The student's assessment list: every published online assessment
+   *  across their enrolled batches (mirrors StudentQuizzesService.
+   *  listForOwnEnrolledBatches), plus the offline assessments whose
+   *  scorecard has been imported with a result for them. Open,
+   *  not-yet-attempted online assessments come first. */
   async listForStudent(studentId: string) {
+    const [online, offline] = await Promise.all([
+      this.listOnlineForStudent(studentId),
+      this.repository.listOfflineResultsForStudent(studentId),
+    ]);
+
+    const offlineItems = offline.map((row) => ({
+      id: row.id,
+      title: row.title,
+      subjectId: row.subject_id,
+      mode: 'offline' as const,
+      status: 'completed' as const,
+      publishedAt: null,
+      assessmentDate: row.assessment_date,
+      maxScore: row.max_score,
+      attempted: true,
+      score: row.score,
+    }));
+
+    const open = online.filter((a) => !a.attempted && a.status === 'published');
+    const rest = online.filter((a) => a.attempted || a.status !== 'published');
+    return [...open, ...rest, ...offlineItems];
+  }
+
+  private async listOnlineForStudent(studentId: string) {
     const batches = await this.batchesRepository.listForStudent(studentId);
     const batchIds = batches.map((b) => b.id);
     if (batchIds.length === 0) return [];
@@ -229,7 +261,10 @@ export class OnlineAssessmentsService {
           id: assessment.id,
           title: assessment.title,
           subjectId: assessment.subject_id,
+          mode: 'online' as const,
+          status: assessment.status,
           publishedAt: assessment.published_at,
+          assessmentDate: null,
           maxScore: assessment.max_score,
           attempted: result !== undefined,
           score: result?.score ?? null,
@@ -259,6 +294,11 @@ export class OnlineAssessmentsService {
       return {
         assessment: { id: assessment.id, title: assessment.title },
         attempted: false,
+        // `completed` with no result of this student's own means the
+        // assessment closed without them (they joined after it finished,
+        // or the deadline passed) — `submit` rejects it, so the client
+        // must not offer the form.
+        open: assessment.status === 'published',
         questions: questions.map((q) => ({
           id: q.id,
           orderIndex: q.order_index,

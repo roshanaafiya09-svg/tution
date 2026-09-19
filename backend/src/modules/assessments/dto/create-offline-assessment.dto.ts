@@ -10,6 +10,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { IsCalendarDate } from './is-calendar-date.decorator';
 
 export class CreateOfflineAssessmentDto {
   @IsString()
@@ -31,6 +32,7 @@ export class CreateOfflineAssessmentDto {
   @Matches(/^\d{4}-\d{2}-\d{2}$/, {
     message: 'assessmentDate must be a date in YYYY-MM-DD form',
   })
+  @IsCalendarDate()
   assessmentDate!: string;
 
   @IsInt()

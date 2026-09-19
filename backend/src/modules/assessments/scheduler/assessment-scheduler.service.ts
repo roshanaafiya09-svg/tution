@@ -118,7 +118,12 @@ export class AssessmentSchedulerService {
         tutorIds,
         weekStartDate,
       );
-      const tutorsWithAssessment = new Set(thisWeek.map((a) => a.tutor_id));
+      // A bare draft isn't compliance (nothing scheduled or published) —
+      // same rule the Academy weekly-compliance tiles use, so a teacher
+      // the academy sees as "not scheduled" is also the one nudged.
+      const tutorsWithAssessment = new Set(
+        thisWeek.filter((a) => a.status !== 'draft').map((a) => a.tutor_id),
+      );
       const pending = tutorIds.filter((id) => !tutorsWithAssessment.has(id));
 
       for (const tutorId of pending) {

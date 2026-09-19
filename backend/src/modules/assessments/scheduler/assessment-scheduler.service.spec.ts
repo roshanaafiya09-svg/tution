@@ -189,6 +189,27 @@ describe('AssessmentSchedulerService.remindWeeklyAssessment', () => {
     );
   });
 
+  it('still nudges a teacher whose only assessment this week is an unscheduled draft', async () => {
+    const notify = jest.fn().mockResolvedValue(undefined);
+    const { scheduler } = buildScheduler({
+      listDistinctTutorIdsWithActiveBatches: jest
+        .fn()
+        .mockResolvedValue(['tutor-1', 'tutor-2']),
+      listForTutorsInWeek: jest.fn().mockResolvedValue([
+        { tutor_id: 'tutor-1', status: 'draft' },
+        { tutor_id: 'tutor-2', status: 'scheduled' },
+      ]),
+      notify,
+    });
+
+    await scheduler.remindWeeklyAssessment();
+
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({ userIds: ['tutor-1'] }),
+    );
+  });
+
   it('does nothing when every teacher already has an assessment this week', async () => {
     const notify = jest.fn().mockResolvedValue(undefined);
     const { scheduler } = buildScheduler({

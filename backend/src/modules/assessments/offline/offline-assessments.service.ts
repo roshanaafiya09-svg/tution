@@ -17,6 +17,7 @@ import { ScorecardTemplateService } from './scorecard-template.service';
 import { ScorecardImportService } from './scorecard-import.service';
 import type { ImportOutcome } from './scorecard-import.service';
 import { academicWeekStart, ASSESSMENT_TIMEZONE } from '../academic-week.util';
+import { readUploadedObject } from '../storage-errors.util';
 import type { CreateOfflineAssessmentDto } from '../dto/create-offline-assessment.dto';
 import {
   ALLOWED_QUESTION_PAPER_MIMES,
@@ -289,7 +290,11 @@ export class OfflineAssessmentsService {
 
     let outcome: ImportOutcome;
     try {
-      const buffer = await this.storage.read(objectKey);
+      const buffer = await readUploadedObject(
+        this.storage,
+        objectKey,
+        'scorecard',
+      );
       outcome = await this.scorecardImport.import(assessment, buffer, tutorId);
     } finally {
       // Scratch upload — not the permanent artifact (only the DB

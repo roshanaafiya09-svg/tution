@@ -6,7 +6,11 @@ jest.mock('kysely', () => ({
 }));
 
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
-import { AcademyOwnerAssessmentsService } from './academy-owner-assessments.service';
+import {
+  AcademyOwnerAssessmentsService,
+  pickPrimaryAssessment,
+  summarizeCompliance,
+} from './academy-owner-assessments.service';
 import type { AcademiesRepository } from '../academies/academies.repository';
 import type { AcademyMembershipsRepository } from '../academy-memberships/academy-memberships.repository';
 import type { AssessmentsRepository } from '../../assessments/assessments.repository';
@@ -23,6 +27,8 @@ function buildService(overrides: {
   findById?: jest.Mock;
   listActiveForAcademy?: jest.Mock;
   listForTutorsInWeek?: jest.Mock;
+  listBatchesForAssessment?: jest.Mock;
+  listResultsForAssessment?: jest.Mock;
 }) {
   const academiesRepository = {
     findByOwnerUserId:
@@ -54,8 +60,10 @@ function buildService(overrides: {
       }),
     listForTutorsInWeek:
       overrides.listForTutorsInWeek ?? jest.fn().mockResolvedValue([]),
-    listBatchesForAssessment: jest.fn().mockResolvedValue([]),
-    listResultsForAssessment: jest.fn().mockResolvedValue([]),
+    listBatchesForAssessment:
+      overrides.listBatchesForAssessment ?? jest.fn().mockResolvedValue([]),
+    listResultsForAssessment:
+      overrides.listResultsForAssessment ?? jest.fn().mockResolvedValue([]),
     listScorecardImports: jest.fn().mockResolvedValue([]),
   } as unknown as AssessmentsRepository;
 
@@ -273,5 +281,141 @@ describe('AcademyOwnerAssessmentsService.getWeeklyCompliance', () => {
     await expect(
       service.getWeeklyCompliance(OWNER_USER_ID, '2026-09-14'),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('weekly compliance — status priority and week handling', () => {
+  it('shows an OVERDUE assessment ahead of a newer pending one so the academy sees the problem', async () => {
+    const { service } = buildService({
+      listForTutorsInWeek: jest.fn().mockResolvedValue([
+        { id: 'new', tutor_id: TUTOR_ID, mode: 'online', status: 'published' },
+        { id: 'old', tutor_id: TUTOR_ID, mode: 'offline', status: 'overdue' },
+      ]),
+    });
+
+    const result = await service.getWeeklyCompliance(
+      OWNER_USER_ID,
+      '2026-09-14',
+    );
+
+    expect(result.teachers[0].status).toBe('overdue');
+    expect(result.teachers[0].assessment?.id).toBe('old');
+    expect(result.teachers[0].additionalAssessmentCount).toBe(1);
+  });
+
+  it('prefers a real scheduled assessment over a newer bare draft', async () => {
+    const { service } = buildService({
+      listForTutorsInWeek: jest.fn().mockResolvedValue([
+        { id: 'draft', tutor_id: TUTOR_ID, mode: 'online', status: 'draft' },
+        {
+          id: 'sched',
+          tutor_id: TUTOR_ID,
+          mode: 'offline',
+          status: 'scheduled',
+        },
+      ]),
+    });
+
+    const result = await service.getWeeklyCompliance(
+      OWNER_USER_ID,
+      '2026-09-14',
+    );
+
+    expect(result.teachers[0].status).toBe('scheduled');
+    expect(result.summary.pending).toBe(1);
+  });
+
+  it('counts a teacher whose only assessment is a draft as not scheduled, so the tiles add up', async () => {
+    const { service } = buildService({
+      listForTutorsInWeek: jest
+        .fn()
+        .mockResolvedValue([
+          { id: 'draft', tutor_id: TUTOR_ID, mode: 'online', status: 'draft' },
+        ]),
+    });
+
+    const result = await service.getWeeklyCompliance(
+      OWNER_USER_ID,
+      '2026-09-14',
+    );
+    const { teachers, completed, pending, overdue, notScheduled } =
+      result.summary;
+
+    expect(result.teachers[0].status).toBe('draft');
+    expect(notScheduled).toBe(1);
+    expect(completed + pending + overdue + notScheduled).toBe(teachers);
+  });
+
+  it("snaps any date inside the week to that week's Monday", async () => {
+    const listForTutorsInWeek = jest.fn().mockResolvedValue([]);
+    const { service } = buildService({ listForTutorsInWeek });
+
+    const result = await service.getWeeklyCompliance(
+      OWNER_USER_ID,
+      '2026-09-17',
+    );
+
+    expect(result.weekStartDate).toBe('2026-09-14');
+    expect(listForTutorsInWeek).toHaveBeenCalledWith([TUTOR_ID], '2026-09-14');
+  });
+
+  it('exposes student names on assessment detail results', async () => {
+    const listResultsForAssessment = jest.fn().mockResolvedValue([
+      {
+        batch_id: 'b1',
+        student_id: 's1',
+        display_name: 'Asha',
+        score: 4,
+        max_score: 5,
+        source: 'offline_scorecard',
+        submitted_at: new Date(),
+      },
+    ]);
+    const { service } = buildService({
+      listBatchesForAssessment: jest
+        .fn()
+        .mockResolvedValue([{ id: 'b1', title: 'Batch 1' }]),
+      listResultsForAssessment,
+    });
+
+    const detail = await service.getAssessmentDetail(
+      OWNER_USER_ID,
+      ASSESSMENT_ID,
+    );
+
+    expect(detail.batches[0].results[0]).toMatchObject({
+      studentId: 's1',
+      studentName: 'Asha',
+    });
+  });
+});
+
+describe('pickPrimaryAssessment / summarizeCompliance', () => {
+  it('returns null for no assessments and keeps the newest among equals', () => {
+    expect(pickPrimaryAssessment([])).toBeNull();
+    const rows = [
+      { id: 'newest', status: 'scheduled' as const },
+      { id: 'older', status: 'published' as const },
+    ];
+    expect(pickPrimaryAssessment(rows)?.id).toBe('newest');
+  });
+
+  it('puts every status in exactly one bucket', () => {
+    const summary = summarizeCompliance([
+      'completed',
+      'overdue',
+      'scheduled',
+      'published',
+      'scorecard_pending',
+      'draft',
+      'not_scheduled',
+    ]);
+    expect(summary).toEqual({
+      teachers: 7,
+      completed: 1,
+      overdue: 1,
+      pending: 3,
+      notScheduled: 2,
+    });
   });
 });

@@ -4,30 +4,18 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CalendarCheck2, CheckCircle2, ClipboardCheck, Clock, Laptop, NotebookPen } from 'lucide-react';
 import { api } from '@/lib/api';
+import { currentAcademicWeekStart } from '@/lib/academic-week';
+import { describeLoadError, type LoadErrorInfo } from '@/lib/load-error';
 import type { AssessmentRow } from '@/lib/types';
 import { buttonVariants, CardSkeleton, ErrorState, StatusBadge } from '@/components/ui';
 import { TeacherPageHeader, AcademicCard, EmptyPanel, MetricCard } from '@/components/dashboard';
 
-/** Monday of the current ISO week — display-only client-side estimate.
- *  The server (assessments.week_start_date, Asia/Kolkata) is the actual
- *  source of truth for weekly compliance; the Academy dashboard reads
- *  that, not this. */
-function currentWeekStart(): Date {
-  const now = new Date();
-  const day = now.getDay();
-  const diff = (day === 0 ? -6 : 1) - day;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() + diff);
-  monday.setHours(0, 0, 0, 0);
-  return monday;
-}
-
 export default function AssessmentsOverviewPage() {
   const [rows, setRows] = useState<(AssessmentRow & { mode: 'online' | 'offline' })[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<LoadErrorInfo | null>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     Promise.all([
       api.get<AssessmentRow[]>('/assessments/online/me'),
       api.get<AssessmentRow[]>('/assessments/offline/me'),
@@ -39,7 +27,7 @@ export default function AssessmentsOverviewPage() {
         ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         setRows(combined);
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(describeLoadError(err, 'your assessments')));
   }, []);
 
   useEffect(() => {
@@ -47,7 +35,7 @@ export default function AssessmentsOverviewPage() {
   }, [load]);
 
   if (loadError) {
-    return <ErrorState description="Could not load your assessments. Check your connection and try again." onRetry={load} />;
+    return <ErrorState title={loadError.title} description={loadError.description} onRetry={load} />;
   }
 
   if (rows === null) {
@@ -59,8 +47,13 @@ export default function AssessmentsOverviewPage() {
     );
   }
 
-  const weekStart = currentWeekStart();
-  const thisWeek = rows.filter((r) => new Date(r.created_at) >= weekStart);
+  // Same definition of "this week" the Academy compliance dashboard uses:
+  // the server-assigned Asia/Kolkata week_start_date. (Comparing
+  // created_at against a browser-local Monday put an assessment created
+  // this week for next week's date — or a late-Sunday IST one — in the
+  // wrong week, so this page disagreed with what the academy saw.)
+  const weekStart = currentAcademicWeekStart();
+  const thisWeek = rows.filter((r) => r.week_start_date === weekStart);
   const weeklyDone = thisWeek.some((r) => r.status === 'completed');
 
   return (

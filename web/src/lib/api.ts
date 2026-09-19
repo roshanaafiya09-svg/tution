@@ -208,6 +208,28 @@ async function request<T>(
   return (text === '' ? null : JSON.parse(text)) as T;
 }
 
+/** Authenticated binary GET (e.g. the offline scorecard .xlsx template).
+ *  A raw `fetch` to an API path carries no Bearer token — the access token
+ *  lives only in this module's memory — so it is always rejected with 401;
+ *  binary downloads must go through here to get the same Authorization
+ *  header and silent 401 refresh-and-retry as every JSON call. */
+async function requestBlob(path: string, retryOn401 = true): Promise<Blob> {
+  const headers: Record<string, string> = { ...AUTH_HEADERS };
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+
+  const res = await fetchWithRetry(
+    `${getApiUrl()}${path}`,
+    { method: 'GET', headers, credentials: 'include' },
+    true,
+  );
+
+  if (res.status === 401 && retryOn401 && (await refreshTokens())) {
+    return requestBlob(path, false);
+  }
+  if (!res.ok) return parseError(res);
+  return res.blob();
+}
+
 /**
  * Identical GETs issued while one is already in flight share that one
  * request — the shell and the page both asking for /auth/me on mount, or
@@ -265,6 +287,7 @@ export const api = {
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   delete: <T>(path: string) => request<T>('DELETE', path),
+  download: (path: string) => requestBlob(path),
 };
 
 /** Revokes the session server-side (refresh token, whether cookie- or

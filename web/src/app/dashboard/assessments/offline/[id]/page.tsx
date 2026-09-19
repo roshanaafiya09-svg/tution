@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Download, FileWarning, Upload } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
+import { describeLoadError, type LoadErrorInfo } from '@/lib/load-error';
 import type { OfflineAssessmentDetail, ScorecardImportOutcome, ScorecardImportRecord } from '@/lib/types';
 import { Button, CardSkeleton, ErrorState, InlineError, StatusBadge, useToast } from '@/components/ui';
 import { TeacherPageHeader, AcademicCard } from '@/components/dashboard';
@@ -19,7 +20,7 @@ export default function OfflineAssessmentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const toast = useToast();
   const [assessment, setAssessment] = useState<OfflineAssessmentDetail | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<LoadErrorInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploadingPaper, setUploadingPaper] = useState(false);
   const [scheduling, setScheduling] = useState(false);
@@ -28,7 +29,7 @@ export default function OfflineAssessmentDetailPage() {
   const [imports, setImports] = useState<ScorecardImportRecord[] | null>(null);
 
   const load = useCallback(async () => {
-    setLoadError(false);
+    setLoadError(null);
     try {
       const a = await api.get<OfflineAssessmentDetail>(`/assessments/offline/${id}`);
       setAssessment(a);
@@ -38,8 +39,8 @@ export default function OfflineAssessmentDetailPage() {
           .then(setImports)
           .catch(() => setImports([]));
       }
-    } catch {
-      setLoadError(true);
+    } catch (err) {
+      setLoadError(describeLoadError(err, 'this assessment'));
     }
   }, [id]);
 
@@ -95,12 +96,10 @@ export default function OfflineAssessmentDetailPage() {
 
   async function downloadTemplate() {
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/assessments/offline/${id}/scorecard-template`,
-        { credentials: 'include', headers: { 'X-Auth-Client': 'web' } },
-      );
-      if (!res.ok) throw new Error('Download failed');
-      const blob = await res.blob();
+      // Through the API client so the request carries the Bearer token —
+      // a bare fetch here was always rejected with 401, so the template
+      // could never be downloaded.
+      const blob = await api.download(`/assessments/offline/${id}/scorecard-template`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -145,7 +144,7 @@ export default function OfflineAssessmentDetailPage() {
   }
 
   if (loadError) {
-    return <ErrorState description="Could not load this assessment. Check your connection and try again." onRetry={() => void load()} />;
+    return <ErrorState title={loadError.title} description={loadError.description} onRetry={() => void load()} />;
   }
 
   if (!assessment) {

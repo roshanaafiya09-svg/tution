@@ -57,6 +57,9 @@ function buildService(overrides: {
   requiredStudentIds?: jest.Mock;
   assertEnrolledInAny?: jest.Mock;
   notify?: jest.Mock;
+  listForStudent?: jest.Mock;
+  listForTutorsAcrossBatches?: jest.Mock;
+  listOfflineResultsForStudent?: jest.Mock;
 }) {
   const repository = {
     findById:
@@ -80,6 +83,10 @@ function buildService(overrides: {
     countResultsForAssessment:
       overrides.countResultsForAssessment ?? jest.fn().mockResolvedValue(1),
     updateStatus: overrides.updateStatus ?? jest.fn().mockResolvedValue({}),
+    listForTutorsAcrossBatches:
+      overrides.listForTutorsAcrossBatches ?? jest.fn().mockResolvedValue([]),
+    listOfflineResultsForStudent:
+      overrides.listOfflineResultsForStudent ?? jest.fn().mockResolvedValue([]),
   } as unknown as AssessmentsRepository;
 
   const assessments = {
@@ -98,7 +105,9 @@ function buildService(overrides: {
   } as unknown as AssessmentsService;
 
   const materialsRepository = {} as unknown as MaterialsRepository;
-  const batchesRepository = {} as unknown as BatchesRepository;
+  const batchesRepository = {
+    listForStudent: overrides.listForStudent ?? jest.fn().mockResolvedValue([]),
+  } as unknown as BatchesRepository;
 
   const notify = overrides.notify ?? jest.fn().mockResolvedValue(undefined);
   const notificationsService = { notify } as unknown as NotificationsService;
@@ -266,5 +275,117 @@ describe('OnlineAssessmentsService.submit', () => {
     await service.submit(STUDENT_ID, ASSESSMENT_ID, [1, 3]);
 
     expect(updateStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe('OnlineAssessmentsService.listForStudent', () => {
+  const online = (over: Record<string, unknown>) => ({
+    id: 'on-1',
+    title: 'Online',
+    subject_id: 'subj',
+    status: 'published',
+    published_at: new Date('2026-09-16'),
+    max_score: 10,
+    ...over,
+  });
+
+  it('returns an empty list (not an error) for a student with no batches and no offline results', async () => {
+    const { service } = buildService({});
+    await expect(service.listForStudent(STUDENT_ID)).resolves.toEqual([]);
+  });
+
+  it("includes the student's imported offline results, marked offline", async () => {
+    const { service } = buildService({
+      listOfflineResultsForStudent: jest.fn().mockResolvedValue([
+        {
+          id: 'off-1',
+          title: 'Unit Test',
+          subject_id: 'subj',
+          assessment_date: '2026-09-15',
+          score: 42,
+          max_score: 50,
+        },
+      ]),
+    });
+
+    const list = await service.listForStudent(STUDENT_ID);
+
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({
+      id: 'off-1',
+      mode: 'offline',
+      attempted: true,
+      score: 42,
+      maxScore: 50,
+      assessmentDate: '2026-09-15',
+    });
+  });
+
+  it('lists open unattempted online assessments first, then attempted, then offline results', async () => {
+    const { service } = buildService({
+      listForStudent: jest.fn().mockResolvedValue([{ id: 'batch-a' }]),
+      listForTutorsAcrossBatches: jest
+        .fn()
+        .mockResolvedValue([
+          online({ id: 'done', status: 'completed' }),
+          online({ id: 'open', status: 'published' }),
+        ]),
+      findResult: jest.fn((assessmentId: string) =>
+        Promise.resolve(assessmentId === 'done' ? { score: 7 } : undefined),
+      ),
+      listOfflineResultsForStudent: jest.fn().mockResolvedValue([
+        {
+          id: 'off-1',
+          title: 'Offline',
+          subject_id: 'subj',
+          assessment_date: '2026-09-15',
+          score: 1,
+          max_score: 2,
+        },
+      ]),
+    });
+
+    const list = await service.listForStudent(STUDENT_ID);
+
+    expect(list.map((a) => a.id)).toEqual(['open', 'done', 'off-1']);
+    expect(list[0]).toMatchObject({ attempted: false, score: null });
+    expect(list[1]).toMatchObject({ attempted: true, score: 7 });
+  });
+});
+
+describe('OnlineAssessmentsService.getToTake', () => {
+  it('tells a student who missed a completed assessment that it is no longer open', async () => {
+    const { service } = buildService({
+      findById: jest.fn().mockResolvedValue({
+        id: ASSESSMENT_ID,
+        tutor_id: TUTOR_ID,
+        mode: 'online',
+        status: 'completed',
+        title: 'Closed',
+        max_score: 7,
+      }),
+    });
+
+    const result = await service.getToTake(STUDENT_ID, ASSESSMENT_ID);
+
+    expect(result).toMatchObject({ attempted: false, open: false });
+  });
+
+  it('keeps a published, unattempted assessment open and hides the answer key', async () => {
+    const { service } = buildService({
+      findById: jest.fn().mockResolvedValue({
+        id: ASSESSMENT_ID,
+        tutor_id: TUTOR_ID,
+        mode: 'online',
+        status: 'published',
+        title: 'Live',
+        max_score: 7,
+      }),
+    });
+
+    const result = await service.getToTake(STUDENT_ID, ASSESSMENT_ID);
+
+    expect(result).toMatchObject({ attempted: false, open: true });
+    expect(JSON.stringify(result)).not.toContain('correctChoiceIndex');
   });
 });

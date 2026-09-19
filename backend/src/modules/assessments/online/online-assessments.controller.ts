@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   UseGuards,
@@ -46,7 +47,10 @@ export class OnlineAssessmentsController {
 
   @Get(':id')
   @Roles('tutor')
-  getOwn(@CurrentUser() user: AccessTokenPayload, @Param('id') id: string) {
+  getOwn(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.service.getWithQuestions(user.sub, id);
   }
 
@@ -54,7 +58,7 @@ export class OnlineAssessmentsController {
   @Roles('tutor')
   generate(
     @CurrentUser() user: AccessTokenPayload,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: GenerateAssessmentQuestionsDto,
   ) {
     return this.service.generateQuestions(
@@ -69,8 +73,8 @@ export class OnlineAssessmentsController {
   @Roles('tutor')
   updateQuestion(
     @CurrentUser() user: AccessTokenPayload,
-    @Param('id') id: string,
-    @Param('questionId') questionId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('questionId', ParseUUIDPipe) questionId: string,
     @Body() dto: UpdateAssessmentQuestionDto,
   ) {
     return this.service.updateQuestion(user.sub, id, questionId, dto);
@@ -78,7 +82,10 @@ export class OnlineAssessmentsController {
 
   @Post(':id/publish')
   @Roles('tutor')
-  publish(@CurrentUser() user: AccessTokenPayload, @Param('id') id: string) {
+  publish(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.service.publish(user.sub, id);
   }
 
@@ -86,14 +93,17 @@ export class OnlineAssessmentsController {
   @Roles('tutor')
   listResults(
     @CurrentUser() user: AccessTokenPayload,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.service.listResults(user.sub, id);
   }
 
   @Get(':id/take')
   @Roles('student')
-  take(@CurrentUser() user: AccessTokenPayload, @Param('id') id: string) {
+  take(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.service.getToTake(user.sub, id);
   }
 
@@ -101,7 +111,7 @@ export class OnlineAssessmentsController {
   @Roles('student')
   submit(
     @CurrentUser() user: AccessTokenPayload,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SubmitAssessmentAttemptDto,
   ) {
     return this.service.submit(user.sub, id, dto.answers);

@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, CheckCircle2, XCircle } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
+import { describeLoadError, type LoadErrorInfo } from '@/lib/load-error';
 import type { AssessmentTakeResponse } from '@/lib/types';
-import { Card, PageHeader, PageLoading, Button, InlineError, Badge } from '@/components/ui';
+import { Card, PageHeader, PageLoading, Button, InlineError, Badge, ErrorState } from '@/components/ui';
 
 export default function StudentAssessmentTakePage() {
   const params = useParams<{ id: string }>();
@@ -13,13 +14,23 @@ export default function StudentAssessmentTakePage() {
   const assessmentId = params.id;
 
   const [data, setData] = useState<AssessmentTakeResponse | null>(null);
+  const [loadError, setLoadError] = useState<LoadErrorInfo | null>(null);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    void api.get<AssessmentTakeResponse>(`/assessments/online/${assessmentId}/take`).then(setData);
+  const load = useCallback(() => {
+    setLoadError(null);
+    setData(null);
+    api
+      .get<AssessmentTakeResponse>(`/assessments/online/${assessmentId}/take`)
+      .then(setData)
+      .catch((err: unknown) => setLoadError(describeLoadError(err, 'this assessment')));
   }, [assessmentId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   async function submit() {
     if (!data) return;
@@ -35,8 +46,10 @@ export default function StudentAssessmentTakePage() {
     setSubmitting(true);
     try {
       await api.post(`/assessments/online/${assessmentId}/submit`, { answers: answerArray });
-      const refreshed = await api.get<AssessmentTakeResponse>(`/assessments/online/${assessmentId}/take`);
-      setData(refreshed);
+      // Reload through `load` (not an inline GET) so that if this refresh
+      // fails, the student gets the retry card instead of a misleading
+      // "could not submit" error for answers that were in fact saved.
+      load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not submit your answers.');
     } finally {
@@ -55,7 +68,11 @@ export default function StudentAssessmentTakePage() {
             <ArrowLeft className="h-4 w-4" aria-hidden />
             Back to assessments
           </button>
-          <PageLoading />
+          {loadError ? (
+            <ErrorState title={loadError.title} description={loadError.description} onRetry={load} />
+          ) : (
+            <PageLoading />
+          )}
         </>
       ) : (
         <>
@@ -64,13 +81,24 @@ export default function StudentAssessmentTakePage() {
             description={
               data.attempted
                 ? `You scored ${data.score}/${data.maxScore}`
-                : 'Answer every question, then submit. One attempt only.'
+                : data.open === false
+                  ? 'This assessment has closed and can no longer be attempted.'
+                  : 'Answer every question, then submit. One attempt only.'
             }
             back={{ href: '/student/assessments', label: 'Back to assessments' }}
           />
 
+          {!data.attempted && data.open === false && (
+            <Card>
+              <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                You didn&apos;t submit this assessment before it closed, so there is no score to show. Ask your tutor if
+                you need another attempt.
+              </p>
+            </Card>
+          )}
+
           <div className="space-y-4">
-            {data.questions
+            {(!data.attempted && data.open === false ? [] : data.questions)
               .slice()
               .sort((a, b) => a.orderIndex - b.orderIndex)
               .map((q, idx) => (
@@ -135,7 +163,7 @@ export default function StudentAssessmentTakePage() {
               ))}
           </div>
 
-          {!data.attempted && (
+          {!data.attempted && data.open !== false && (
             <>
               {error && (
                 <div className="mt-4">

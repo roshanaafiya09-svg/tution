@@ -1547,12 +1547,18 @@ export interface OfflineAssessmentDetail extends AssessmentRow {
 }
 
 /** GET /assessments/online/student/me — one row per published/completed
- *  assessment across the student's enrolled batches. */
+ *  online assessment across the student's enrolled batches, plus one per
+ *  offline assessment whose scorecard has been imported with a result for
+ *  this student (those are always `attempted`, mode 'offline'). */
 export interface StudentOnlineAssessmentSummary {
   id: string;
   title: string;
   subjectId: string;
+  mode: AssessmentMode;
+  status: AssessmentStatus;
   publishedAt: string | null;
+  /** Offline only — the date the paper was conducted. */
+  assessmentDate: string | null;
   maxScore: number | null;
   attempted: boolean;
   score: number | null;
@@ -1574,6 +1580,9 @@ export interface AssessmentTakeQuestion {
 export interface AssessmentTakeResponse {
   assessment: { id: string; title: string };
   attempted: boolean;
+  /** Only present before an attempt: false once the assessment has closed
+   *  (completed without this student), so the form must not be offered. */
+  open?: boolean;
   score?: number;
   maxScore?: number | null;
   submittedAt?: string;
@@ -1673,6 +1682,7 @@ export interface AcademyAssessmentDetail {
     title: string;
     results: {
       studentId: string;
+      studentName: string | null;
       score: number;
       maxScore: number;
       source: 'online_submission' | 'offline_scorecard';

@@ -131,6 +131,33 @@ export class AssessmentsRepository {
       .execute();
   }
 
+  /** Offline assessments this student has a scorecard result for — the
+   *  offline half of the student's assessment list. Keyed on the
+   *  student's own result rows (their authenticated id, never a client-
+   *  supplied one), so a student only ever sees their own marks. */
+  listOfflineResultsForStudent(studentId: string) {
+    return this.db
+      .selectFrom('assessment_results')
+      .innerJoin(
+        'assessments',
+        'assessments.id',
+        'assessment_results.assessment_id',
+      )
+      .select([
+        'assessments.id',
+        'assessments.title',
+        'assessments.subject_id',
+        'assessments.assessment_date',
+        'assessments.completed_at',
+        'assessment_results.score',
+        'assessment_results.max_score',
+      ])
+      .where('assessment_results.student_id', '=', studentId)
+      .where('assessments.mode', '=', 'offline')
+      .orderBy('assessments.assessment_date', 'desc')
+      .execute();
+  }
+
   setMaxScore(id: string, maxScore: number) {
     return this.db
       .updateTable('assessments')

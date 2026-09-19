@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  ParseUUIDPipe,
   Post,
   Res,
   UseGuards,
@@ -42,14 +43,17 @@ export class OfflineAssessmentsController {
   }
 
   @Get(':id')
-  getOwn(@CurrentUser() user: AccessTokenPayload, @Param('id') id: string) {
+  getOwn(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.service.getOwn(user.sub, id);
   }
 
   @Post(':id/question-paper/upload-url')
   createQuestionPaperUploadUrl(
     @CurrentUser() user: AccessTokenPayload,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: QuestionPaperUploadUrlDto,
   ) {
     return this.service.createQuestionPaperUploadUrl(
@@ -63,20 +67,23 @@ export class OfflineAssessmentsController {
   @Get(':id/question-paper/download-url')
   getQuestionPaperDownloadUrl(
     @CurrentUser() user: AccessTokenPayload,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.service.getQuestionPaperDownloadUrl(user.sub, id);
   }
 
   @Post(':id/schedule')
-  schedule(@CurrentUser() user: AccessTokenPayload, @Param('id') id: string) {
+  schedule(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.service.schedule(user.sub, id);
   }
 
   @Get(':id/scorecard-template')
   async downloadTemplate(
     @CurrentUser() user: AccessTokenPayload,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Res() reply: FastifyReply,
   ) {
     const { buffer, filename } = await this.service.downloadScorecardTemplate(
@@ -92,7 +99,7 @@ export class OfflineAssessmentsController {
   @Post(':id/scorecard/upload-url')
   createScorecardUploadUrl(
     @CurrentUser() user: AccessTokenPayload,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ScorecardUploadUrlDto,
   ) {
     return this.service.createScorecardUploadUrl(user.sub, id, dto.sizeBytes);
@@ -101,7 +108,7 @@ export class OfflineAssessmentsController {
   @Post(':id/scorecard/process')
   processScorecard(
     @CurrentUser() user: AccessTokenPayload,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ProcessScorecardDto,
   ) {
     return this.service.processScorecard(user.sub, id, dto.objectKey);
@@ -110,7 +117,7 @@ export class OfflineAssessmentsController {
   @Get(':id/scorecard-imports')
   listScorecardImports(
     @CurrentUser() user: AccessTokenPayload,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.service.listScorecardImports(user.sub, id);
   }

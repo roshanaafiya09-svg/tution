@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Check, Upload, Users2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
+import { describeLoadError, type LoadErrorInfo } from '@/lib/load-error';
 import type {
   AssessmentQuestion,
   AssessmentResult,
@@ -32,18 +33,19 @@ export default function OnlineAssessmentDetailPage() {
   const toast = useToast();
   const [assessment, setAssessment] = useState<OnlineAssessmentDetail | null>(null);
   const [batches, setBatches] = useState<Batch[]>([]);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<LoadErrorInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [results, setResults] = useState<AssessmentResult[] | null>(null);
 
   const load = useCallback(async () => {
-    setLoadError(false);
+    setLoadError(null);
     try {
       const [a, batchRows] = await Promise.all([
         api.get<OnlineAssessmentDetail>(`/assessments/online/${id}`),
-        api.get<Batch[]>('/batches/me'),
+        // Batch names are only header decoration here — never fatal.
+        api.get<Batch[]>('/batches/me').catch(() => [] as Batch[]),
       ]);
       setAssessment(a);
       setBatches(batchRows);
@@ -53,8 +55,8 @@ export default function OnlineAssessmentDetailPage() {
           .then(setResults)
           .catch(() => setResults([]));
       }
-    } catch {
-      setLoadError(true);
+    } catch (err) {
+      setLoadError(describeLoadError(err, 'this assessment'));
     }
   }, [id]);
 
@@ -112,7 +114,7 @@ export default function OnlineAssessmentDetailPage() {
   }
 
   if (loadError) {
-    return <ErrorState description="Could not load this assessment. Check your connection and try again." onRetry={() => void load()} />;
+    return <ErrorState title={loadError.title} description={loadError.description} onRetry={() => void load()} />;
   }
 
   if (!assessment) {

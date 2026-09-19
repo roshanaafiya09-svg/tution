@@ -12,6 +12,71 @@ import type { AssessmentStatus } from '../../../database/types';
 
 export type WeeklyComplianceStatus = AssessmentStatus | 'not_scheduled';
 
+/** Which of a teacher's assessments in the week represents them on the
+ *  compliance row. Lower wins; ties go to the newest (callers pass rows
+ *  newest-first). A completed assessment means the teacher is compliant;
+ *  otherwise an overdue one is the thing an academy needs to see, ahead of
+ *  work that is merely in flight; a bare draft is the weakest signal. */
+const COMPLIANCE_PRIORITY: Record<AssessmentStatus, number> = {
+  completed: 0,
+  overdue: 1,
+  scorecard_pending: 2,
+  published: 2,
+  scheduled: 2,
+  draft: 3,
+};
+
+export function pickPrimaryAssessment<T extends { status: AssessmentStatus }>(
+  assessments: T[],
+): T | null {
+  let best: T | null = null;
+  for (const assessment of assessments) {
+    if (
+      best === null ||
+      COMPLIANCE_PRIORITY[assessment.status] < COMPLIANCE_PRIORITY[best.status]
+    ) {
+      best = assessment;
+    }
+  }
+  return best;
+}
+
+/** Every teacher lands in exactly one bucket, so the tiles always add up
+ *  to `teachers`. A teacher whose only assessment is an unscheduled draft
+ *  has not scheduled anything yet, so counts as "not scheduled" (their row
+ *  still shows the draft itself). */
+export function summarizeCompliance(
+  statuses: WeeklyComplianceStatus[],
+): WeeklyComplianceSummary {
+  const summary: WeeklyComplianceSummary = {
+    teachers: statuses.length,
+    completed: 0,
+    pending: 0,
+    overdue: 0,
+    notScheduled: 0,
+  };
+  for (const status of statuses) {
+    if (status === 'completed') summary.completed++;
+    else if (status === 'overdue') summary.overdue++;
+    else if (
+      status === 'scheduled' ||
+      status === 'published' ||
+      status === 'scorecard_pending'
+    ) {
+      summary.pending++;
+    } else summary.notScheduled++;
+  }
+  return summary;
+}
+
+export interface WeeklyComplianceSummary {
+  teachers: number;
+  completed: number;
+  pending: number;
+  overdue: number;
+  notScheduled: number;
+}
+
 /**
  * Academy Dashboard -> Assessment -> Weekly Compliance (spec §20/§21/§37)
  * — read-only, operational, never a ranking. Same
@@ -40,7 +105,10 @@ export class AcademyOwnerAssessmentsService {
 
   async getWeeklyCompliance(ownerUserId: string, weekStartDate?: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const week = weekStartDate ?? academicWeekStart();
+    // Any date inside the wanted week is accepted (the controller has
+    // already proven it is a real calendar date) and snapped to that
+    // week's Monday, the value assessments.week_start_date holds.
+    const week = academicWeekStart(weekStartDate);
 
     const teachers =
       await this.academyMembershipsRepository.listActiveForAcademy(academy.id);
@@ -63,23 +131,25 @@ export class AcademyOwnerAssessmentsService {
     const rows = await Promise.all(
       tutorIds.map(async (tutorId) => {
         const own = byTutor.get(tutorId) ?? [];
-        // Prefer a completed one for the summary row; otherwise the most
-        // recently created. Every assessment this teacher has this week
-        // is still returned in `assessments` below (§18: additional
-        // assessments in the same week are never hidden).
-        const primary =
-          own.find((a) => a.status === 'completed') ?? own[0] ?? null;
+        // Every assessment this teacher has this week still counts
+        // (§18: additional assessments in the same week are never hidden)
+        // — `primary` only chooses which one names the summary row.
+        const primary = pickPrimaryAssessment(own);
         const batches = primary
           ? await this.assessmentsRepository.listBatchesForAssessment(
               primary.id,
             )
           : [];
 
+        // Annotated so the literal isn't widened to `string` in the
+        // returned object (summarizeCompliance needs the union).
+        const status: WeeklyComplianceStatus =
+          primary?.status ?? 'not_scheduled';
+
         return {
           tutorId,
           teacherDisplayName: tutorNames.get(tutorId) ?? null,
-          status: (primary?.status ??
-            'not_scheduled') as WeeklyComplianceStatus,
+          status,
           assessment: primary
             ? {
                 id: primary.id,
@@ -100,15 +170,7 @@ export class AcademyOwnerAssessmentsService {
       }),
     );
 
-    const summary = {
-      teachers: tutorIds.length,
-      completed: rows.filter((r) => r.status === 'completed').length,
-      pending: rows.filter((r) =>
-        ['scheduled', 'published', 'scorecard_pending'].includes(r.status),
-      ).length,
-      overdue: rows.filter((r) => r.status === 'overdue').length,
-      notScheduled: rows.filter((r) => r.status === 'not_scheduled').length,
-    };
+    const summary = summarizeCompliance(rows.map((r) => r.status));
 
     return { weekStartDate: week, summary, teachers: rows };
   }
@@ -155,6 +217,7 @@ export class AcademyOwnerAssessmentsService {
         title: b.title,
         results: (resultsByBatch.get(b.id) ?? []).map((r) => ({
           studentId: r.student_id,
+          studentName: r.display_name,
           score: r.score,
           maxScore: r.max_score,
           source: r.source,

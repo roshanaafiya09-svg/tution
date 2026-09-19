@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronRight, NotebookPen, Plus } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
+import { describeLoadError, type LoadErrorInfo } from '@/lib/load-error';
 import type { AssessmentRow, Batch, Subject } from '@/lib/types';
 import { Button, CardSkeleton, ErrorState, Field, Input, InlineError, Select, StatusBadge } from '@/components/ui';
 import { AcademicCard, BatchMultiSelect, EmptyPanel } from '@/components/dashboard';
@@ -14,7 +15,8 @@ export default function OfflineAssessmentsPage() {
   const [rows, setRows] = useState<AssessmentRow[] | null>(null);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<LoadErrorInfo | null>(null);
+  const [batchesFailed, setBatchesFailed] = useState(false);
   const [creating, setCreating] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,18 +27,24 @@ export default function OfflineAssessmentsPage() {
   const [maxScore, setMaxScore] = useState(100);
 
   const load = useCallback(async () => {
-    setLoadError(false);
+    setLoadError(null);
+    setBatchesFailed(false);
     try {
       const [assessments, batchRows, subjectRows] = await Promise.all([
         api.get<AssessmentRow[]>('/assessments/offline/me'),
-        api.get<Batch[]>('/batches/me'),
+        // Only the create form needs batches — a failure here must not
+        // hide the assessment list the page is actually about.
+        api.get<Batch[]>('/batches/me').catch(() => {
+          setBatchesFailed(true);
+          return [] as Batch[];
+        }),
         api.get<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
       ]);
       setRows(assessments);
       setBatches(batchRows.filter((b) => b.status === 'active'));
       setSubjects(subjectRows);
-    } catch {
-      setLoadError(true);
+    } catch (err) {
+      setLoadError(describeLoadError(err, 'your offline assessments'));
     }
   }, []);
 
@@ -68,7 +76,7 @@ export default function OfflineAssessmentsPage() {
   }
 
   if (loadError) {
-    return <ErrorState description="Could not load your offline assessments. Check your connection and try again." onRetry={() => void load()} />;
+    return <ErrorState title={loadError.title} description={loadError.description} onRetry={() => void load()} />;
   }
 
   if (rows === null) {
@@ -129,6 +137,7 @@ export default function OfflineAssessmentsPage() {
                 />
               </Field>
             </div>
+            {batchesFailed && <InlineError>Could not load your batches — reload the page to pick batches for this assessment.</InlineError>}
             {error && <InlineError>{error}</InlineError>}
             <div className="flex gap-2">
               <Button onClick={() => void create()} disabled={creating} loading={creating}>

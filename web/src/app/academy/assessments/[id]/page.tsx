@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { FileText } from 'lucide-react';
 import { api } from '@/lib/api';
+import { describeLoadError, type LoadErrorInfo } from '@/lib/load-error';
 import type { AcademyAssessmentDetail } from '@/lib/types';
 import { Button, CardSkeleton, ErrorState, StatusBadge, useToast } from '@/components/ui';
 import { AcademyCard, AcademyPageIntro } from '@/components/academy';
@@ -12,14 +13,14 @@ export default function AcademyAssessmentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const toast = useToast();
   const [detail, setDetail] = useState<AcademyAssessmentDetail | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<LoadErrorInfo | null>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     api
       .get<AcademyAssessmentDetail>(`/academy/me/assessments/${id}`)
       .then(setDetail)
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(describeLoadError(err, 'this assessment')));
   }, [id]);
 
   useEffect(() => {
@@ -36,7 +37,7 @@ export default function AcademyAssessmentDetailPage() {
   }
 
   if (loadError) {
-    return <ErrorState description="Could not load this assessment. Check your connection and try again." onRetry={load} />;
+    return <ErrorState title={loadError.title} description={loadError.description} onRetry={load} />;
   }
 
   if (!detail) {
@@ -104,7 +105,7 @@ export default function AcademyAssessmentDetailPage() {
             <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {batch.results.map((result) => (
                 <li key={result.studentId} className="flex items-center justify-between px-5 py-2.5 text-sm">
-                  <span className="text-neutral-800 dark:text-neutral-200">{result.studentId.slice(0, 8)}</span>
+                  <span className="text-neutral-800 dark:text-neutral-200">{result.studentName ?? result.studentId.slice(0, 8)}</span>
                   <span className="font-medium text-neutral-900 dark:text-neutral-50">
                     {result.score}/{result.maxScore}
                   </span>
