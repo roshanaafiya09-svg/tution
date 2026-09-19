@@ -6,19 +6,34 @@ import { ChevronRight, ClipboardCheck } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { WeeklyComplianceResponse } from '@/lib/types';
 import { CardSkeleton, ErrorState, StatusBadge } from '@/components/ui';
-import { AcademyCard, AcademyPageIntro } from '@/components/academy';
+import { AcademyCard, AcademyPageIntro, AcademySetupBanner } from '@/components/academy';
+import { useAcademyDashboard } from '@/components/academy-shell';
+
+/** What an account with no academy row yet sees — the endpoint 404s for it
+ *  ("No academy is linked"), so it is never called; same convention as every
+ *  other Academy page (see AcademySetupBanner). */
+const NO_ACADEMY_COMPLIANCE: WeeklyComplianceResponse = {
+  weekStartDate: '',
+  summary: { teachers: 0, completed: 0, pending: 0, overdue: 0, notScheduled: 0 },
+  teachers: [],
+};
 
 export default function AcademyAssessmentsPage() {
+  const { hasAcademy } = useAcademyDashboard();
   const [data, setData] = useState<WeeklyComplianceResponse | null>(null);
   const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(() => {
     setLoadError(false);
+    if (hasAcademy === false) {
+      setData(NO_ACADEMY_COMPLIANCE);
+      return;
+    }
     api
       .get<WeeklyComplianceResponse>('/academy/me/assessments/weekly-compliance')
       .then(setData)
       .catch(() => setLoadError(true));
-  }, []);
+  }, [hasAcademy]);
 
   useEffect(() => {
     load();
@@ -39,6 +54,7 @@ export default function AcademyAssessmentsPage() {
 
   return (
     <div className="space-y-5">
+      <AcademySetupBanner />
       <AcademyPageIntro
         eyebrow="Academic"
         title="Weekly Assessment Compliance"

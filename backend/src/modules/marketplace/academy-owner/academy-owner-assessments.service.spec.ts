@@ -171,4 +171,107 @@ describe('AcademyOwnerAssessmentsService.getWeeklyCompliance', () => {
     expect(result.teachers[0].additionalAssessmentCount).toBe(1);
     expect(result.summary.completed).toBe(1);
   });
+
+  it('returns valid zero compliance (not an error) for an academy with no active teachers', async () => {
+    const listForTutorsInWeek = jest.fn().mockResolvedValue([]);
+    const { service } = buildService({
+      listActiveForAcademy: jest.fn().mockResolvedValue([]),
+      listForTutorsInWeek,
+    });
+
+    const result = await service.getWeeklyCompliance(
+      OWNER_USER_ID,
+      '2026-09-14',
+    );
+
+    expect(result).toEqual({
+      weekStartDate: '2026-09-14',
+      summary: {
+        teachers: 0,
+        completed: 0,
+        pending: 0,
+        overdue: 0,
+        notScheduled: 0,
+      },
+      teachers: [],
+    });
+    expect(listForTutorsInWeek).toHaveBeenCalledWith([], '2026-09-14');
+  });
+
+  it('reports PENDING for scheduled / published / scorecard_pending and OVERDUE for overdue', async () => {
+    const teachers = ['t-a', 't-b', 't-c', 't-d'].map((tutor_id) => ({
+      tutor_id,
+      display_name: tutor_id,
+    }));
+    const { service } = buildService({
+      listActiveForAcademy: jest.fn().mockResolvedValue(teachers),
+      listForTutorsInWeek: jest.fn().mockResolvedValue([
+        { id: 'a', tutor_id: 't-a', mode: 'offline', status: 'scheduled' },
+        { id: 'b', tutor_id: 't-b', mode: 'online', status: 'published' },
+        {
+          id: 'c',
+          tutor_id: 't-c',
+          mode: 'offline',
+          status: 'scorecard_pending',
+        },
+        { id: 'd', tutor_id: 't-d', mode: 'offline', status: 'overdue' },
+      ]),
+    });
+
+    const result = await service.getWeeklyCompliance(
+      OWNER_USER_ID,
+      '2026-09-14',
+    );
+
+    expect(result.summary).toEqual({
+      teachers: 4,
+      completed: 0,
+      pending: 3,
+      overdue: 1,
+      notScheduled: 0,
+    });
+  });
+
+  it('summarises multiple teachers with mixed completed / pending / no-record states', async () => {
+    const { service } = buildService({
+      listActiveForAcademy: jest.fn().mockResolvedValue([
+        { tutor_id: 't-done', display_name: 'Done' },
+        { tutor_id: 't-wait', display_name: 'Waiting' },
+        { tutor_id: 't-none', display_name: 'None' },
+      ]),
+      listForTutorsInWeek: jest.fn().mockResolvedValue([
+        { id: 'a1', tutor_id: 't-done', mode: 'online', status: 'completed' },
+        { id: 'a2', tutor_id: 't-wait', mode: 'offline', status: 'scheduled' },
+      ]),
+    });
+
+    const result = await service.getWeeklyCompliance(
+      OWNER_USER_ID,
+      '2026-09-14',
+    );
+
+    expect(result.summary).toEqual({
+      teachers: 3,
+      completed: 1,
+      pending: 1,
+      overdue: 0,
+      notScheduled: 1,
+    });
+    expect(result.teachers.map((t) => [t.tutorId, t.status])).toEqual([
+      ['t-done', 'completed'],
+      ['t-wait', 'scheduled'],
+      ['t-none', 'not_scheduled'],
+    ]);
+    expect(result.teachers[2].assessment).toBeNull();
+  });
+
+  it('throws NotFound (which the web page gates on hasAcademy) when the account has no academy', async () => {
+    const { service } = buildService({
+      findByOwnerUserId: jest.fn().mockResolvedValue(undefined),
+    });
+
+    await expect(
+      service.getWeeklyCompliance(OWNER_USER_ID, '2026-09-14'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
 });
