@@ -456,4 +456,34 @@ export class AssessmentsRepository {
       .where('assessment_date', '<=', date)
       .execute();
   }
+
+  /** Every assessment (online or offline, any status) dated on a single
+   *  day for a set of tutors — Academy Today's "assessments
+   *  today"/Upcoming counts (§9/§24). Distinct from listScheduledForDate
+   *  above, which is the cron sweep's own narrower offline-only query. */
+  listForTutorsOnDate(tutorIds: string[], date: string) {
+    if (tutorIds.length === 0) return Promise.resolve([]);
+    return this.db
+      .selectFrom('assessments')
+      .selectAll()
+      .where('tutor_id', 'in', tutorIds)
+      .where('assessment_date', '=', date)
+      .execute();
+  }
+
+  /** Offline assessments already past their scorecard deadline, scoped to
+   *  a set of tutors — Academy Today's Needs Attention "overdue offline
+   *  scorecards" alert (§17). The cron sweep (listOverdueCandidates
+   *  above) is what actually flips a row to 'overdue' in the first
+   *  place; this just reads that already-maintained status back,
+   *  scoped to one academy's active teachers. */
+  listOverdueForTutors(tutorIds: string[]) {
+    if (tutorIds.length === 0) return Promise.resolve([]);
+    return this.db
+      .selectFrom('assessments')
+      .selectAll()
+      .where('tutor_id', 'in', tutorIds)
+      .where('status', '=', 'overdue')
+      .execute();
+  }
 }

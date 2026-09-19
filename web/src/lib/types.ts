@@ -1724,3 +1724,69 @@ export interface AttendanceBatchHistoryEntry {
   status: 'present' | 'absent' | 'late';
   method: 'join_tap' | 'manual';
 }
+
+// --- Academy Today command center (GET /academy/me/today) ---
+
+export interface AcademyTodayOverview {
+  classesToday: number;
+  classesCancelledToday: number;
+  /** Of `classesToday`, how many already have at least one attendance row
+   *  recorded — not the same as `classesCompleted` (a class can be over
+   *  without attendance having been marked yet). */
+  attendanceRecordedCount: number;
+  teachersActive: number;
+  teachersOnLeaveToday: number;
+  assessmentsToday: number;
+}
+
+/** One row in Today's class timeline — same shape as AcademyTodaySession
+ *  plus the two fields the timeline needs that the plain sessions list
+ *  doesn't: enrolled headcount and whether attendance is already in. */
+export interface AcademyTodayClass extends AcademyTodaySession {
+  enrolledCount: number;
+  attendanceRecorded: boolean;
+}
+
+/** Purely operational counts — never a ranking, never a score. Each
+ *  field backs one Needs Attention row; a zero hides that row. */
+export interface AcademyNeedsAttention {
+  pendingLeaveRequests: number;
+  overdueScorecards: number;
+  missingAttendance: number;
+  pendingContactRequests: number;
+  teachersWithoutWeeklyAssessment: number;
+}
+
+export interface AcademyUpcomingSummary {
+  /** Tomorrow's date, Asia/Kolkata. */
+  date: string;
+  classes: number;
+  assessments: number;
+  teacherLeave: number;
+}
+
+export interface AcademyRecentActivity {
+  activeTeachers: { membershipId: string; tutorId: string; displayName: string | null; joinedAt: string }[];
+  contactRequests: { id: string; studentDisplayName: string | null; createdAt: string; readAt: string | null }[];
+  reviews: { id: string; studentDisplayName: string | null; rating: number; createdAt: string }[];
+  batches: { id: string; title: string; tutorDisplayName: string | null; createdAt: string }[];
+  leaveRequests: {
+    id: string;
+    tutorDisplayName: string | null;
+    status: LeaveStatus;
+    startDate: string;
+    endDate: string;
+    createdAt: string;
+  }[];
+}
+
+/** GET /academy/me/today — Academy Today's single aggregated payload. */
+export interface AcademyToday {
+  /** Today's date, Asia/Kolkata. */
+  date: string;
+  overview: AcademyTodayOverview;
+  classes: AcademyTodayClass[];
+  needsAttention: AcademyNeedsAttention;
+  upcoming: AcademyUpcomingSummary;
+  recentActivity: AcademyRecentActivity;
+}

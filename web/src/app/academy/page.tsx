@@ -3,15 +3,15 @@
 import { useCallback } from 'react';
 import Link from 'next/link';
 import {
-  Award,
   Building2,
   CalendarClock,
   CalendarDays,
   CalendarOff,
+  CheckCircle2,
   ClipboardCheck,
-  GraduationCap,
   Images,
   MessageCircle,
+  NotebookPen,
   PartyPopper,
   ShieldCheck,
   Star,
@@ -22,59 +22,27 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { GREETING, dayPeriod, todayLabel } from '@/lib/greeting';
 import { useCachedFetch } from '@/lib/use-cached-fetch';
-import { cancellationBadgeLabel, isToday, sessionDateTime, sessionTime } from '@/lib/session-labels';
+import { cancellationBadgeLabel, sessionTime } from '@/lib/session-labels';
 import type {
-  AcademyActiveTeacher,
-  AcademyAttendanceTodaySummary,
   AcademyKycVerificationStatus,
-  AcademyLeaveRequest,
-  AcademyManagedBatch,
   AcademyOwnerProfile,
-  AcademyOwnerStats,
   AcademyPendingRequest,
   AcademyPhoto,
-  AcademyTodaySession,
-  ContactRequest,
+  AcademyToday,
   EffectiveHolidays,
-  Review,
-  Subject,
 } from '@/lib/types';
 import { buttonVariants, CardSkeleton, ErrorState, StatCard, StatusBadge } from '@/components/ui';
-import { AcademyCard, AcademyHero, AcademySectionHeader, type DayPeriod } from '@/components/academy';
+import { AcademyCard, AcademyHero, type DayPeriod } from '@/components/academy';
 import { SectionHeader, ActionCard, ActivityFeed, EmptyPanel, type ActivityItem } from '@/components/dashboard';
-import { academyInitials } from '@/lib/academies';
 import { useAcademyDashboard } from '@/components/academy-shell';
-
-/** Real, data-driven context line for the Academy hero — never a fake stat. */
-function academyContextLine(
-  todaySessionsCount: number,
-  pendingRequestsCount: number,
-): string {
-  const parts: string[] = [];
-  if (todaySessionsCount > 0) parts.push(`${todaySessionsCount} class${todaySessionsCount === 1 ? '' : 'es'} scheduled today`);
-  if (pendingRequestsCount > 0) {
-    parts.push(`${pendingRequestsCount} teacher ${pendingRequestsCount === 1 ? 'request' : 'requests'} pending`);
-  }
-  if (parts.length === 0) return 'No classes scheduled for today.';
-  return parts.join(' · ');
-}
-
 
 interface AcademyBundle {
   profile: AcademyOwnerProfile;
-  stats: AcademyOwnerStats;
   pendingRequests: AcademyPendingRequest[];
-  contactRequests: ContactRequest[];
-  activeTeachers: AcademyActiveTeacher[];
-  sessions: AcademyTodaySession[];
-  batches: AcademyManagedBatch[];
-  subjects: Subject[];
   photos: AcademyPhoto[];
   kyc: AcademyKycVerificationStatus | null;
-  reviews: Review[];
-  pendingLeaveRequests: AcademyLeaveRequest[];
   todaysHolidays: EffectiveHolidays;
-  attendanceToday: AcademyAttendanceTodaySummary | null;
+  today: AcademyToday;
 }
 
 export default function AcademyTodayPage() {
@@ -84,56 +52,23 @@ export default function AcademyTodayPage() {
     if (hasAcademy === false) return null;
     try {
       const profileRes = await api.get<AcademyOwnerProfile>('/academy/me');
-      const today = new Date().toISOString().slice(0, 10);
-      const [
-        statsRes,
-        pendingRes,
-        contactRes,
-        teachersRes,
-        sessionsRes,
-        batchesRes,
-        subjectsRes,
-        photosRes,
-        kycRes,
-        reviewsRes,
-        pendingLeaveRes,
-        todaysHolidaysRes,
-        attendanceTodayRes,
-      ] = await Promise.all([
-        api.get<AcademyOwnerStats>('/academy/me/stats'),
+      const todayDate = new Date().toISOString().slice(0, 10);
+      const [pendingRes, photosRes, kycRes, todaysHolidaysRes, todayRes] = await Promise.all([
         api.get<AcademyPendingRequest[]>('/academy/me/teachers/pending').catch(() => [] as AcademyPendingRequest[]),
-        api.get<ContactRequest[]>('/academy/me/contact-requests').catch(() => [] as ContactRequest[]),
-        api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active').catch(() => [] as AcademyActiveTeacher[]),
-        api.get<AcademyTodaySession[]>('/academy/me/sessions').catch(() => [] as AcademyTodaySession[]),
-        api.get<AcademyManagedBatch[]>('/academy/me/batches').catch(() => [] as AcademyManagedBatch[]),
-        api.get<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
         api.get<AcademyPhoto[]>('/academy/me/photos').catch(() => [] as AcademyPhoto[]),
         api.get<AcademyKycVerificationStatus>('/academy/verification/me').catch(() => null),
         api
-          .get<{ reviews: Review[] }>(`/marketplace/academy-reviews/academy/${profileRes.id}`)
-          .then((r) => r.reviews)
-          .catch(() => [] as Review[]),
-        api.get<AcademyLeaveRequest[]>('/academy/me/leave-requests/pending').catch(() => [] as AcademyLeaveRequest[]),
-        api
-          .get<EffectiveHolidays>(`/academy/me/holidays?from=${today}&to=${today}`)
+          .get<EffectiveHolidays>(`/academy/me/holidays?from=${todayDate}&to=${todayDate}`)
           .catch(() => ({ governmentHolidays: [], academyHolidays: [] }) as EffectiveHolidays),
-        api.get<AcademyAttendanceTodaySummary>('/academy/me/attendance/today').catch(() => null),
+        api.get<AcademyToday>('/academy/me/today'),
       ]);
       return {
         profile: profileRes,
-        stats: statsRes,
         pendingRequests: pendingRes,
-        contactRequests: contactRes,
-        activeTeachers: teachersRes,
-        sessions: sessionsRes,
-        batches: batchesRes,
-        subjects: subjectsRes,
         photos: photosRes,
         kyc: kycRes,
-        reviews: reviewsRes,
-        pendingLeaveRequests: pendingLeaveRes,
         todaysHolidays: todaysHolidaysRes,
-        attendanceToday: attendanceTodayRes,
+        today: todayRes,
       };
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) return null;
@@ -144,19 +79,11 @@ export default function AcademyTodayPage() {
   const { data: bundle, error: loadError, reload: load } = useCachedFetch('academy-dashboard', fetchBundle);
 
   const profile = bundle?.profile ?? null;
-  const stats = bundle?.stats ?? null;
   const pendingRequests = bundle?.pendingRequests ?? [];
-  const contactRequests = bundle?.contactRequests ?? [];
-  const activeTeachers = bundle?.activeTeachers ?? [];
-  const sessions = bundle?.sessions ?? [];
-  const batches = bundle?.batches ?? [];
-  const subjects = bundle?.subjects ?? [];
   const photos = bundle?.photos ?? [];
   const kyc = bundle?.kyc ?? null;
-  const reviews = bundle?.reviews ?? [];
-  const pendingLeaveRequests = bundle?.pendingLeaveRequests ?? [];
   const todaysHolidays = bundle?.todaysHolidays ?? { governmentHolidays: [], academyHolidays: [] };
-  const attendanceToday = bundle?.attendanceToday ?? null;
+  const today = bundle?.today ?? null;
 
   if (hasAcademy === false) {
     return <WelcomeCard period={dayPeriod(new Date())} />;
@@ -165,13 +92,13 @@ export default function AcademyTodayPage() {
   if (loadError) {
     return (
       <ErrorState
-        description="Could not load your academy dashboard. Check your connection and try again."
+        description="We couldn't load today's academy activity."
         onRetry={() => void load()}
       />
     );
   }
 
-  if (!profile || !stats) {
+  if (!profile || !today) {
     return (
       <div className="grid gap-4 sm:grid-cols-2">
         <CardSkeleton />
@@ -184,22 +111,11 @@ export default function AcademyTodayPage() {
 
   const now = new Date();
   const period = dayPeriod(now);
-  const todaySessions = sessions.filter(isToday);
-  const upcoming = sessions
-    .filter((s) => !isToday(s) && s.status === 'scheduled')
-    .sort((a, b) => new Date(a.scheduledStartUtc).getTime() - new Date(b.scheduledStartUtc).getTime());
+  const { overview, classes, needsAttention, upcoming, recentActivity } = today;
 
-  const enrolledByBatch = new Map(batches.map((b) => [b.id, b.enrolledCount]));
-  const studentsTodayBatchIds = new Set(todaySessions.map((s) => s.batchId));
-  const studentsToday = Array.from(studentsTodayBatchIds).reduce((sum, id) => sum + (enrolledByBatch.get(id) ?? 0), 0);
-
-  function subjectName(subjectId: string): string | undefined {
-    return subjects.find((s) => s.id === subjectId)?.name_i18n.en;
-  }
-
-  const actionItems: { key: string; href: string; icon: LucideIcon; label: string; meta: string; tone: 'error' | 'warning' | 'info' | 'brand' }[] = [];
+  const gettingStarted: { key: string; href: string; icon: LucideIcon; label: string; meta: string; tone: 'error' | 'warning' | 'info' | 'brand' }[] = [];
   if (!profile.description || !profile.location) {
-    actionItems.push({
+    gettingStarted.push({
       key: 'profile',
       href: '/academy/profile',
       icon: Building2,
@@ -209,7 +125,7 @@ export default function AcademyTodayPage() {
     });
   }
   if (!kyc || kyc.status === 'not_started' || kyc.status === 'rejected' || kyc.status === 'needs_manual_review') {
-    actionItems.push({
+    gettingStarted.push({
       key: 'kyc',
       href: '/academy/verification',
       icon: ShieldCheck,
@@ -219,7 +135,7 @@ export default function AcademyTodayPage() {
     });
   }
   if (photos.length === 0) {
-    actionItems.push({
+    gettingStarted.push({
       key: 'photos',
       href: '/academy/photos',
       icon: Images,
@@ -228,18 +144,8 @@ export default function AcademyTodayPage() {
       tone: 'info',
     });
   }
-  if (stats.unreadContactRequestCount > 0) {
-    actionItems.push({
-      key: 'contact',
-      href: '/academy/contact-requests',
-      icon: MessageCircle,
-      label: `${stats.unreadContactRequestCount} unread contact ${stats.unreadContactRequestCount === 1 ? 'request' : 'requests'}`,
-      meta: 'Respond before they look elsewhere',
-      tone: 'warning',
-    });
-  }
   if (pendingRequests.length > 0) {
-    actionItems.push({
+    gettingStarted.push({
       key: 'teachers',
       href: '/academy/teachers',
       icon: UserCheck,
@@ -248,44 +154,63 @@ export default function AcademyTodayPage() {
       tone: 'info',
     });
   }
-  if (pendingLeaveRequests.length > 0) {
-    actionItems.push({
-      key: 'leave',
+
+  const attentionItems: { key: string; href: string; icon: LucideIcon; label: string; meta: string; tone: 'error' | 'warning' | 'info' }[] = [];
+  if (needsAttention.overdueScorecards > 0) {
+    attentionItems.push({
+      key: 'overdue-scorecards',
+      href: '/academy/assessments',
+      icon: NotebookPen,
+      label: `${needsAttention.overdueScorecards} Offline Assessment ${needsAttention.overdueScorecards === 1 ? 'Scorecard' : 'Scorecards'}`,
+      meta: 'Past deadline',
+      tone: 'error',
+    });
+  }
+  if (needsAttention.pendingLeaveRequests > 0) {
+    attentionItems.push({
+      key: 'pending-leave',
       href: '/academy/leave-requests',
       icon: CalendarOff,
-      label: `${pendingLeaveRequests.length} pending leave ${pendingLeaveRequests.length === 1 ? 'request' : 'requests'}`,
-      meta: 'Approve or reject before affected classes start',
+      label: `${needsAttention.pendingLeaveRequests} Teacher Leave ${needsAttention.pendingLeaveRequests === 1 ? 'Request' : 'Requests'}`,
+      meta: 'Awaiting your approval',
+      tone: 'error',
+    });
+  }
+  if (needsAttention.missingAttendance > 0) {
+    attentionItems.push({
+      key: 'missing-attendance',
+      href: '/academy/attendance',
+      icon: ClipboardCheck,
+      label: `${needsAttention.missingAttendance} ${needsAttention.missingAttendance === 1 ? 'Class' : 'Classes'}`,
+      meta: 'Attendance not recorded',
+      tone: 'warning',
+    });
+  }
+  if (needsAttention.pendingContactRequests > 0) {
+    attentionItems.push({
+      key: 'contact-requests',
+      href: '/academy/contact-requests',
+      icon: MessageCircle,
+      label: `${needsAttention.pendingContactRequests} Contact ${needsAttention.pendingContactRequests === 1 ? 'Request' : 'Requests'}`,
+      meta: 'Waiting for response',
+      tone: 'warning',
+    });
+  }
+  if (needsAttention.teachersWithoutWeeklyAssessment > 0) {
+    attentionItems.push({
+      key: 'weekly-assessment',
+      href: '/academy/assessments',
+      icon: NotebookPen,
+      label: `${needsAttention.teachersWithoutWeeklyAssessment} ${needsAttention.teachersWithoutWeeklyAssessment === 1 ? 'Teacher' : 'Teachers'}`,
+      meta: "Haven't scheduled this week's assessment",
       tone: 'info',
     });
   }
 
-  /** Holiday & Teacher Leave feature — a compact grouped summary of the
-   *  same per-session cancellation/substitute data already shown inline in
-   *  Upcoming Classes above, so admins get a "what's different about today"
-   *  rollup without re-reading every row. Only ever built from today's
-   *  sessions — no separate endpoint. */
-  const teacherLeaveToday = Array.from(
-    todaySessions
-      .filter((s) => s.cancellationReason === 'teacher_leave' || s.substituteTutorId != null)
-      .reduce((map, s) => {
-        const entry = map.get(s.tutorId) ?? {
-          tutorId: s.tutorId,
-          teacherName: s.tutorDisplayName ?? 'A teacher',
-          affectedCount: 0,
-          substituteName: s.substituteDisplayName ?? null,
-        };
-        entry.affectedCount += 1;
-        if (s.substituteDisplayName) entry.substituteName = s.substituteDisplayName;
-        map.set(s.tutorId, entry);
-        return map;
-      }, new Map<string, { tutorId: string; teacherName: string; affectedCount: number; substituteName: string | null }>())
-      .values(),
-  );
-
   const todaysHolidayName = todaysHolidays.governmentHolidays[0]?.name ?? todaysHolidays.academyHolidays[0]?.name ?? null;
 
   const activity: ActivityItem[] = [
-    ...activeTeachers.map((t) => ({
+    ...recentActivity.activeTeachers.map((t) => ({
       id: `teacher-${t.membershipId}`,
       icon: UserCheck,
       tone: 'success' as const,
@@ -293,31 +218,42 @@ export default function AcademyTodayPage() {
       timestamp: t.joinedAt,
       href: '/academy/teachers',
     })),
-    ...contactRequests.map((r) => ({
+    ...recentActivity.contactRequests.map((r) => ({
       id: `contact-${r.id}`,
       icon: MessageCircle,
       tone: 'info' as const,
-      title: `New contact request from ${r.student_display_name ?? 'a visitor'}`,
-      timestamp: r.created_at,
+      title: `New contact request from ${r.studentDisplayName ?? 'a visitor'}`,
+      timestamp: r.createdAt,
       href: '/academy/contact-requests',
-      unread: !r.read_at,
+      unread: !r.readAt,
     })),
-    ...reviews.map((r) => ({
+    ...recentActivity.reviews.map((r) => ({
       id: `review-${r.id}`,
       icon: Star,
       tone: 'brand' as const,
-      title: `New review from ${r.student_display_name ?? 'a student'} — ${r.rating}★`,
-      timestamp: r.created_at,
+      title: `New review from ${r.studentDisplayName ?? 'a student'} — ${r.rating}★`,
+      timestamp: r.createdAt,
       href: '/academy/reviews',
     })),
-    ...batches.map((b) => ({
+    ...recentActivity.batches.map((b) => ({
       id: `batch-${b.id}`,
       icon: CalendarClock,
       tone: 'brand' as const,
       title: `Batch created: ${b.title}`,
       detail: b.tutorDisplayName ?? undefined,
       timestamp: b.createdAt,
-      href: `/academy/batches/${b.id}`,
+      href: `/academy/batches`,
+    })),
+    ...recentActivity.leaveRequests.map((r) => ({
+      id: `leave-${r.id}`,
+      icon: CalendarOff,
+      tone: (r.status === 'approved' ? 'success' : r.status === 'rejected' ? 'error' : 'warning') as ActivityItem['tone'],
+      title:
+        r.status === 'pending'
+          ? `${r.tutorDisplayName ?? 'A teacher'} applied for leave`
+          : `${r.tutorDisplayName ?? "A teacher"}'s leave was ${r.status}`,
+      timestamp: r.createdAt,
+      href: '/academy/leave-requests',
     })),
   ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
@@ -332,9 +268,6 @@ export default function AcademyTodayPage() {
           <p className="mt-1 text-xs font-medium uppercase tracking-[0.14em] text-neutral-500 dark:text-neutral-400">
             {todayLabel(now)}
           </p>
-          <p className="mt-3 text-sm text-neutral-600 dark:text-neutral-300">
-            {academyContextLine(todaySessions.length, pendingRequests.length)}
-          </p>
         </AcademyHero>
       </div>
 
@@ -347,88 +280,66 @@ export default function AcademyTodayPage() {
         </div>
       )}
 
-      <section className="animate-fade-up" style={{ animationDelay: '60ms' }}>
-        <SectionHeader eyebrow="Overview" title="Today's summary" />
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard icon={CalendarDays} label="Classes today" value={todaySessions.length} />
-          <StatCard icon={Users} label="Active teachers" value={stats.teacherCount} />
-          <StatCard icon={GraduationCap} label="Students attending today" value={studentsToday} />
-          <StatCard icon={MessageCircle} label="Pending contact requests" value={stats.unreadContactRequestCount} />
-        </div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard
-            icon={CalendarClock}
-            label="Active batches today"
-            value={new Set(todaySessions.filter((s) => s.status !== 'cancelled').map((s) => s.batchId)).size}
-          />
-          <StatCard
-            icon={UserCheck}
-            label="Teachers teaching today"
-            value={new Set(todaySessions.filter((s) => s.status !== 'cancelled').map((s) => s.tutorId)).size}
-          />
-          <StatCard
-            icon={ClipboardCheck}
-            label="Today's attendance"
-            value={attendanceToday?.attendancePercent == null ? '—' : `${attendanceToday.attendancePercent}%`}
-          />
-        </div>
-      </section>
-
-      {teacherLeaveToday.length > 0 && (
-        <section className="animate-fade-up" style={{ animationDelay: '80ms' }}>
-          <SectionHeader eyebrow="Today" title="Teacher leave" />
-          <div className="grid gap-3 sm:grid-cols-2">
-            {teacherLeaveToday.map((entry) => (
-              <AcademyCard key={entry.tutorId} className="flex items-start gap-3">
-                <CalendarOff className="mt-0.5 h-4 w-4 shrink-0 text-neutral-400" aria-hidden />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{entry.teacherName}</p>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                    {entry.affectedCount} affected {entry.affectedCount === 1 ? 'class' : 'classes'}
-                  </p>
-                  <div className="mt-1.5">
-                    {entry.substituteName ? (
-                      <StatusBadge status="substitute assigned" />
-                    ) : (
-                      <StatusBadge status="cancelled" />
-                    )}
-                  </div>
-                  {entry.substituteName && (
-                    <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">Covered by {entry.substituteName}</p>
-                  )}
-                </div>
-              </AcademyCard>
+      {gettingStarted.length > 0 && (
+        <section className="animate-fade-up" style={{ animationDelay: '40ms' }}>
+          <SectionHeader eyebrow="Getting started" title="Set up your academy" />
+          <div className="grid gap-2 lg:grid-cols-2">
+            {gettingStarted.map((item) => (
+              <ActionCard key={item.key} href={item.href} icon={item.icon} label={item.label} meta={item.meta} tone={item.tone} />
             ))}
           </div>
         </section>
       )}
 
+      <section className="animate-fade-up" style={{ animationDelay: '60ms' }}>
+        <SectionHeader eyebrow="Overview" title="Today's summary" />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <StatCard icon={CalendarDays} label="Classes today" value={overview.classesToday} />
+          <StatCard
+            icon={ClipboardCheck}
+            label="Attendance recorded"
+            value={`${overview.attendanceRecordedCount} / ${overview.classesToday}`}
+          />
+          <StatCard icon={Users} label="Teachers" value={`${overview.teachersActive - overview.teachersOnLeaveToday} / ${overview.teachersActive}`}>
+            {overview.teachersOnLeaveToday > 0 && (
+              <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
+                {overview.teachersOnLeaveToday} on leave
+              </p>
+            )}
+          </StatCard>
+          <StatCard icon={NotebookPen} label="Assessments today" value={overview.assessmentsToday} />
+          <StatCard icon={CalendarOff} label="Cancelled classes" value={overview.classesCancelledToday} />
+        </div>
+      </section>
+
       <section className="animate-fade-up" style={{ animationDelay: '100ms' }}>
-        <SectionHeader eyebrow="Your classroom" title="Upcoming classes" action={{ href: '/academy/batches', label: 'All batches' }} />
-        {sessions.length === 0 ? (
+        <SectionHeader eyebrow="Your classroom" title="Today's classes" action={{ href: '/academy/timetable', label: 'Full timetable' }} />
+        {classes.length === 0 ? (
           <EmptyPanel
             icon={CalendarDays}
-            title="No classes scheduled"
-            description="Once your teachers' batches have sessions scheduled, they'll show up here."
+            title="No classes scheduled today"
+            description="Once your teachers' batches have sessions scheduled for today, they'll show up here."
           />
         ) : (
           <AcademyCard className="p-0">
             <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
-              {[...todaySessions, ...upcoming].slice(0, 8).map((session) => (
+              {classes.map((session) => (
                 <li key={session.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3.5 sm:px-5">
                   <span className="w-16 shrink-0 font-display text-base font-semibold tabular-nums text-neutral-900 dark:text-neutral-50">
-                    {isToday(session) ? sessionTime(session) : sessionDateTime(session).split(',')[0]}
+                    {sessionTime(session)}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">
                       {session.batchTitle}
                     </span>
                     <span className="block truncate text-xs text-neutral-500 dark:text-neutral-400">
-                      {subjectName(session.subjectId) ? `${subjectName(session.subjectId)} · ` : ''}
-                      {session.tutorDisplayName ?? 'Teacher'} · {session.durationMin} min
+                      {session.tutorDisplayName ?? 'Teacher'} · {session.enrolledCount} students · {session.durationMin} min
                     </span>
                   </span>
                   <StatusBadge status={cancellationBadgeLabel(session) ?? session.status} />
+                  {session.status !== 'cancelled' && (
+                    <StatusBadge status={session.attendanceRecorded ? 'completed' : 'pending'} />
+                  )}
                   {session.substituteDisplayName && (
                     <span className="text-xs text-neutral-500 dark:text-neutral-400">
                       Covered by {session.substituteDisplayName}
@@ -448,12 +359,16 @@ export default function AcademyTodayPage() {
       </section>
 
       <section className="animate-fade-up" style={{ animationDelay: '140ms' }}>
-        <SectionHeader eyebrow="What needs me" title="Action required" />
-        {actionItems.length === 0 ? (
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">You&apos;re all caught up — nothing needs you right now.</p>
+        <SectionHeader eyebrow="What needs me" title="Needs attention" />
+        {attentionItems.length === 0 ? (
+          <EmptyPanel
+            icon={CheckCircle2}
+            title="All caught up"
+            description="There are no pending academy actions right now."
+          />
         ) : (
           <div className="grid gap-2 lg:grid-cols-2">
-            {actionItems.map((item) => (
+            {attentionItems.map((item) => (
               <ActionCard key={item.key} href={item.href} icon={item.icon} label={item.label} meta={item.meta} tone={item.tone} />
             ))}
           </div>
@@ -461,32 +376,19 @@ export default function AcademyTodayPage() {
       </section>
 
       <section className="animate-fade-up" style={{ animationDelay: '180ms' }}>
-        <AcademySectionHeader title="Pending Teacher Requests" action={{ href: '/academy/teachers', label: 'View all' }} />
-        {pendingRequests.length === 0 ? (
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">No pending requests right now.</p>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {pendingRequests.slice(0, 4).map((r) => (
-              <AcademyCard key={r.requestId} className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-50 text-sm font-semibold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
-                  {r.avatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={r.avatarUrl} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    academyInitials(r.displayName)
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{r.displayName ?? 'Teacher'}</p>
-                  {r.headline && <p className="text-xs text-neutral-500 dark:text-neutral-400">{r.headline}</p>}
-                  <Link href="/academy/teachers" className="mt-1.5 inline-block text-xs font-medium text-brand-600 hover:underline dark:text-brand-300">
-                    Review request
-                  </Link>
-                </div>
-              </AcademyCard>
-            ))}
-          </div>
-        )}
+        <SectionHeader eyebrow="What's next" title="Upcoming" />
+        <AcademyCard className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+            Tomorrow, {new Date(`${upcoming.date}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+          </p>
+          <p className="text-sm text-neutral-600 dark:text-neutral-400">
+            {upcoming.classes} {upcoming.classes === 1 ? 'class' : 'classes'}
+            {' · '}
+            {upcoming.assessments} {upcoming.assessments === 1 ? 'assessment' : 'assessments'}
+            {' · '}
+            {upcoming.teacherLeave} teacher {upcoming.teacherLeave === 1 ? 'leave' : 'leaves'}
+          </p>
+        </AcademyCard>
       </section>
 
       <section className="animate-fade-up" style={{ animationDelay: '220ms' }}>
@@ -496,18 +398,6 @@ export default function AcademyTodayPage() {
         ) : (
           <ActivityFeed items={activity.slice(0, 6)} />
         )}
-      </section>
-
-      <section className="animate-fade-up" style={{ animationDelay: '260ms' }}>
-        <AcademySectionHeader title="Recent Reviews" action={{ href: '/academy/reviews', label: 'View all' }} />
-        <AcademyCard className="flex items-center gap-3">
-          <Award className="h-5 w-5 text-brand-500 dark:text-brand-300" aria-hidden />
-          <p className="text-sm text-neutral-600 dark:text-neutral-400">
-            {stats.rating.count === 0
-              ? 'No reviews yet.'
-              : `${stats.rating.count} review${stats.rating.count === 1 ? '' : 's'} · ${stats.rating.average} ★ average.`}
-          </p>
-        </AcademyCard>
       </section>
     </div>
   );
