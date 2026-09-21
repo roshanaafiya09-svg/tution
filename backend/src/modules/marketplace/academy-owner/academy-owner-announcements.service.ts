@@ -72,6 +72,16 @@ export class AcademyOwnerAnnouncementsService {
     return teachers.map((t) => t.tutor_id);
   }
 
+  /** Students currently enrolled in batches THE ACADEMY OWNS. Never the
+   *  member teachers' Individual students. */
+  private async activeStudentIds(academyId: string): Promise<string[]> {
+    const enrollments = await this.batchesRepository.listEnrollmentsForAcademy(
+      academyId,
+      'active',
+    );
+    return [...new Set(enrollments.map((e) => e.student_id))];
+  }
+
   async list(ownerUserId: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
     return this.repository.listForAcademy(academy.id);
@@ -106,16 +116,13 @@ export class AcademyOwnerAnnouncementsService {
           'audienceBatchId is required for a batch announcement',
         );
       }
-      const batch = await this.batchesRepository.findById(ids.audienceBatchId);
+      // Must be a batch this academy OWNS — a teacher's Individual batch
+      // or another academy's is "not found" (also enforced by a DB trigger).
+      const batch = await this.batchesRepository.findByIdInAcademy(
+        ids.audienceBatchId,
+        academyId,
+      );
       if (!batch) throw new NotFoundException('Batch not found');
-      const membership =
-        await this.academyMembershipsRepository.findActiveMembership(
-          academyId,
-          batch.tutor_id,
-        );
-      if (!membership) {
-        throw new ForbiddenException('That batch belongs to another academy');
-      }
       return {
         audienceBatchId: batch.id,
         audienceTeacherId: null,
@@ -150,11 +157,11 @@ export class AcademyOwnerAnnouncementsService {
           'audienceStudentId is required for a student announcement',
         );
       }
-      const tutorIds = await this.activeTeacherIds(academyId);
-      const enrollments = await this.batchesRepository.listEnrollmentsForTutors(
-        tutorIds,
-        'active',
-      );
+      const enrollments =
+        await this.batchesRepository.listEnrollmentsForAcademy(
+          academyId,
+          'active',
+        );
       const belongs = enrollments.some(
         (e) => e.student_id === ids.audienceStudentId,
       );
@@ -356,20 +363,12 @@ export class AcademyOwnerAnnouncementsService {
       }
 
       case 'students': {
-        const teacherIds = await this.activeTeacherIds(academyId);
-        const studentIds =
-          await this.batchesRepository.listDistinctStudentIdsForTutors(
-            teacherIds,
-          );
+        const studentIds = await this.activeStudentIds(academyId);
         return new Set(studentIds);
       }
 
       case 'parents': {
-        const teacherIds = await this.activeTeacherIds(academyId);
-        const studentIds =
-          await this.batchesRepository.listDistinctStudentIdsForTutors(
-            teacherIds,
-          );
+        const studentIds = await this.activeStudentIds(academyId);
         const parentIds =
           await this.attendanceRepository.listActiveParentIdsForStudents(
             studentIds,
@@ -380,10 +379,7 @@ export class AcademyOwnerAnnouncementsService {
       case 'academy':
       default: {
         const teacherIds = await this.activeTeacherIds(academyId);
-        const studentIds =
-          await this.batchesRepository.listDistinctStudentIdsForTutors(
-            teacherIds,
-          );
+        const studentIds = await this.activeStudentIds(academyId);
         const parentIds =
           await this.attendanceRepository.listActiveParentIdsForStudents(
             studentIds,

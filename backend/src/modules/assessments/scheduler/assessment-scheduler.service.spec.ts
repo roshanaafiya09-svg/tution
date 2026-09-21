@@ -30,8 +30,8 @@ function buildScheduler(overrides: {
   updateStatus?: jest.Mock;
   listOverdueCandidates?: jest.Mock;
   listOpenOnlineCandidates?: jest.Mock;
-  listForTutorsInWeek?: jest.Mock;
-  listDistinctTutorIdsWithActiveBatches?: jest.Mock;
+  listInWeekForReminders?: jest.Mock;
+  listActiveTutorContexts?: jest.Mock;
   listRecentForUserByType?: jest.Mock;
   notify?: jest.Mock;
   checkOnlineCompletion?: jest.Mock;
@@ -44,8 +44,8 @@ function buildScheduler(overrides: {
       overrides.listOverdueCandidates ?? jest.fn().mockResolvedValue([]),
     listOpenOnlineCandidates:
       overrides.listOpenOnlineCandidates ?? jest.fn().mockResolvedValue([]),
-    listForTutorsInWeek:
-      overrides.listForTutorsInWeek ?? jest.fn().mockResolvedValue([]),
+    listInWeekForReminders:
+      overrides.listInWeekForReminders ?? jest.fn().mockResolvedValue([]),
   } as unknown as AssessmentsRepository;
 
   const assessments = {} as unknown as AssessmentsService;
@@ -56,9 +56,8 @@ function buildScheduler(overrides: {
   } as unknown as OnlineAssessmentsService;
 
   const batchesRepository = {
-    listDistinctTutorIdsWithActiveBatches:
-      overrides.listDistinctTutorIdsWithActiveBatches ??
-      jest.fn().mockResolvedValue([]),
+    listActiveTutorContexts:
+      overrides.listActiveTutorContexts ?? jest.fn().mockResolvedValue([]),
   } as unknown as BatchesRepository;
 
   const notify = overrides.notify ?? jest.fn().mockResolvedValue(undefined);
@@ -169,10 +168,11 @@ describe('AssessmentSchedulerService.remindWeeklyAssessment', () => {
   it('nudges only teachers with no assessment for the current week', async () => {
     const notify = jest.fn().mockResolvedValue(undefined);
     const { scheduler } = buildScheduler({
-      listDistinctTutorIdsWithActiveBatches: jest
-        .fn()
-        .mockResolvedValue(['tutor-1', 'tutor-2']),
-      listForTutorsInWeek: jest
+      listActiveTutorContexts: jest.fn().mockResolvedValue([
+        { tutor_id: 'tutor-1', academy_id: null },
+        { tutor_id: 'tutor-2', academy_id: null },
+      ]),
+      listInWeekForReminders: jest
         .fn()
         .mockResolvedValue([{ tutor_id: 'tutor-1' }]),
       notify,
@@ -192,10 +192,11 @@ describe('AssessmentSchedulerService.remindWeeklyAssessment', () => {
   it('still nudges a teacher whose only assessment this week is an unscheduled draft', async () => {
     const notify = jest.fn().mockResolvedValue(undefined);
     const { scheduler } = buildScheduler({
-      listDistinctTutorIdsWithActiveBatches: jest
-        .fn()
-        .mockResolvedValue(['tutor-1', 'tutor-2']),
-      listForTutorsInWeek: jest.fn().mockResolvedValue([
+      listActiveTutorContexts: jest.fn().mockResolvedValue([
+        { tutor_id: 'tutor-1', academy_id: null },
+        { tutor_id: 'tutor-2', academy_id: null },
+      ]),
+      listInWeekForReminders: jest.fn().mockResolvedValue([
         { tutor_id: 'tutor-1', status: 'draft' },
         { tutor_id: 'tutor-2', status: 'scheduled' },
       ]),
@@ -213,10 +214,10 @@ describe('AssessmentSchedulerService.remindWeeklyAssessment', () => {
   it('does nothing when every teacher already has an assessment this week', async () => {
     const notify = jest.fn().mockResolvedValue(undefined);
     const { scheduler } = buildScheduler({
-      listDistinctTutorIdsWithActiveBatches: jest
+      listActiveTutorContexts: jest
         .fn()
-        .mockResolvedValue(['tutor-1']),
-      listForTutorsInWeek: jest
+        .mockResolvedValue([{ tutor_id: 'tutor-1', academy_id: null }]),
+      listInWeekForReminders: jest
         .fn()
         .mockResolvedValue([{ tutor_id: 'tutor-1' }]),
       notify,
@@ -225,5 +226,33 @@ describe('AssessmentSchedulerService.remindWeeklyAssessment', () => {
     await scheduler.remindWeeklyAssessment();
 
     expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('treats Individual and Academy compliance separately for the same teacher', async () => {
+    const notify = jest.fn().mockResolvedValue(undefined);
+    const { scheduler } = buildScheduler({
+      listActiveTutorContexts: jest.fn().mockResolvedValue([
+        { tutor_id: 'tutor-1', academy_id: null },
+        { tutor_id: 'tutor-1', academy_id: 'academy-A' },
+      ]),
+      // Only an INDIVIDUAL assessment exists this week.
+      listInWeekForReminders: jest
+        .fn()
+        .mockResolvedValue([
+          { tutor_id: 'tutor-1', academy_id: null, status: 'scheduled' },
+        ]),
+      notify,
+    });
+
+    await scheduler.remindWeeklyAssessment();
+
+    // Compliant as an individual teacher, still owes one for the academy.
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userIds: ['tutor-1'],
+        payload: expect.objectContaining({ context: 'academy-A' }) as unknown,
+      }),
+    );
   });
 });

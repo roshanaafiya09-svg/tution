@@ -6,6 +6,12 @@ import { ParentLinksRepository } from '../parents/parent-links.repository';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import type { AccessTokenPayload } from '../identity/auth/tokens.service';
+import { TeachingContextService } from '../teaching-context/teaching-context.service';
+import {
+  academyIdOf,
+  INDIVIDUAL_CONTEXT,
+  type TeachingContext,
+} from '../teaching-context/teaching-context';
 
 const NOTIFICATION_BODY_MAX_LENGTH = 140;
 
@@ -31,6 +37,7 @@ export class MessagesService {
     private readonly parentLinksRepository: ParentLinksRepository,
     private readonly analytics: AnalyticsService,
     private readonly notificationsService: NotificationsService,
+    private readonly teachingContext: TeachingContextService,
   ) {}
 
   async send(
@@ -113,9 +120,12 @@ export class MessagesService {
     return page.reverse();
   }
 
-  async listMine(user: AccessTokenPayload) {
+  async listMine(
+    user: AccessTokenPayload,
+    ctx: TeachingContext = INDIVIDUAL_CONTEXT,
+  ) {
     if (user.roles.includes('tutor')) {
-      return this.repository.listThreadsForTutor(user.sub);
+      return this.repository.listThreadsForTutor(user.sub, academyIdOf(ctx));
     }
     if (user.roles.includes('student')) {
       return this.repository.listThreadsForStudent(user.sub);
@@ -157,6 +167,15 @@ export class MessagesService {
     if (user.roles.includes('tutor')) {
       const batch = await this.batchesRepository.findById(batchId);
       if (batch && batch.tutor_id === user.sub) {
+        // An Academy batch's thread is only open to its teacher while they
+        // are still an active member — leaving ends their access to the
+        // academy's students.
+        if (batch.academy_id) {
+          await this.teachingContext.assertActiveMember(
+            batch.academy_id,
+            user.sub,
+          );
+        }
         const enrollment = await this.batchesRepository.findEnrollment(
           batchId,
           studentId,

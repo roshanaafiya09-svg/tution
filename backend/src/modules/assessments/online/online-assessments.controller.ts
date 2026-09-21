@@ -13,6 +13,9 @@ import { RolesGuard } from '../../identity/auth/guards/roles.guard';
 import { Roles } from '../../identity/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../identity/auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
+import { TeachingContextScope } from '../../teaching-context/teaching-context.guard';
+import { CurrentTeachingContext } from '../../teaching-context/current-teaching-context.decorator';
+import type { TeachingContext } from '../../teaching-context/teaching-context';
 import { OnlineAssessmentsService } from './online-assessments.service';
 import { CreateOnlineAssessmentDto } from '../dto/create-online-assessment.dto';
 import { GenerateAssessmentQuestionsDto } from '../dto/generate-assessment-questions.dto';
@@ -20,6 +23,7 @@ import { UpdateAssessmentQuestionDto } from '../dto/update-assessment-question.d
 import { SubmitAssessmentAttemptDto } from '../dto/submit-assessment-attempt.dto';
 
 @Controller('assessments/online')
+@TeachingContextScope()
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class OnlineAssessmentsController {
   constructor(private readonly service: OnlineAssessmentsService) {}
@@ -35,8 +39,11 @@ export class OnlineAssessmentsController {
 
   @Get('me')
   @Roles('tutor')
-  listMine(@CurrentUser() user: AccessTokenPayload) {
-    return this.service.listForTutor(user.sub);
+  listMine(
+    @CurrentUser() user: AccessTokenPayload,
+    @CurrentTeachingContext() ctx: TeachingContext,
+  ) {
+    return this.service.listForTutor(user.sub, ctx);
   }
 
   @Get('student/me')

@@ -52,7 +52,7 @@ function baseSession(overrides: Record<string, unknown> = {}) {
 function buildService(overrides: {
   findByOwnerUserId?: jest.Mock;
   listActiveForAcademy?: jest.Mock;
-  listForTutors?: jest.Mock;
+  listBatchesForAcademy?: jest.Mock;
   todaySessions?: unknown[];
   tomorrowSessions?: unknown[];
   listForBatches?: jest.Mock;
@@ -61,7 +61,7 @@ function buildService(overrides: {
   listForAcademyReviews?: jest.Mock;
   todayAssessments?: unknown[];
   tomorrowAssessments?: unknown[];
-  listOverdueForTutors?: jest.Mock;
+  listOverdueForAcademy?: jest.Mock;
   getWeeklyCompliance?: jest.Mock;
 }) {
   const academiesRepository = {
@@ -83,6 +83,23 @@ function buildService(overrides: {
       ]),
   } as unknown as AcademyMembershipsRepository;
 
+  // Names for attributing the academy's own (historical) records: the real
+  // repository returns every teacher who was ever a member; the fake derives
+  // them from the same roster the test already provides.
+  const membershipsFake = academyMembershipsRepository as unknown as {
+    listActiveForAcademy: (
+      id: string,
+    ) => Promise<Array<{ tutor_id: string; display_name: string }>>;
+    displayNamesForAcademy: (id: string) => Promise<Map<string, string>>;
+  };
+  membershipsFake.displayNamesForAcademy = async (id) =>
+    new Map(
+      (await membershipsFake.listActiveForAcademy(id)).map((t) => [
+        t.tutor_id,
+        t.display_name,
+      ]),
+    );
+
   const academyContactRequestsRepository = {
     listForAcademy: overrides.listForAcademy ?? jest.fn().mockResolvedValue([]),
   } as unknown as AcademyContactRequestsRepository;
@@ -96,8 +113,8 @@ function buildService(overrides: {
   } as unknown as AcademyReviewsService;
 
   const batchesRepository = {
-    listForTutors:
-      overrides.listForTutors ??
+    listForAcademy:
+      overrides.listBatchesForAcademy ??
       jest.fn().mockResolvedValue([
         {
           id: BATCH_ID,
@@ -109,12 +126,12 @@ function buildService(overrides: {
       ]),
   } as unknown as BatchesRepository;
 
-  const listForTutorsBetween = jest
+  const listForAcademyBetween = jest
     .fn()
     .mockResolvedValueOnce(overrides.todaySessions ?? [])
     .mockResolvedValueOnce(overrides.tomorrowSessions ?? []);
   const sessionsRepository = {
-    listForTutorsBetween,
+    listForAcademyBetween,
   } as unknown as SessionsRepository;
 
   const attendanceRepository = {
@@ -126,14 +143,14 @@ function buildService(overrides: {
       overrides.listAllForAcademy ?? jest.fn().mockResolvedValue([]),
   } as unknown as TeacherLeaveService;
 
-  const listForTutorsOnDate = jest
+  const listForAcademyOnDate = jest
     .fn()
     .mockResolvedValueOnce(overrides.todayAssessments ?? [])
     .mockResolvedValueOnce(overrides.tomorrowAssessments ?? []);
   const assessmentsRepository = {
-    listForTutorsOnDate,
-    listOverdueForTutors:
-      overrides.listOverdueForTutors ?? jest.fn().mockResolvedValue([]),
+    listForAcademyOnDate,
+    listOverdueForAcademy:
+      overrides.listOverdueForAcademy ?? jest.fn().mockResolvedValue([]),
   } as unknown as AssessmentsRepository;
 
   const academyOwnerAssessmentsService = {
@@ -165,7 +182,7 @@ function buildService(overrides: {
     academyOwnerAssessmentsService,
   );
 
-  return { service, listForTutorsBetween, listForTutorsOnDate };
+  return { service, listForAcademyBetween, listForAcademyOnDate };
 }
 
 describe('AcademyTodayService.getToday — overview', () => {
@@ -275,9 +292,9 @@ describe('AcademyTodayService.getToday — Needs Attention', () => {
     expect(today.needsAttention.missingAttendance).toBe(1);
   });
 
-  it('counts overdue scorecards straight from AssessmentsRepository.listOverdueForTutors', async () => {
+  it('counts overdue scorecards straight from AssessmentsRepository.listOverdueForAcademy', async () => {
     const { service } = buildService({
-      listOverdueForTutors: jest
+      listOverdueForAcademy: jest
         .fn()
         .mockResolvedValue([{ id: 'a1' }, { id: 'a2' }, { id: 'a3' }]),
     });
@@ -383,7 +400,7 @@ describe('AcademyTodayService.getToday — academy isolation', () => {
     );
   });
 
-  it("only ever queries this academy's own active tutor ids, never a client-supplied id", async () => {
+  it("only ever queries the academy's OWN records (by academy id) — never 'sessions of my active teachers', which would include their Individual classes", async () => {
     const listActiveForAcademy = jest.fn().mockResolvedValue([
       {
         membership_id: 'm1',
@@ -392,20 +409,19 @@ describe('AcademyTodayService.getToday — academy isolation', () => {
         joined_at: new Date(),
       },
     ]);
-    const { service, listForTutorsBetween, listForTutorsOnDate } = buildService(
-      {
+    const { service, listForAcademyBetween, listForAcademyOnDate } =
+      buildService({
         listActiveForAcademy,
-      },
-    );
+      });
 
     await service.getToday(OWNER_ID);
 
     expect(listActiveForAcademy).toHaveBeenCalledWith(ACADEMY_ID);
-    expect(listForTutorsBetween).toHaveBeenCalledWith(
-      [TUTOR_ID],
+    expect(listForAcademyBetween).toHaveBeenCalledWith(
+      ACADEMY_ID,
       expect.any(Date),
       expect.any(Date),
     );
-    expect(listForTutorsOnDate).toHaveBeenCalledWith([TUTOR_ID], TODAY);
+    expect(listForAcademyOnDate).toHaveBeenCalledWith(ACADEMY_ID, TODAY);
   });
 });

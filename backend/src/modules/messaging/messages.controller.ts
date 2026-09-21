@@ -12,10 +12,14 @@ import { RolesGuard } from '../identity/auth/guards/roles.guard';
 import { Roles } from '../identity/auth/decorators/roles.decorator';
 import { CurrentUser } from '../identity/auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../identity/auth/tokens.service';
+import { TeachingContextScope } from '../teaching-context/teaching-context.guard';
+import { CurrentTeachingContext } from '../teaching-context/current-teaching-context.decorator';
+import type { TeachingContext } from '../teaching-context/teaching-context';
 import { MessagesService } from './messages.service';
 import { SendMessageDto } from './dto/send-message.dto';
 
 @Controller('messages')
+@TeachingContextScope()
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
@@ -23,8 +27,11 @@ export class MessagesController {
   /** Every thread the caller is part of, most-recently-active first. */
   @Get('mine')
   @Roles('tutor', 'student', 'parent')
-  listMine(@CurrentUser() user: AccessTokenPayload) {
-    return this.messagesService.listMine(user);
+  listMine(
+    @CurrentUser() user: AccessTokenPayload,
+    @CurrentTeachingContext() ctx: TeachingContext,
+  ) {
+    return this.messagesService.listMine(user, ctx);
   }
 
   /** Server-clamped page size (see MessagesService.listThread) —

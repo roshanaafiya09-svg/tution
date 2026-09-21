@@ -13,7 +13,6 @@ import { AcademyMembershipRequestsRepository } from '../academy-memberships/acad
 import { AcademyContactRequestsRepository } from './academy-contact-requests.repository';
 import { AcademyReviewsService } from '../academy-reviews/academy-reviews.service';
 import { BatchesRepository } from '../../scheduling/batches/batches.repository';
-import { BookingsService } from '../bookings/bookings.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { STORAGE_PROVIDER } from '../../../common/storage/storage-provider.interface';
 import type { StorageProvider } from '../../../common/storage/storage-provider.interface';
@@ -76,7 +75,6 @@ export class AcademiesService {
     private readonly academyContactRequestsRepository: AcademyContactRequestsRepository,
     private readonly academyReviewsService: AcademyReviewsService,
     private readonly batchesRepository: BatchesRepository,
-    private readonly bookingsService: BookingsService,
     private readonly notificationsService: NotificationsService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
   ) {}
@@ -108,9 +106,6 @@ export class AcademiesService {
       [...offeringsByAcademy.entries()].map(
         async ([academyId, academyOfferings]) => {
           const first = academyOfferings[0];
-          const tutorIds = [
-            ...new Set(academyOfferings.map((o) => o.tutor_id)),
-          ];
           const subjects = [
             ...new Set(academyOfferings.map((o) => o.subject_name_i18n.en)),
           ];
@@ -122,8 +117,8 @@ export class AcademiesService {
               this.academyMembershipsRepository.listActiveForAcademy(academyId),
               this.academyReviewsService.listForAcademy(academyId),
               this.academyLocationsRepository.findByAcademyId(academyId),
-              this.countStudentsForTutors(tutorIds),
-              this.countBatchesForTutors(tutorIds),
+              this.countStudentsForAcademy(academyId),
+              this.countBatchesForAcademy(academyId),
             ]);
 
           return {
@@ -179,7 +174,6 @@ export class AcademiesService {
 
     const teachersRaw =
       await this.academyMembershipsRepository.listActiveForAcademy(academy.id);
-    const tutorIds = teachersRaw.map((t) => t.tutor_id);
 
     const [
       location,
@@ -195,9 +189,9 @@ export class AcademiesService {
       this.academyLocationsRepository.findByAcademyId(academy.id),
       this.academyPhotosRepository.listForAcademy(academy.id),
       this.academiesRepository.listOfferingsForAcademy(academy.id),
-      this.batchesRepository.listOpenWithSeatsForTutors(tutorIds),
+      this.batchesRepository.listOpenWithSeatsForAcademy(academy.id),
       this.academyReviewsService.listForAcademy(academy.id),
-      this.countStudentsForTutors(tutorIds),
+      this.countStudentsForAcademy(academy.id),
       Promise.all(
         teachersRaw.map(async (t) => ({
           tutorId: t.tutor_id,
@@ -252,18 +246,16 @@ export class AcademiesService {
         : null,
       teachers,
       photos,
+      // Subjects the academy teaches in ITS OWN batches (never its
+      // member teachers' Individual listings or hourly rates).
       offerings: offeringsRaw.map((o) => ({
-        tutorSubjectId: o.tutor_subject_id,
-        tutorId: o.tutor_id,
-        tutorDisplayName: o.tutor_display_name,
-        tutorSlug: o.tutor_slug,
         subjectId: o.subject_id,
         subjectName: o.subject_name_i18n,
         subjectSlug: o.subject_slug,
-        curriculumId: o.curriculum_id,
         gradeMin: o.grade_min,
         gradeMax: o.grade_max,
-        hourlyRateMinor: o.hourly_rate_minor,
+        batchCount: o.batch_count,
+        fromFeeMinor: o.from_fee_minor,
       })),
       availableBatches: openBatches.map((b) => ({
         id: b.id,
@@ -406,23 +398,19 @@ export class AcademiesService {
     return this.academyMembershipRequestsRepository.listForTutor(tutorId);
   }
 
-  /** Distinct students across every active member tutor of an academy —
-   *  multi-tutor sibling of ProofOfTeachingService.countStudentsTaught,
-   *  which is hard-wired to one tutor id and can't be reused directly. */
-  private async countStudentsForTutors(tutorIds: string[]): Promise<number> {
-    const [batchStudentIds, bookingStudentIds] = await Promise.all([
-      this.batchesRepository.listDistinctStudentIdsForTutors(tutorIds),
-      this.bookingsService.listDistinctCompletedStudentIdsForTutors(tutorIds),
-    ]);
-    return new Set([...batchStudentIds, ...bookingStudentIds]).size;
+  /** Distinct students enrolled in the academy's OWN batches. A member
+   *  teacher's Individual students and marketplace bookings are their own
+   *  business and are never counted towards the academy. */
+  private async countStudentsForAcademy(academyId: string): Promise<number> {
+    const studentIds =
+      await this.batchesRepository.listDistinctStudentIdsForAcademy(academyId);
+    return studentIds.length;
   }
 
-  /** Active-batch count across an academy's member tutors — the search
-   *  card's "N batches" figure. Reuses `listForTutors` (already built for
-   *  the Academy Dashboard's own batch list), filtered to `active` since
-   *  a search card shouldn't count archived batches. */
-  private async countBatchesForTutors(tutorIds: string[]): Promise<number> {
-    const batches = await this.batchesRepository.listForTutors(tutorIds);
+  /** Active-batch count the academy owns — the search card's "N batches"
+   *  figure (archived batches aren't counted). */
+  private async countBatchesForAcademy(academyId: string): Promise<number> {
+    const batches = await this.batchesRepository.listForAcademy(academyId);
     return batches.filter((b) => b.status === 'active').length;
   }
 }

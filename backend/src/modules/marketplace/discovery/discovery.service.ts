@@ -200,7 +200,9 @@ export class DiscoveryService {
       this.proofOfTeachingService.scoreForTutor(profile.user_id),
       this.reviewsService.listForTutor(profile.user_id),
       this.tutorLocationsRepository.findByTutorId(profile.user_id),
-      this.batchesRepository.listOpenWithSeatsForTutor(profile.user_id),
+      // Individual context only — the tutor's public page never
+      // advertises (or leaks) the batches of an academy they teach in.
+      this.batchesRepository.listOpenWithSeatsForTutor(profile.user_id, null),
       this.academyMembershipsRepository.listActiveForTutor(profile.user_id),
     ]);
 

@@ -15,10 +15,9 @@ import { AcademyMembershipRequestsRepository } from '../academy-memberships/acad
 import { AcademyReviewsService } from '../academy-reviews/academy-reviews.service';
 import { BatchesRepository } from '../../scheduling/batches/batches.repository';
 import { SessionsRepository } from '../../scheduling/sessions/sessions.repository';
-import { BookingsService } from '../bookings/bookings.service';
 import { NotificationsService } from '../../notifications/notifications.service';
-import { TutorSubjectsRepository } from '../../catalog/tutor-subjects/tutor-subjects.repository';
 import { TeacherLeaveRepository } from '../../holidays/teacher-leave.repository';
+import { AcademySubscriptionsService } from '../../billing/subscriptions/academy-subscriptions.service';
 import { STORAGE_PROVIDER } from '../../../common/storage/storage-provider.interface';
 import type { StorageProvider } from '../../../common/storage/storage-provider.interface';
 import { randomSlugSuffix, slugify } from '../../identity/profiles/slug.util';
@@ -67,10 +66,9 @@ export class AcademyOwnerService {
     private readonly academyReviewsService: AcademyReviewsService,
     private readonly batchesRepository: BatchesRepository,
     private readonly sessionsRepository: SessionsRepository,
-    private readonly bookingsService: BookingsService,
     private readonly notificationsService: NotificationsService,
-    private readonly tutorSubjectsRepository: TutorSubjectsRepository,
     private readonly teacherLeaveRepository: TeacherLeaveRepository,
+    private readonly academySubscriptions: AcademySubscriptionsService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
   ) {}
 
@@ -168,6 +166,11 @@ export class AcademyOwnerService {
     };
   }
 
+  async getSubscription(ownerUserId: string) {
+    const academy = await this.resolveOwnAcademy(ownerUserId);
+    return this.academySubscriptions.getStatus(academy.id);
+  }
+
   async getStats(ownerUserId: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
 
@@ -181,11 +184,14 @@ export class AcademyOwnerService {
         this.academyReviewsService.listForAcademy(academy.id),
       ]);
 
-    const tutorIds = activeTeachers.map((t) => t.tutor_id);
-    const [openBatches, studentsCount] = await Promise.all([
-      this.batchesRepository.listOpenWithSeatsForTutors(tutorIds),
-      this.countStudentsForTutors(tutorIds),
+    // Batch/student counts are the academy's OWN (batches.academy_id) —
+    // never every batch/student of its member teachers, which would also
+    // count their private Individual teaching.
+    const [openBatches, academyStudentIds] = await Promise.all([
+      this.batchesRepository.listOpenWithSeatsForAcademy(academy.id),
+      this.batchesRepository.listDistinctStudentIdsForAcademy(academy.id),
     ]);
+    const studentsCount = academyStudentIds.length;
 
     return {
       verificationStatus: academy.verification_status,
@@ -199,17 +205,16 @@ export class AcademyOwnerService {
     };
   }
 
-  /** Read-only, derived from active members' tutor_subjects — per
-   *  migration 0030's own doc comment, "subjects/classes offered by an
-   *  academy are deliberately NOT a table", same pattern used for public
-   *  academy search. Backs Academy Profile's "Academic Information"
-   *  panel; there is no editable academy-level subjects field. */
+  /** Read-only, derived from the academy's own batches — per migration
+   *  0030's own doc comment, "subjects/classes offered by an academy are
+   *  deliberately NOT a table". Derived from batches the academy owns, NOT
+   *  from members' tutor_subjects (a teacher's Individual marketplace
+   *  listing). Backs Academy Profile's "Academic Information" panel; there
+   *  is no editable academy-level subjects field. */
   async getAcademicInfo(ownerUserId: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const activeTeachers =
-      await this.academyMembershipsRepository.listActiveForAcademy(academy.id);
-    const rows = await this.tutorSubjectsRepository.listForTutors(
-      activeTeachers.map((t) => t.tutor_id),
+    const rows = await this.batchesRepository.listSubjectsForAcademy(
+      academy.id,
     );
 
     const bySubject = new Map<
@@ -433,11 +438,13 @@ export class AcademyOwnerService {
 
   /** Academy Dashboard > Teachers > :id. Composes the full profile
    *  (findActiveWithProfile), this academy's batches for the teacher
-   *  (BatchesRepository.listForTutors, filtered to one tutor — same method
-   *  the roster views use), the next 14 days of classes
-   *  (SessionsRepository.listForTutorsBetween), subjects
-   *  (TutorSubjectsRepository, same as getAcademicInfo), and this
-   *  academy's leave history for the teacher. Deliberately never selects
+   *  (BatchesRepository.listForAcademy, narrowed to one tutor), the next
+   *  14 days of THIS academy's classes
+   *  (SessionsRepository.listForAcademyBetween), subjects taught in this
+   *  academy's batches (same source as getAcademicInfo), and this
+   *  academy's leave history for the teacher. Nothing from the teacher's
+   *  Individual context (their own batches, classes, marketplace subjects)
+   *  is included. Deliberately never selects
    *  salary/commission/fee fields — out of scope. */
   async getTeacherDetail(ownerUserId: string, tutorId: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
@@ -459,13 +466,14 @@ export class AcademyOwnerService {
         member.avatar_object_key
           ? this.storage.createDownloadUrl(member.avatar_object_key)
           : Promise.resolve(null),
-        this.batchesRepository.listForTutors([tutorId]),
-        this.sessionsRepository.listForTutorsBetween(
-          [tutorId],
+        this.batchesRepository.listForAcademy(academy.id, [tutorId]),
+        this.sessionsRepository.listForAcademyBetween(
+          academy.id,
           now,
           twoWeeksOut,
+          [tutorId],
         ),
-        this.tutorSubjectsRepository.listForTutors([tutorId]),
+        this.batchesRepository.listSubjectsForAcademy(academy.id, [tutorId]),
         this.teacherLeaveRepository
           .listForTutor(tutorId)
           .then((rows) => rows.filter((r) => r.academy_id === academy.id)),
@@ -654,7 +662,7 @@ export class AcademyOwnerService {
 
   /** Same slug-generation loop as AcademyAdminService.generateUniqueSlug
    *  — small precedented duplication rather than exporting a private
-   *  method across modules (see countStudentsForTutors below). */
+   *  method across modules. */
   private async generateUniqueSlug(name: string): Promise<string> {
     const base = slugify(name) || 'academy';
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -664,17 +672,5 @@ export class AcademyOwnerService {
       }
     }
     return `${base}-${randomSlugSuffix()}-${Date.now()}`;
-  }
-
-  /** Same union-of-batch-and-booking-students logic as
-   *  AcademiesService.countStudentsForTutors — small precedented
-   *  duplication rather than exporting a private method across modules,
-   *  see this feature's plan doc §5. */
-  private async countStudentsForTutors(tutorIds: string[]): Promise<number> {
-    const [batchStudentIds, bookingStudentIds] = await Promise.all([
-      this.batchesRepository.listDistinctStudentIdsForTutors(tutorIds),
-      this.bookingsService.listDistinctCompletedStudentIdsForTutors(tutorIds),
-    ]);
-    return new Set([...batchStudentIds, ...bookingStudentIds]).size;
   }
 }

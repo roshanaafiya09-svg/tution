@@ -13,11 +13,15 @@ import { RolesGuard } from '../../identity/auth/guards/roles.guard';
 import { Roles } from '../../identity/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../identity/auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
+import { TeachingContextScope } from '../../teaching-context/teaching-context.guard';
+import { CurrentTeachingContext } from '../../teaching-context/current-teaching-context.decorator';
+import type { TeachingContext } from '../../teaching-context/teaching-context';
 import { QuizzesService } from './quizzes.service';
 import { GenerateQuizDto } from './dto/generate-quiz.dto';
 import { UpdateQuizQuestionDto } from './dto/update-quiz-question.dto';
 
 @Controller('quizzes')
+@TeachingContextScope()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('tutor')
 export class QuizzesController {
@@ -37,8 +41,11 @@ export class QuizzesController {
   }
 
   @Get('me')
-  listMine(@CurrentUser() user: AccessTokenPayload) {
-    return this.quizzesService.listForTutor(user.sub);
+  listMine(
+    @CurrentUser() user: AccessTokenPayload,
+    @CurrentTeachingContext() ctx: TeachingContext,
+  ) {
+    return this.quizzesService.listForTutor(user.sub, ctx);
   }
 
   @Get(':id')

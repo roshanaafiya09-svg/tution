@@ -14,19 +14,26 @@ import { Roles } from '../../identity/auth/decorators/roles.decorator';
 import { ActiveSubscriptionGuard } from '../../billing/subscriptions/guards/active-subscription.guard';
 import { CurrentUser } from '../../identity/auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
+import { TeachingContextScope } from '../../teaching-context/teaching-context.guard';
+import { CurrentTeachingContext } from '../../teaching-context/current-teaching-context.decorator';
+import type { TeachingContext } from '../../teaching-context/teaching-context';
 import { BatchesService } from './batches.service';
 import { CreateBatchDto } from './dto/create-batch.dto';
 import { UpdateBatchDto } from './dto/update-batch.dto';
 
 @Controller('batches')
+@TeachingContextScope()
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class BatchesController {
   constructor(private readonly batchesService: BatchesService) {}
 
   @Get('me')
   @Roles('tutor')
-  listOwn(@CurrentUser() user: AccessTokenPayload) {
-    return this.batchesService.listForTutor(user.sub);
+  listOwn(
+    @CurrentUser() user: AccessTokenPayload,
+    @CurrentTeachingContext() ctx: TeachingContext,
+  ) {
+    return this.batchesService.listForTutor(user.sub, ctx);
   }
 
   @Get('enrolled')
@@ -39,8 +46,11 @@ export class BatchesController {
    *  batches" section on the Teacher Profile page. */
   @Get('me/open')
   @Roles('tutor')
-  listOwnOpen(@CurrentUser() user: AccessTokenPayload) {
-    return this.batchesService.listOpenWithSeats(user.sub);
+  listOwnOpen(
+    @CurrentUser() user: AccessTokenPayload,
+    @CurrentTeachingContext() ctx: TeachingContext,
+  ) {
+    return this.batchesService.listOpenWithSeats(user.sub, ctx);
   }
 
   /** Bulk enrollments across every batch this tutor owns — backs the
@@ -49,15 +59,26 @@ export class BatchesController {
    *  a batch id. */
   @Get('me/students')
   @Roles('tutor')
-  listOwnStudents(@CurrentUser() user: AccessTokenPayload) {
-    return this.batchesService.listEnrollmentsForOwnBatches(user.sub);
+  listOwnStudents(
+    @CurrentUser() user: AccessTokenPayload,
+    @CurrentTeachingContext() ctx: TeachingContext,
+  ) {
+    return this.batchesService.listEnrollmentsForOwnBatches(user.sub, ctx);
   }
 
   @Post()
   @Roles('tutor')
   @UseGuards(ActiveSubscriptionGuard)
-  create(@CurrentUser() user: AccessTokenPayload, @Body() dto: CreateBatchDto) {
-    return this.batchesService.create(user.sub, dto);
+  create(
+    @CurrentUser() user: AccessTokenPayload,
+    @CurrentTeachingContext() ctx: TeachingContext,
+    @Body() dto: CreateBatchDto,
+  ) {
+    // The new batch is created IN the teacher's current profile — an
+    // Academy profile yields an Academy batch, Individual yields a private
+    // one. There is no way to ask for a private batch from an Academy
+    // profile (or vice versa): the context is never read from the body.
+    return this.batchesService.create(user.sub, dto, ctx);
   }
 
   @Get(':id')

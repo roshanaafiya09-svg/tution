@@ -56,9 +56,9 @@ function buildService(overrides: {
   findActiveMembership?: jest.Mock;
   listActiveForAcademy?: jest.Mock;
   findByIdBatch?: jest.Mock;
-  listEnrollmentsForTutors?: jest.Mock;
+  listEnrollmentsForAcademy?: jest.Mock;
   listDistinctStudentIdsForBatches?: jest.Mock;
-  listDistinctStudentIdsForTutors?: jest.Mock;
+  listDistinctStudentIdsForAcademy?: jest.Mock;
   listActiveParentIdsForStudents?: jest.Mock;
   notify?: jest.Mock<Promise<void>, [NotifyInput]>;
   create?: jest.Mock;
@@ -85,18 +85,35 @@ function buildService(overrides: {
         .mockResolvedValue([{ tutor_id: TUTOR_ID, display_name: 'Priya' }]),
   } as unknown as AcademyMembershipsRepository;
 
+  // Names for attributing the academy's own (historical) records: the real
+  // repository returns every teacher who was ever a member; the fake derives
+  // them from the same roster the test already provides.
+  const membershipsFake = academyMembershipsRepository as unknown as {
+    listActiveForAcademy: (
+      id: string,
+    ) => Promise<Array<{ tutor_id: string; display_name: string }>>;
+    displayNamesForAcademy: (id: string) => Promise<Map<string, string>>;
+  };
+  membershipsFake.displayNamesForAcademy = async (id) =>
+    new Map(
+      (await membershipsFake.listActiveForAcademy(id)).map((t) => [
+        t.tutor_id,
+        t.display_name,
+      ]),
+    );
+
   const batchesRepository = {
-    findById:
+    findByIdInAcademy:
       overrides.findByIdBatch ??
       jest.fn().mockResolvedValue({ id: BATCH_ID, tutor_id: TUTOR_ID }),
-    listEnrollmentsForTutors:
-      overrides.listEnrollmentsForTutors ??
+    listEnrollmentsForAcademy:
+      overrides.listEnrollmentsForAcademy ??
       jest.fn().mockResolvedValue([{ student_id: STUDENT_ID }]),
     listDistinctStudentIdsForBatches:
       overrides.listDistinctStudentIdsForBatches ??
       jest.fn().mockResolvedValue([STUDENT_ID]),
-    listDistinctStudentIdsForTutors:
-      overrides.listDistinctStudentIdsForTutors ??
+    listDistinctStudentIdsForAcademy:
+      overrides.listDistinctStudentIdsForAcademy ??
       jest.fn().mockResolvedValue([STUDENT_ID]),
   } as unknown as BatchesRepository;
 
@@ -201,10 +218,10 @@ describe('AcademyOwnerAnnouncementsService.create', () => {
     );
   });
 
-  it('rejects a batch belonging to another academy', async () => {
-    const { service } = buildService({
-      findActiveMembership: jest.fn().mockResolvedValue(undefined),
-    });
+  it("rejects a batch this academy doesn't own (another academy's, or a teacher's Individual batch) as not found", async () => {
+    // findByIdInAcademy only matches a batch whose academy_id is this academy.
+    const findByIdBatch = jest.fn().mockResolvedValue(undefined);
+    const { service } = buildService({ findByIdBatch });
 
     await expect(
       service.create(OWNER_ID, {
@@ -213,12 +230,16 @@ describe('AcademyOwnerAnnouncementsService.create', () => {
         audienceType: 'batch',
         audienceBatchId: 'someone-elses-batch',
       } as never),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(findByIdBatch).toHaveBeenCalledWith(
+      'someone-elses-batch',
+      ACADEMY_ID,
+    );
   });
 
   it('rejects a student not enrolled anywhere in this academy', async () => {
     const { service } = buildService({
-      listEnrollmentsForTutors: jest.fn().mockResolvedValue([]),
+      listEnrollmentsForAcademy: jest.fn().mockResolvedValue([]),
     });
 
     await expect(

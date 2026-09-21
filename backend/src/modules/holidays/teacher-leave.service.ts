@@ -81,11 +81,14 @@ export class TeacherLeaveService {
     }
 
     const { from, to } = dayRangeUtc(dto.startDate, endDate);
+    // Only the classes this teacher runs FOR THIS ACADEMY — leave asked
+    // of an academy never touches their Individual classes.
     const candidateSessions =
-      await this.sessionsRepository.listScheduledForTutorsBetween(
-        [tutorId],
+      await this.sessionsRepository.listScheduledForAcademyBetween(
+        dto.academyId,
         from,
         to,
+        [tutorId],
       );
 
     let sessionIds: string[];
@@ -238,7 +241,13 @@ export class TeacherLeaveService {
   ) {
     const request = await this.getPendingForAcademy(academyId, id);
     const sessionIds = await this.repository.listSessionIdsForRequest(id);
-    const sessions = await this.sessionsRepository.findByIds(sessionIds);
+    // Re-scoped to the academy's own classes at decision time: a request
+    // snapshotted before teaching contexts existed may list the teacher's
+    // Individual classes, which an academy decision must never cancel.
+    const sessions = await this.sessionsRepository.findByIdsInAcademy(
+      sessionIds,
+      academyId,
+    );
 
     // Validate first (pure reads, no mutation) — a bad substitute must
     // fail before the decision is committed below, not after, or the
@@ -315,7 +324,10 @@ export class TeacherLeaveService {
       );
     }
     const sessionIds = await this.repository.listSessionIdsForRequest(id);
-    const sessions = await this.sessionsRepository.findByIds(sessionIds);
+    const sessions = await this.sessionsRepository.findByIdsInAcademy(
+      sessionIds,
+      academyId,
+    );
     await this.validateSubstitute(
       academyId,
       request.tutor_id,

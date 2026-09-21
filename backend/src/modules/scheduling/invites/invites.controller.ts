@@ -4,6 +4,7 @@ import { RolesGuard } from '../../identity/auth/guards/roles.guard';
 import { Roles } from '../../identity/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../identity/auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
+import { TeachingContextScope } from '../../teaching-context/teaching-context.guard';
 import { InvitesService } from './invites.service';
 import { CreateInviteDto } from './dto/create-invite.dto';
 
@@ -12,6 +13,7 @@ export class InvitesController {
   constructor(private readonly invitesService: InvitesService) {}
 
   @Post('batch/:batchId')
+  @TeachingContextScope()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('tutor')
   create(
@@ -23,6 +25,7 @@ export class InvitesController {
   }
 
   @Get('batch/:batchId')
+  @TeachingContextScope()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('tutor')
   listForBatch(

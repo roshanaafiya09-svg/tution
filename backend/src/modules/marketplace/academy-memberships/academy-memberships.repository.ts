@@ -145,20 +145,24 @@ export class AcademyMembershipsRepository {
       .execute();
   }
 
-  /** Distinct academies a set of tutors are currently active members of
-   *  — Holiday & Teacher Leave feature's student/parent-facing "which
-   *  academies' holidays are relevant to me" resolution (a student's
-   *  academies are their enrolled batches' tutors' academies). */
-  async listActiveAcademyIdsForTutors(tutorIds: string[]): Promise<string[]> {
-    if (tutorIds.length === 0) return [];
+  /** tutor_id -> display name for EVERY teacher who has ever been a
+   *  member (active or left). Academy views of historical records (batches,
+   *  classes, attendance) keep attributing them to a teacher who has since
+   *  left, because the academy retains that history. */
+  async displayNamesForAcademy(
+    academyId: string,
+  ): Promise<Map<string, string>> {
     const rows = await this.db
       .selectFrom('academy_memberships')
-      .select('academy_id')
-      .distinct()
-      .where('tutor_id', 'in', tutorIds)
-      .where('status', '=', 'active')
+      .innerJoin(
+        'profiles_tutor',
+        'profiles_tutor.user_id',
+        'academy_memberships.tutor_id',
+      )
+      .select(['academy_memberships.tutor_id', 'profiles_tutor.display_name'])
+      .where('academy_memberships.academy_id', '=', academyId)
       .execute();
-    return rows.map((r) => r.academy_id);
+    return new Map(rows.map((r) => [r.tutor_id, r.display_name]));
   }
 
   countActiveForAcademy(academyId: string) {

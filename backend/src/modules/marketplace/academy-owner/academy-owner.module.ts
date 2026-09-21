@@ -10,6 +10,7 @@ import { NotificationsModule } from '../../notifications/notifications.module';
 import { CatalogModule } from '../../catalog/catalog.module';
 import { HolidaysModule } from '../../holidays/holidays.module';
 import { AssessmentsModule } from '../../assessments/assessments.module';
+import { SubscriptionsModule } from '../../billing/subscriptions/subscriptions.module';
 import { AcademyOwnerController } from './academy-owner.controller';
 import { AcademyOwnerService } from './academy-owner.service';
 import { AcademyOwnerBatchesController } from './academy-owner-batches.controller';
@@ -60,6 +61,7 @@ import { AcademyTodayService } from './academy-today.service';
     CatalogModule,
     HolidaysModule,
     AssessmentsModule,
+    SubscriptionsModule,
   ],
   controllers: [
     AcademyOwnerController,

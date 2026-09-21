@@ -20,6 +20,9 @@ export interface CreateAssessmentInput {
   assessmentDate: string | null;
   scorecardDeadlineAt: Date | null;
   weekStartDate: string;
+  /** Teaching context the assessment belongs to (NULL = Individual). Every
+   *  batch in `batchIds` must share it (also enforced by a DB trigger). */
+  academyId: string | null;
 }
 
 @Injectable()
@@ -33,6 +36,7 @@ export class AssessmentsRepository {
         .values({
           id: newId(),
           tutor_id: input.tutorId,
+          academy_id: input.academyId,
           mode: input.mode,
           title: input.title,
           subject_id: input.subjectId,
@@ -86,26 +90,50 @@ export class AssessmentsRepository {
       .execute();
   }
 
-  listForTutor(tutorId: string, mode?: AssessmentMode) {
+  /** A tutor's assessments in ONE teaching context (null = Individual,
+   *  an id = that academy's). */
+  listForTutor(
+    tutorId: string,
+    academyId: string | null,
+    mode?: AssessmentMode,
+  ) {
     let query = this.db
       .selectFrom('assessments')
       .selectAll()
       .where('tutor_id', '=', tutorId);
+    query =
+      academyId === null
+        ? query.where('academy_id', 'is', null)
+        : query.where('academy_id', '=', academyId);
     if (mode) query = query.where('mode', '=', mode);
     return query.orderBy('created_at', 'desc').execute();
   }
 
-  /** This week's assessments for a set of tutors — the Academy weekly
-   *  compliance dashboard's core query (§20/§37). One row per tutor per
-   *  assessment; the caller groups by tutor. */
-  listForTutorsInWeek(tutorIds: string[], weekStartDate: string) {
+  /** This week's assessments the ACADEMY owns — the Academy weekly
+   *  compliance dashboard's core query (§20/§37). One row per teacher per
+   *  assessment; the caller groups by tutor. A member teacher's Individual
+   *  assessments never count towards (or appear in) academy compliance. */
+  listForAcademyInWeek(academyId: string, weekStartDate: string) {
+    return this.db
+      .selectFrom('assessments')
+      .selectAll()
+      .where('academy_id', '=', academyId)
+      .where('week_start_date', '=', weekStartDate)
+      .orderBy('created_at', 'desc')
+      .execute();
+  }
+
+  /** Every context's assessments for a set of tutors in a week — for the
+   *  weekly-reminder cron ONLY, which then keys the result by
+   *  (tutor_id, academy_id) so a teacher assessing in one context isn't
+   *  treated as compliant in the other. Not for any Academy-facing view. */
+  listInWeekForReminders(tutorIds: string[], weekStartDate: string) {
     if (tutorIds.length === 0) return Promise.resolve([]);
     return this.db
       .selectFrom('assessments')
       .selectAll()
       .where('tutor_id', 'in', tutorIds)
       .where('week_start_date', '=', weekStartDate)
-      .orderBy('created_at', 'desc')
       .execute();
   }
 
@@ -484,32 +512,30 @@ export class AssessmentsRepository {
       .execute();
   }
 
-  /** Every assessment (online or offline, any status) dated on a single
-   *  day for a set of tutors — Academy Today's "assessments
+  /** Every assessment (online or offline, any status) the academy owns,
+   *  dated on a single day — Academy Today's "assessments
    *  today"/Upcoming counts (§9/§24). Distinct from listScheduledForDate
    *  above, which is the cron sweep's own narrower offline-only query. */
-  listForTutorsOnDate(tutorIds: string[], date: string) {
-    if (tutorIds.length === 0) return Promise.resolve([]);
+  listForAcademyOnDate(academyId: string, date: string) {
     return this.db
       .selectFrom('assessments')
       .selectAll()
-      .where('tutor_id', 'in', tutorIds)
+      .where('academy_id', '=', academyId)
       .where('assessment_date', '=', date)
       .execute();
   }
 
   /** Offline assessments already past their scorecard deadline, scoped to
-   *  a set of tutors — Academy Today's Needs Attention "overdue offline
+   *  one academy — Academy Today's Needs Attention "overdue offline
    *  scorecards" alert (§17). The cron sweep (listOverdueCandidates
    *  above) is what actually flips a row to 'overdue' in the first
    *  place; this just reads that already-maintained status back,
-   *  scoped to one academy's active teachers. */
-  listOverdueForTutors(tutorIds: string[]) {
-    if (tutorIds.length === 0) return Promise.resolve([]);
+   *  scoped to the academy's own assessments. */
+  listOverdueForAcademy(academyId: string) {
     return this.db
       .selectFrom('assessments')
       .selectAll()
-      .where('tutor_id', 'in', tutorIds)
+      .where('academy_id', '=', academyId)
       .where('status', '=', 'overdue')
       .execute();
   }

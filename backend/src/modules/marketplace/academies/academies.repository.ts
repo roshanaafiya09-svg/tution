@@ -27,7 +27,7 @@ export interface AcademyOfferingSearchFilters {
 }
 
 /** No table of its own beyond `academies` itself — subjects/classes an
- *  academy offers are derived from active memberships -> tutor_subjects
+ *  academy offers are derived from the batches it owns (batches.academy_id)
  *  (same "derived signal, no table of its own" pattern as
  *  DiscoveryRepository), never duplicated into a parallel table. */
 @Injectable()
@@ -196,21 +196,18 @@ export class AcademiesRepository {
     return Number(row.count);
   }
 
-  /** Candidate pool for search — mirrors
-   *  DiscoveryRepository.searchOfferings exactly, rooted at
-   *  academy_memberships instead of tutor_subjects directly. Only
-   *  verified academies with at least one active member offering the
-   *  matched subject are discoverable. */
+  /** Candidate pool for search — one row per ACTIVE batch an academy owns
+   *  (batches.academy_id). An academy is discoverable by the subjects/
+   *  grades it actually teaches in its own batches — NOT by the
+   *  Individual marketplace listings (tutor_subjects, with the teacher's
+   *  own hourly rates) of the teachers who happen to be its members. Only
+   *  verified academies are discoverable. */
   searchAcademyOfferings(filters: AcademyOfferingSearchFilters) {
     let query = this.db
-      .selectFrom('academy_memberships')
-      .innerJoin('academies', 'academies.id', 'academy_memberships.academy_id')
-      .innerJoin(
-        'tutor_subjects',
-        'tutor_subjects.tutor_id',
-        'academy_memberships.tutor_id',
-      )
-      .innerJoin('subjects', 'subjects.id', 'tutor_subjects.subject_id')
+      .selectFrom('batches')
+      .innerJoin('academies', 'academies.id', 'batches.academy_id')
+      .innerJoin('subjects', 'subjects.id', 'batches.subject_id')
+      .innerJoin('grade_levels', 'grade_levels.id', 'batches.grade_level_id')
       .select([
         'academies.id as academy_id',
         'academies.name',
@@ -220,33 +217,30 @@ export class AcademiesRepository {
         'academies.logo_object_key',
         'academies.verification_status',
         'academies.created_at as academy_created_at',
-        'tutor_subjects.id as tutor_subject_id',
-        'tutor_subjects.tutor_id',
-        'tutor_subjects.hourly_rate_minor',
-        'tutor_subjects.grade_min',
-        'tutor_subjects.grade_max',
-        'tutor_subjects.curriculum_id',
+        'batches.id as batch_id',
+        'batches.tutor_id',
+        'grade_levels.curriculum_id',
+        'grade_levels.ordinal as grade_min',
+        'grade_levels.ordinal as grade_max',
         'subjects.id as subject_id',
         'subjects.name_i18n as subject_name_i18n',
         'subjects.slug as subject_slug',
       ])
-      .where('academy_memberships.status', '=', 'active')
+      .where('batches.status', '=', 'active')
       .where('academies.verification_status', '=', 'verified');
 
     if (filters.subjectId) {
-      query = query.where('tutor_subjects.subject_id', '=', filters.subjectId);
+      query = query.where('batches.subject_id', '=', filters.subjectId);
     }
     if (filters.curriculumId) {
       query = query.where(
-        'tutor_subjects.curriculum_id',
+        'grade_levels.curriculum_id',
         '=',
         filters.curriculumId,
       );
     }
     if (filters.grade != null) {
-      query = query
-        .where('tutor_subjects.grade_min', '<=', filters.grade)
-        .where('tutor_subjects.grade_max', '>=', filters.grade);
+      query = query.where('grade_levels.ordinal', '=', filters.grade);
     }
     if (filters.teachingMode) {
       query = query.where('academies.teaching_mode', '=', filters.teachingMode);
@@ -256,37 +250,36 @@ export class AcademiesRepository {
   }
 
   /** Single-academy variant of the above, for the public academy page's
-   *  "Subjects & classes" section — every row also carries which tutor
-   *  offers it, so the UI can attribute it and link to that teacher. */
-  listOfferingsForAcademy(academyId: string) {
-    return this.db
-      .selectFrom('academy_memberships')
-      .innerJoin(
-        'tutor_subjects',
-        'tutor_subjects.tutor_id',
-        'academy_memberships.tutor_id',
-      )
-      .innerJoin('subjects', 'subjects.id', 'tutor_subjects.subject_id')
-      .innerJoin(
-        'profiles_tutor',
-        'profiles_tutor.user_id',
-        'academy_memberships.tutor_id',
-      )
-      .select([
-        'tutor_subjects.id as tutor_subject_id',
-        'tutor_subjects.tutor_id',
-        'profiles_tutor.display_name as tutor_display_name',
-        'profiles_tutor.slug as tutor_slug',
-        'tutor_subjects.hourly_rate_minor',
-        'tutor_subjects.grade_min',
-        'tutor_subjects.grade_max',
-        'tutor_subjects.curriculum_id',
+   *  "Subjects & classes" section — the subjects the academy teaches in
+   *  its own active batches, with the grade range, how many batches run
+   *  it and the lowest batch fee. Never the members' Individual
+   *  tutor_subjects / hourly rates. */
+  async listOfferingsForAcademy(academyId: string) {
+    const rows = await this.db
+      .selectFrom('batches')
+      .innerJoin('subjects', 'subjects.id', 'batches.subject_id')
+      .innerJoin('grade_levels', 'grade_levels.id', 'batches.grade_level_id')
+      .select((eb) => [
         'subjects.id as subject_id',
         'subjects.name_i18n as subject_name_i18n',
         'subjects.slug as subject_slug',
+        eb.fn.min('grade_levels.ordinal').as('grade_min'),
+        eb.fn.max('grade_levels.ordinal').as('grade_max'),
+        eb.fn.countAll().as('batch_count'),
+        eb.fn.min('batches.fee_minor').as('from_fee_minor'),
       ])
-      .where('academy_memberships.academy_id', '=', academyId)
-      .where('academy_memberships.status', '=', 'active')
+      .where('batches.academy_id', '=', academyId)
+      .where('batches.status', '=', 'active')
+      .groupBy(['subjects.id', 'subjects.name_i18n', 'subjects.slug'])
       .execute();
+    return rows.map((r) => ({
+      subject_id: r.subject_id,
+      subject_name_i18n: r.subject_name_i18n,
+      subject_slug: r.subject_slug,
+      grade_min: Number(r.grade_min),
+      grade_max: Number(r.grade_max),
+      batch_count: Number(r.batch_count),
+      from_fee_minor: Number(r.from_fee_minor),
+    }));
   }
 }

@@ -6,8 +6,10 @@ import { CurrentUser } from '../../identity/auth/decorators/current-user.decorat
 import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
 import { AnnouncementsService } from './announcements.service';
 import { CreateAnnouncementDto } from './dto/create-announcement.dto';
+import { TeachingContextScope } from '../../teaching-context/teaching-context.guard';
 
 @Controller('announcements')
+@TeachingContextScope()
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AnnouncementsController {
   constructor(private readonly announcementsService: AnnouncementsService) {}

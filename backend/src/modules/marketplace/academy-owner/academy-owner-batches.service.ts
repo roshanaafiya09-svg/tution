@@ -11,6 +11,7 @@ import { SessionsService } from '../../scheduling/sessions/sessions.service';
 import { SessionsRepository } from '../../scheduling/sessions/sessions.repository';
 import { InvitesService } from '../../scheduling/invites/invites.service';
 import { AttendanceRepository } from '../../scheduling/attendance/attendance.repository';
+import { AcademySubscriptionsService } from '../../billing/subscriptions/academy-subscriptions.service';
 import { AcademyOwnerParentsRepository } from './academy-owner-parents.repository';
 import type { CreateBatchDto } from '../../scheduling/batches/dto/create-batch.dto';
 import type { UpdateBatchDto } from '../../scheduling/batches/dto/update-batch.dto';
@@ -18,17 +19,14 @@ import type { CreateSessionDto } from '../../scheduling/sessions/dto/create-sess
 import type { CreateInviteDto } from '../../scheduling/invites/dto/create-invite.dto';
 
 /**
- * Academy-scoped delegation over a member tutor's batches/sessions/
- * invites — NOT a new ownership model. A batch is still owned by exactly
- * one `tutor_id`; this service only adds a permission layer that lets the
- * academy owner act on a batch belonging to one of their *active* member
- * tutors, by resolving the target tutor and calling the exact same
- * BatchesService/SessionsService/InvitesService methods a tutor calls for
- * themselves (those services take `tutorId` as a plain parameter, never
- * assume it's the caller — see this feature's plan doc). Every method
- * re-validates active membership even when a batchId already implies it,
- * mirroring the existing "belongs to another academy" 403 pattern used
- * throughout AcademyOwnerService.
+ * The Academy's own batches/sessions/invites/students. A batch created here
+ * (or by a member teacher while working in that academy's profile) is owned
+ * by the academy: `batches.academy_id = <this academy>`, with `tutor_id` the
+ * teacher who runs it. Every read and write below is keyed by that
+ * academy_id — never by "batches of my active teachers" — so a member
+ * teacher's private Individual batches are unreachable here, even by
+ * direct id (a foreign or Individual batch id is simply "not found"). The
+ * academy keeps authority over its own batches after a teacher leaves.
  */
 @Injectable()
 export class AcademyOwnerBatchesService {
@@ -42,6 +40,7 @@ export class AcademyOwnerBatchesService {
     private readonly invitesService: InvitesService,
     private readonly attendanceRepository: AttendanceRepository,
     private readonly academyOwnerParentsRepository: AcademyOwnerParentsRepository,
+    private readonly academySubscriptions: AcademySubscriptionsService,
   ) {}
 
   private async resolveOwnAcademy(ownerUserId: string) {
@@ -69,26 +68,20 @@ export class AcademyOwnerBatchesService {
     }
   }
 
-  /** Loads a batch and confirms its owning tutor is currently an active
-   *  member of this academy — the shared guard every batchId-based
-   *  endpoint below starts with. */
-  private async resolveMemberBatch(academyId: string, batchId: string) {
-    const batch = await this.batchesRepository.findById(batchId);
-    if (!batch) throw new NotFoundException('Batch not found');
-    await this.assertActiveMember(academyId, batch.tutor_id);
-    return batch;
+  /** Loads a batch that THIS academy owns (batches.academy_id) — the
+   *  shared guard every batchId-based endpoint below starts with. An
+   *  Individual batch or another academy's batch is "not found". */
+  private resolveAcademyBatch(academyId: string, batchId: string) {
+    return this.batchesService.getAcademyBatch(academyId, batchId);
   }
 
   async listBatches(ownerUserId: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const activeTeachers =
-      await this.academyMembershipsRepository.listActiveForAcademy(academy.id);
-    const teacherNames = new Map(
-      activeTeachers.map((t) => [t.tutor_id, t.display_name]),
-    );
-    const batches = await this.batchesRepository.listForTutors(
-      activeTeachers.map((t) => t.tutor_id),
-    );
+    const teacherNames =
+      await this.academyMembershipsRepository.displayNamesForAcademy(
+        academy.id,
+      );
+    const batches = await this.batchesRepository.listForAcademy(academy.id);
     return batches.map((b) => ({
       id: b.id,
       tutorId: b.tutor_id,
@@ -108,14 +101,15 @@ export class AcademyOwnerBatchesService {
 
   async getBatch(ownerUserId: string, batchId: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const batch = await this.resolveMemberBatch(academy.id, batchId);
-    const activeTeachers =
-      await this.academyMembershipsRepository.listActiveForAcademy(academy.id);
-    const teacher = activeTeachers.find((t) => t.tutor_id === batch.tutor_id);
+    const batch = await this.resolveAcademyBatch(academy.id, batchId);
+    const teacherNames =
+      await this.academyMembershipsRepository.displayNamesForAcademy(
+        academy.id,
+      );
     return {
       id: batch.id,
       tutorId: batch.tutor_id,
-      tutorDisplayName: teacher?.display_name ?? null,
+      tutorDisplayName: teacherNames.get(batch.tutor_id) ?? null,
       title: batch.title,
       subjectId: batch.subject_id,
       gradeLevelId: batch.grade_level_id,
@@ -131,32 +125,34 @@ export class AcademyOwnerBatchesService {
   async createBatch(ownerUserId: string, tutorId: string, dto: CreateBatchDto) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
     await this.assertActiveMember(academy.id, tutorId);
-    return this.batchesService.create(tutorId, dto);
+    // Academy activity is paid for by the ACADEMY's plan.
+    await this.academySubscriptions.assertActive(academy.id);
+    // Created IN this academy's context: the batch belongs to the academy.
+    return this.batchesService.create(tutorId, dto, {
+      kind: 'academy',
+      academyId: academy.id,
+    });
   }
 
   async updateBatch(ownerUserId: string, batchId: string, dto: UpdateBatchDto) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const batch = await this.resolveMemberBatch(academy.id, batchId);
-    return this.batchesService.update(batch.tutor_id, batchId, dto);
+    return this.batchesService.updateForAcademy(academy.id, batchId, dto);
   }
 
   async archiveBatch(ownerUserId: string, batchId: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const batch = await this.resolveMemberBatch(academy.id, batchId);
-    return this.batchesService.archive(batch.tutor_id, batchId);
+    return this.batchesService.archiveForAcademy(academy.id, batchId);
   }
 
   async listStudents(ownerUserId: string, batchId: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const batch = await this.resolveMemberBatch(academy.id, batchId);
-    return this.batchesService.listEnrollments(batch.tutor_id, batchId);
+    return this.batchesService.listEnrollmentsForAcademy(academy.id, batchId);
   }
 
   async removeStudent(ownerUserId: string, batchId: string, studentId: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const batch = await this.resolveMemberBatch(academy.id, batchId);
-    return this.batchesService.removeStudent(
-      batch.tutor_id,
+    return this.batchesService.removeStudentForAcademy(
+      academy.id,
       batchId,
       studentId,
     );
@@ -164,14 +160,12 @@ export class AcademyOwnerBatchesService {
 
   async listSessions(ownerUserId: string, batchId: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const batch = await this.resolveMemberBatch(academy.id, batchId);
-    return this.sessionsService.listForBatch(batch.tutor_id, batchId);
+    return this.sessionsService.listForBatchInAcademy(academy.id, batchId);
   }
 
   async createSession(ownerUserId: string, dto: CreateSessionDto) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const batch = await this.resolveMemberBatch(academy.id, dto.batchId);
-    return this.sessionsService.create(batch.tutor_id, dto);
+    return this.sessionsService.createForAcademy(academy.id, dto);
   }
 
   async cancelSession(
@@ -181,14 +175,17 @@ export class AcademyOwnerBatchesService {
     wholeSeries: boolean,
   ) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const batch = await this.resolveMemberBatch(academy.id, batchId);
-    return this.sessionsService.cancel(batch.tutor_id, sessionId, wholeSeries);
+    await this.resolveAcademyBatch(academy.id, batchId);
+    return this.sessionsService.cancelForAcademy(
+      academy.id,
+      sessionId,
+      wholeSeries,
+    );
   }
 
   async listInvites(ownerUserId: string, batchId: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const batch = await this.resolveMemberBatch(academy.id, batchId);
-    return this.invitesService.listForBatch(batch.tutor_id, batchId);
+    return this.invitesService.listForBatchInAcademy(academy.id, batchId);
   }
 
   async createInvite(
@@ -197,21 +194,19 @@ export class AcademyOwnerBatchesService {
     dto: CreateInviteDto,
   ) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const batch = await this.resolveMemberBatch(academy.id, batchId);
-    return this.invitesService.create(batch.tutor_id, batchId, dto);
+    return this.invitesService.createForAcademy(academy.id, batchId, dto);
   }
 
-  /** Every scheduled class across the academy's active teachers in a
-   *  window — backs Today's "Classes happening today"/"Upcoming Classes". */
+  /** Every class the academy owns in a window — backs Today's "Classes
+   *  happening today"/"Upcoming Classes". */
   async listSessionsAcrossAcademy(ownerUserId: string, from: Date, to: Date) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const activeTeachers =
-      await this.academyMembershipsRepository.listActiveForAcademy(academy.id);
-    const teacherNames = new Map(
-      activeTeachers.map((t) => [t.tutor_id, t.display_name]),
-    );
-    const rows = await this.sessionsRepository.listForTutorsBetween(
-      activeTeachers.map((t) => t.tutor_id),
+    const teacherNames =
+      await this.academyMembershipsRepository.displayNamesForAcademy(
+        academy.id,
+      );
+    const rows = await this.sessionsRepository.listForAcademyBetween(
+      academy.id,
       from,
       to,
     );
@@ -248,19 +243,18 @@ export class AcademyOwnerBatchesService {
     },
   ) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const activeTeachers =
-      await this.academyMembershipsRepository.listActiveForAcademy(academy.id);
-    const teacherNames = new Map(
-      activeTeachers.map((t) => [t.tutor_id, t.display_name]),
-    );
+    const teacherNames =
+      await this.academyMembershipsRepository.displayNamesForAcademy(
+        academy.id,
+      );
     const status =
       filters?.status === 'active' || filters?.status === 'left'
         ? filters.status
         : filters?.status === 'all'
           ? undefined
           : 'active';
-    const rows = await this.batchesRepository.listEnrollmentsForTutors(
-      activeTeachers.map((t) => t.tutor_id),
+    const rows = await this.batchesRepository.listEnrollmentsForAcademy(
+      academy.id,
       status,
     );
 
@@ -300,13 +294,12 @@ export class AcademyOwnerBatchesService {
    *  this academy's own roster. */
   async getStudentDetail(ownerUserId: string, studentId: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const activeTeachers =
-      await this.academyMembershipsRepository.listActiveForAcademy(academy.id);
-    const teacherNames = new Map(
-      activeTeachers.map((t) => [t.tutor_id, t.display_name]),
-    );
-    const rows = await this.batchesRepository.listEnrollmentsForTutors(
-      activeTeachers.map((t) => t.tutor_id),
+    const teacherNames =
+      await this.academyMembershipsRepository.displayNamesForAcademy(
+        academy.id,
+      );
+    const rows = await this.batchesRepository.listEnrollmentsForAcademy(
+      academy.id,
     );
     const enrollments = rows.filter((r) => r.student_id === studentId);
     if (enrollments.length === 0) {

@@ -14,6 +14,9 @@ import { RolesGuard } from '../../identity/auth/guards/roles.guard';
 import { Roles } from '../../identity/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../identity/auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
+import { TeachingContextScope } from '../../teaching-context/teaching-context.guard';
+import { CurrentTeachingContext } from '../../teaching-context/current-teaching-context.decorator';
+import type { TeachingContext } from '../../teaching-context/teaching-context';
 import { OfflineAssessmentsService } from './offline-assessments.service';
 import { CreateOfflineAssessmentDto } from '../dto/create-offline-assessment.dto';
 import { QuestionPaperUploadUrlDto } from '../dto/question-paper-upload-url.dto';
@@ -24,6 +27,7 @@ const SCORECARD_MIME =
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 @Controller('assessments/offline')
+@TeachingContextScope()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('tutor')
 export class OfflineAssessmentsController {
@@ -38,8 +42,11 @@ export class OfflineAssessmentsController {
   }
 
   @Get('me')
-  listMine(@CurrentUser() user: AccessTokenPayload) {
-    return this.service.listForTutor(user.sub);
+  listMine(
+    @CurrentUser() user: AccessTokenPayload,
+    @CurrentTeachingContext() ctx: TeachingContext,
+  ) {
+    return this.service.listForTutor(user.sub, ctx);
   }
 
   @Get(':id')

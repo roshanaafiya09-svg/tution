@@ -30,11 +30,16 @@ export class AttendanceRepository {
       .execute();
   }
 
-  /** Every attendance record for a student, across all batches — feeds data export. */
-  listForStudent(studentId: string) {
-    return this.db
+  /** Every attendance record for a student, across all batches — feeds
+   *  data export and the student's/parent's own views. Pass `academyId`
+   *  to narrow to classes that academy owns (batches.academy_id): the
+   *  Academy side must never see the student's attendance in a teacher's
+   *  Individual batch or another academy's. */
+  listForStudent(studentId: string, academyId?: string) {
+    let query = this.db
       .selectFrom('attendance')
       .innerJoin('class_sessions', 'class_sessions.id', 'attendance.session_id')
+      .innerJoin('batches', 'batches.id', 'class_sessions.batch_id')
       .select([
         'attendance.id',
         'attendance.session_id',
@@ -44,7 +49,9 @@ export class AttendanceRepository {
         'class_sessions.batch_id',
         'class_sessions.scheduled_start_utc',
       ])
-      .where('attendance.student_id', '=', studentId)
+      .where('attendance.student_id', '=', studentId);
+    if (academyId) query = query.where('batches.academy_id', '=', academyId);
+    return query
       .orderBy('class_sessions.scheduled_start_utc', 'desc')
       .execute();
   }
@@ -80,23 +87,34 @@ export class AttendanceRepository {
       .executeTakeFirstOrThrow();
   }
 
-  /** Feeds the trial-end value-recap paywall (blueprint §5). */
+  /** Feeds the trial-end value-recap paywall (blueprint §5). The paywall
+   *  is about the teacher's own Individual plan, so this counts only
+   *  Individual-context classes — Academy classes are paid for by (and
+   *  belong to) the academy. */
   async countForTutor(tutorId: string): Promise<number> {
     const row = await this.db
       .selectFrom('attendance')
       .innerJoin('class_sessions', 'class_sessions.id', 'attendance.session_id')
+      .innerJoin('batches', 'batches.id', 'class_sessions.batch_id')
       .select((eb) => eb.fn.countAll().as('count'))
       .where('class_sessions.tutor_id', '=', tutorId)
+      .where('batches.academy_id', 'is', null)
       .executeTakeFirstOrThrow();
     return Number(row.count);
   }
 
   /** Attendance across every batch for a student within [from, to) —
    *  feeds the AI weekly parent digest (blueprint §8). */
-  async summaryForStudentBetween(studentId: string, from: Date, to: Date) {
-    const row = await this.db
+  async summaryForStudentBetween(
+    studentId: string,
+    from: Date,
+    to: Date,
+    academyId?: string,
+  ) {
+    let query = this.db
       .selectFrom('attendance')
       .innerJoin('class_sessions', 'class_sessions.id', 'attendance.session_id')
+      .innerJoin('batches', 'batches.id', 'class_sessions.batch_id')
       .select((eb) => [
         eb.fn.countAll().as('total'),
         eb.fn
@@ -122,8 +140,9 @@ export class AttendanceRepository {
       ])
       .where('attendance.student_id', '=', studentId)
       .where('class_sessions.scheduled_start_utc', '>=', from)
-      .where('class_sessions.scheduled_start_utc', '<', to)
-      .executeTakeFirstOrThrow();
+      .where('class_sessions.scheduled_start_utc', '<', to);
+    if (academyId) query = query.where('batches.academy_id', '=', academyId);
+    const row = await query.executeTakeFirstOrThrow();
 
     const total = Number(row.total);
     const present = Number(row.present ?? 0);
@@ -139,7 +158,10 @@ export class AttendanceRepository {
   }
 
   /** Whether this student was ever actually present (or late) in one of
-   *  this tutor's classes — the "verified session" gate for reviews
+   *  this tutor's INDIVIDUAL classes — the "verified session" gate for
+   *  reviews of the tutor as an independent teacher (attending an Academy
+   *  class doesn't entitle a student to review the teacher's own
+   *  business; that is what the academy review is for)
    *  (blueprint §10 Phase 4). Doesn't filter by class_sessions.status:
    *  an attendance row marked present is itself the evidence the class
    *  happened, regardless of whether anyone later flipped the session's
@@ -151,46 +173,45 @@ export class AttendanceRepository {
     const row = await this.db
       .selectFrom('attendance')
       .innerJoin('class_sessions', 'class_sessions.id', 'attendance.session_id')
+      .innerJoin('batches', 'batches.id', 'class_sessions.batch_id')
       .select((eb) => eb.fn.countAll().as('count'))
       .where('attendance.student_id', '=', studentId)
       .where('class_sessions.tutor_id', '=', tutorId)
+      .where('batches.academy_id', 'is', null)
       .where('attendance.status', 'in', ['present', 'late'])
       .executeTakeFirstOrThrow();
     return Number(row.count) > 0;
   }
 
-  /** Multi-tutor sibling of hasVerifiedAttendanceWithTutor — the
-   *  batch-class half of AcademyReviewsService's verified-session gate,
-   *  checked against any of an academy's active member tutors rather
-   *  than one. Empty-array guard mirrors the pattern used elsewhere for
-   *  tutorIds filters (dummy UUID keeps `in (...)` valid). */
-  async hasVerifiedAttendanceWithAnyTutor(
+  /** Academy sibling of hasVerifiedAttendanceWithTutor — the verified-
+   *  session gate for reviewing an ACADEMY: the student must have actually
+   *  attended a class in a batch the academy owns (batches.academy_id).
+   *  Attending a member teacher's Individual class doesn't count. */
+  async hasVerifiedAttendanceInAcademy(
     studentId: string,
-    tutorIds: string[],
+    academyId: string,
   ): Promise<boolean> {
     const row = await this.db
       .selectFrom('attendance')
       .innerJoin('class_sessions', 'class_sessions.id', 'attendance.session_id')
+      .innerJoin('batches', 'batches.id', 'class_sessions.batch_id')
       .select((eb) => eb.fn.countAll().as('count'))
       .where('attendance.student_id', '=', studentId)
-      .where(
-        'class_sessions.tutor_id',
-        'in',
-        tutorIds.length ? tutorIds : ['00000000-0000-0000-0000-000000000000'],
-      )
+      .where('batches.academy_id', '=', academyId)
       .where('attendance.status', 'in', ['present', 'late'])
       .executeTakeFirstOrThrow();
     return Number(row.count) > 0;
   }
 
-  /** Attendance % across every batch a tutor teaches — the "attendance
-   *  retention" input to the Proof-of-Teaching score (blueprint §10
-   *  Phase 4). Structural copy of summaryForStudent, grouped by tutor
+  /** Attendance % across every INDIVIDUAL batch a tutor teaches — the
+   *  "attendance retention" input to the Proof-of-Teaching score
+   *  (blueprint §10 Phase 4), i.e. their own marketplace reputation. Structural copy of summaryForStudent, grouped by tutor
    *  instead of student+batch. */
   async summaryForTutor(tutorId: string) {
     const row = await this.db
       .selectFrom('attendance')
       .innerJoin('class_sessions', 'class_sessions.id', 'attendance.session_id')
+      .innerJoin('batches', 'batches.id', 'class_sessions.batch_id')
       .select((eb) => [
         eb.fn.countAll().as('total'),
         eb.fn
@@ -215,6 +236,7 @@ export class AttendanceRepository {
           .as('late'),
       ])
       .where('class_sessions.tutor_id', '=', tutorId)
+      .where('batches.academy_id', 'is', null)
       .executeTakeFirstOrThrow();
 
     const total = Number(row.total);
@@ -378,11 +400,17 @@ export class AttendanceRepository {
    *  across a date range; this is the same grouped-aggregate query keyed
    *  by student_id in one round trip instead of looping
    *  summaryForStudentBetween per student. */
-  async summaryForStudentsBetween(studentIds: string[], from: Date, to: Date) {
+  async summaryForStudentsBetween(
+    studentIds: string[],
+    from: Date,
+    to: Date,
+    academyId?: string,
+  ) {
     if (studentIds.length === 0) return [];
-    const rows = await this.db
+    let query = this.db
       .selectFrom('attendance')
       .innerJoin('class_sessions', 'class_sessions.id', 'attendance.session_id')
+      .innerJoin('batches', 'batches.id', 'class_sessions.batch_id')
       .select((eb) => [
         'attendance.student_id',
         eb.fn.countAll().as('total'),
@@ -409,9 +437,9 @@ export class AttendanceRepository {
       ])
       .where('attendance.student_id', 'in', studentIds)
       .where('class_sessions.scheduled_start_utc', '>=', from)
-      .where('class_sessions.scheduled_start_utc', '<', to)
-      .groupBy('attendance.student_id')
-      .execute();
+      .where('class_sessions.scheduled_start_utc', '<', to);
+    if (academyId) query = query.where('batches.academy_id', '=', academyId);
+    const rows = await query.groupBy('attendance.student_id').execute();
 
     return rows.map((row) => {
       const total = Number(row.total);

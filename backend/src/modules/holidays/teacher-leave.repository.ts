@@ -71,31 +71,46 @@ export class TeacherLeaveRepository {
    *  approval screen — the affected classes with batch titles, so
    *  neither side has to hit a second endpoint per request. */
   listSessionsWithBatchForRequest(leaveRequestId: string) {
-    return this.db
-      .selectFrom('teacher_leave_request_sessions')
-      .innerJoin(
-        'class_sessions',
-        'class_sessions.id',
-        'teacher_leave_request_sessions.session_id',
-      )
-      .innerJoin('batches', 'batches.id', 'class_sessions.batch_id')
-      .select([
-        'class_sessions.id as session_id',
-        'class_sessions.scheduled_start_utc',
-        'class_sessions.timezone',
-        'class_sessions.duration_min',
-        'class_sessions.status',
-        'class_sessions.substitute_tutor_id',
-        'batches.id as batch_id',
-        'batches.title as batch_title',
-      ])
-      .where(
-        'teacher_leave_request_sessions.leave_request_id',
-        '=',
-        leaveRequestId,
-      )
-      .orderBy('class_sessions.scheduled_start_utc')
-      .execute();
+    return (
+      this.db
+        .selectFrom('teacher_leave_request_sessions')
+        .innerJoin(
+          'class_sessions',
+          'class_sessions.id',
+          'teacher_leave_request_sessions.session_id',
+        )
+        .innerJoin('batches', 'batches.id', 'class_sessions.batch_id')
+        .innerJoin(
+          'teacher_leave_requests',
+          'teacher_leave_requests.id',
+          'teacher_leave_request_sessions.leave_request_id',
+        )
+        // Only classes owned by the request's academy — a snapshot taken
+        // before teaching contexts existed may still hold the teacher's
+        // Individual classes; they are never shown or actioned.
+        .whereRef(
+          'batches.academy_id',
+          '=',
+          'teacher_leave_requests.academy_id',
+        )
+        .select([
+          'class_sessions.id as session_id',
+          'class_sessions.scheduled_start_utc',
+          'class_sessions.timezone',
+          'class_sessions.duration_min',
+          'class_sessions.status',
+          'class_sessions.substitute_tutor_id',
+          'batches.id as batch_id',
+          'batches.title as batch_title',
+        ])
+        .where(
+          'teacher_leave_request_sessions.leave_request_id',
+          '=',
+          leaveRequestId,
+        )
+        .orderBy('class_sessions.scheduled_start_utc')
+        .execute()
+    );
   }
 
   listForTutor(tutorId: string) {

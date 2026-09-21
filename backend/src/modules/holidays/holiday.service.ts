@@ -131,6 +131,18 @@ export class HolidayService {
       );
     }
 
+    // Batch-scoped holidays may only target batches this academy OWNS
+    // (checked up front; a DB trigger enforces the same on insert).
+    if (input.scope === 'batches') {
+      for (const batchId of new Set(input.batchIds)) {
+        const batch = await this.batchesRepository.findByIdInAcademy(
+          batchId,
+          academyId,
+        );
+        if (!batch) throw new NotFoundException('Batch not found');
+      }
+    }
+
     const holiday = await this.repository.createAcademyHoliday({
       academyId,
       name: input.name,
@@ -193,8 +205,11 @@ export class HolidayService {
     }
 
     const { from, to } = dayRangeUtc(holiday.start_date, holiday.end_date);
-    let sessions = await this.sessionsRepository.listScheduledForTutorsBetween(
-      allTutorIds,
+    // Only the academy's OWN classes (batches.academy_id) are candidates
+    // — never every class of its member teachers — so an academy or
+    // government holiday can't cancel a teacher's Individual class.
+    let sessions = await this.sessionsRepository.listScheduledForAcademyBetween(
+      academyId,
       from,
       to,
     );
@@ -229,9 +244,14 @@ export class HolidayService {
       : allTutorIds;
     const studentIds = batchIds
       ? await this.batchesRepository.listDistinctStudentIdsForBatches(batchIds)
-      : await this.batchesRepository.listDistinctStudentIdsForTutors(
-          allTutorIds,
-        );
+      : (
+          await this.batchesRepository.listEnrollmentsForAcademy(
+            academyId,
+            'active',
+          )
+        )
+          .map((e) => e.student_id)
+          .filter((id, i, all) => all.indexOf(id) === i);
     const parentIds =
       await this.attendanceRepository.listActiveParentIdsForStudents(
         studentIds,
@@ -314,14 +334,10 @@ export class HolidayService {
     }
     if (studentIds.length === 0) return [];
 
-    const tutorIds = new Set<string>();
-    for (const studentId of studentIds) {
-      const batches = await this.batchesRepository.listForStudent(studentId);
-      for (const batch of batches) tutorIds.add(batch.tutor_id);
-    }
-    return this.academyMembershipsRepository.listActiveAcademyIdsForTutors([
-      ...tutorIds,
-    ]);
+    // The academies whose OWN batches the student is enrolled in — a
+    // student in a teacher's Individual batch gets no academy's holidays
+    // just because that teacher is a member somewhere.
+    return this.batchesRepository.listAcademyIdsForStudents(studentIds);
   }
 
   /** Daily cron entry point (RemindersModule) — sweeps every academy

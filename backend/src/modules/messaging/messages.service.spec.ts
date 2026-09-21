@@ -14,6 +14,7 @@ import type { BatchesRepository } from '../scheduling/batches/batches.repository
 import type { ParentLinksRepository } from '../parents/parent-links.repository';
 import type { AnalyticsService } from '../analytics/analytics.service';
 import type { NotificationsService } from '../notifications/notifications.service';
+import type { TeachingContextService } from '../teaching-context/teaching-context.service';
 import type { AccessTokenPayload } from '../identity/auth/tokens.service';
 
 /**
@@ -39,6 +40,9 @@ function buildService(overrides: { listForThread?: jest.Mock }) {
   const parentLinksRepository = {} as unknown as ParentLinksRepository;
   const analytics = { capture: jest.fn() } as unknown as AnalyticsService;
   const notificationsService = {} as unknown as NotificationsService;
+  const teachingContext = {
+    assertActiveMember: jest.fn().mockResolvedValue(undefined),
+  } as unknown as TeachingContextService;
 
   const service = new MessagesService(
     repository,
@@ -46,6 +50,7 @@ function buildService(overrides: { listForThread?: jest.Mock }) {
     parentLinksRepository,
     analytics,
     notificationsService,
+    teachingContext,
   );
 
   const tutorUser: AccessTokenPayload = { sub: 'tutor-1', roles: ['tutor'] };

@@ -4,6 +4,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { FeesRepository } from './fees.repository';
+import {
+  academyIdOf,
+  type TeachingContext,
+} from '../../teaching-context/teaching-context';
 import { BatchesService } from '../../scheduling/batches/batches.service';
 import { ParentLinksRepository } from '../../parents/parent-links.repository';
 import type { GeneratePeriodDto } from './dto/generate-period.dto';
@@ -55,12 +59,16 @@ export class FeesService {
     return result;
   }
 
-  listForPeriod(tutorId: string, periodLabel: string) {
-    return this.repository.listForPeriod(tutorId, periodLabel);
+  listForPeriod(tutorId: string, ctx: TeachingContext, periodLabel: string) {
+    return this.repository.listForPeriod(
+      tutorId,
+      academyIdOf(ctx),
+      periodLabel,
+    );
   }
 
-  periodTotals(tutorId: string, periodLabel: string) {
-    return this.repository.periodTotals(tutorId, periodLabel);
+  periodTotals(tutorId: string, ctx: TeachingContext, periodLabel: string) {
+    return this.repository.periodTotals(tutorId, academyIdOf(ctx), periodLabel);
   }
 
   listForStudent(studentId: string) {
@@ -115,6 +123,8 @@ export class FeesService {
     if (!entry) throw new NotFoundException('Fee entry not found');
     if (entry.tutor_id !== tutorId)
       throw new ForbiddenException('Not your fee entry');
+    // Same context rules as the batch the fee belongs to.
+    await this.batchesService.getOwnedBatch(tutorId, entry.batch_id);
     return entry;
   }
 }

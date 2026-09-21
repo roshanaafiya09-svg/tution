@@ -13,6 +13,7 @@ import { BadRequestException } from '@nestjs/common';
 import { SessionsService } from './sessions.service';
 import type { SessionsRepository } from './sessions.repository';
 import type { BatchesService } from '../batches/batches.service';
+import type { TeachingContextService } from '../../teaching-context/teaching-context.service';
 
 const TUTOR_ID = 'tutor-1';
 const BATCH_ID = 'batch-1';
@@ -41,7 +42,11 @@ function buildService(overrides: {
       jest.fn().mockResolvedValue({ id: BATCH_ID, tutor_id: TUTOR_ID }),
   } as unknown as BatchesService;
 
-  return new SessionsService(repository, batchesService);
+  const teachingContext = {
+    assertActiveMember: jest.fn().mockResolvedValue(undefined),
+  } as unknown as TeachingContextService;
+
+  return new SessionsService(repository, batchesService, teachingContext);
 }
 
 describe('SessionsService.create — conflict detection', () => {

@@ -54,10 +54,13 @@ export class QuizzesRepository {
       .executeTakeFirst();
   }
 
-  listForTutor(tutorId: string) {
-    return this.db
+  /** A tutor's quiz drafts IN ONE teaching context (by the draft's
+   *  batch): null = Individual, an id = that academy's. */
+  listForTutor(tutorId: string, academyId: string | null) {
+    let query = this.db
       .selectFrom('quiz_drafts')
       .innerJoin('materials', 'materials.id', 'quiz_drafts.material_id')
+      .innerJoin('batches', 'batches.id', 'quiz_drafts.batch_id')
       .select([
         'quiz_drafts.id',
         'quiz_drafts.batch_id',
@@ -65,9 +68,12 @@ export class QuizzesRepository {
         'quiz_drafts.created_at',
         'materials.title as material_title',
       ])
-      .where('quiz_drafts.tutor_id', '=', tutorId)
-      .orderBy('quiz_drafts.created_at', 'desc')
-      .execute();
+      .where('quiz_drafts.tutor_id', '=', tutorId);
+    query =
+      academyId === null
+        ? query.where('batches.academy_id', 'is', null)
+        : query.where('batches.academy_id', '=', academyId);
+    return query.orderBy('quiz_drafts.created_at', 'desc').execute();
   }
 
   listQuestions(quizDraftId: string) {

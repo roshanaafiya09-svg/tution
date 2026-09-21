@@ -69,7 +69,7 @@ export class AccountService {
       const [profile, verifications, batches, feeLedger] = await Promise.all([
         this.profilesService.getTutorProfile(userId),
         this.verificationsRepository.listForTutor(userId),
-        this.batchesRepository.listForTutor(userId),
+        this.batchesRepository.listAllForTutor(userId),
         this.feesRepository.listAllForTutor(userId),
       ]);
       data.tutorProfile = profile ?? null;

@@ -55,7 +55,6 @@ function buildService(overrides: {
     academyContactRequestsRepository,
     {} as never,
     {} as never,
-    {} as never,
     notificationsService,
     {} as never,
   );

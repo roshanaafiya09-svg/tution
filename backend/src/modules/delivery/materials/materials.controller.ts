@@ -16,6 +16,7 @@ import { RolesGuard } from '../../identity/auth/guards/roles.guard';
 import { Roles } from '../../identity/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../identity/auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
+import { TeachingContextScope } from '../../teaching-context/teaching-context.guard';
 import { MaterialsService } from './materials.service';
 import { CreateMaterialDto } from './dto/create-material.dto';
 import { LocalStorageProvider } from '../../../common/storage/local-storage.provider';
@@ -28,6 +29,7 @@ export class MaterialsController {
   ) {}
 
   @Post('upload-url')
+  @TeachingContextScope()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('tutor')
   createUploadUrl(

@@ -7,6 +7,7 @@ import { AttendanceRepository } from './attendance.repository';
 import type { AttendanceStatus } from './attendance.repository';
 import { SessionsService } from '../sessions/sessions.service';
 import { BatchesService } from '../batches/batches.service';
+import type { TeachingContext } from '../../teaching-context/teaching-context';
 import { BatchesRepository } from '../batches/batches.repository';
 import { AnalyticsService } from '../../analytics/analytics.service';
 import { NotificationsService } from '../../notifications/notifications.service';
@@ -154,8 +155,8 @@ export class AttendanceService {
   /** Bulk sibling of historyForBatch — attendance history across every
    *  batch this tutor owns, in one grouped query. Backs the Teacher
    *  Dashboard roster load. */
-  async historyForOwnBatches(tutorId: string) {
-    const batches = await this.batchesService.listForTutor(tutorId);
+  async historyForOwnBatches(tutorId: string, ctx: TeachingContext) {
+    const batches = await this.batchesService.listForTutor(tutorId, ctx);
     return this.repository.listForBatches(batches.map((b) => b.id));
   }
 

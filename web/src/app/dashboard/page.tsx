@@ -27,6 +27,7 @@ import { safeHref } from '@/lib/safe-url';
 import { currentPeriodLabel, loadRoster } from '@/lib/teacher-roster';
 import { GREETING, dayPeriod, todayLabel } from '@/lib/greeting';
 import { useCachedFetch } from '@/lib/use-cached-fetch';
+import { useTeachingContext } from '@/components/teaching-context-provider';
 import type {
   AppNotification,
   Batch,
@@ -121,6 +122,11 @@ interface AttentionItem {
 
 export default function TodayPage() {
   const toast = useToast();
+  // Everything on this page is scoped to the current teaching profile by
+  // the API (see X-Teaching-Context); the cache keys carry it too so a
+  // bundle fetched under one profile can never be shown under another.
+  const { current: teachingProfile } = useTeachingContext();
+  const individualProfile = teachingProfile.kind === 'individual';
   const [completingId, setCompletingId] = useState<string | null>(null);
 
   const periodLabel = currentPeriodLabel();
@@ -143,13 +149,19 @@ export default function TodayPage() {
     return { sessionRows, batchRows, subjectRows, notificationRows, totals, drafts, profileRow, verificationRows };
   }, [periodLabel]);
 
-  const { data: mainBundle, error: loadError, reload: reloadMain } = useCachedFetch('teacher-dashboard', fetchMainBundle);
+  const { data: mainBundle, error: loadError, reload: reloadMain } = useCachedFetch(
+    `teacher-dashboard:${teachingProfile.value}`,
+    fetchMainBundle,
+  );
 
   // The roster is a fan-out over every batch, cached separately so it
   // fills the two tiles that need it after the page has already painted
   // rather than holding the whole dashboard back.
   const fetchRoster = useCallback(() => loadRoster(periodLabel), [periodLabel]);
-  const { data: roster, reload: reloadRoster } = useCachedFetch('teacher-dashboard-roster', fetchRoster);
+  const { data: roster, reload: reloadRoster } = useCachedFetch(
+    `teacher-dashboard-roster:${teachingProfile.value}`,
+    fetchRoster,
+  );
 
   const sessions = mainBundle?.sessionRows ?? null;
   const batches = mainBundle?.batchRows ?? null;
@@ -278,7 +290,9 @@ export default function TodayPage() {
       tone: 'info',
     });
   }
-  if (profileIncomplete) {
+  // The marketplace profile and verification are the teacher's own
+  // Individual business — never nagged about while working under an academy.
+  if (individualProfile && profileIncomplete) {
     attention.push({
       key: 'profile',
       href: '/dashboard/teacher-profile',
@@ -288,7 +302,7 @@ export default function TodayPage() {
       tone: 'brand',
     });
   }
-  if (!verificationApproved) {
+  if (individualProfile && !verificationApproved) {
     attention.push({
       key: 'verification',
       href: '/dashboard/verification',

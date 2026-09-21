@@ -55,6 +55,7 @@ import { AcademyOwnerModule } from './modules/marketplace/academy-owner/academy-
 import { AcademyVerificationModule } from './modules/marketplace/academy-verification/academy-verification.module';
 import { HolidaysModule } from './modules/holidays/holidays.module';
 import { RemindersModule } from './modules/reminders/reminders.module';
+import { TeachingContextModule } from './modules/teaching-context/teaching-context.module';
 
 /**
  * Dev-only Super Admin auto-login (see src/dev/dev-auto-login.controller.ts).
@@ -128,6 +129,7 @@ if (process.env.NODE_ENV !== 'production') {
     IdentityModule,
     AdminModule,
     CatalogModule,
+    TeachingContextModule,
     SchedulingModule,
     DeliveryModule,
     AssessmentModule,

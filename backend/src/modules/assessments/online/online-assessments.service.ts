@@ -16,6 +16,10 @@ import { STORAGE_PROVIDER } from '../../../common/storage/storage-provider.inter
 import type { StorageProvider } from '../../../common/storage/storage-provider.interface';
 import { extractPdfText } from '../../ai/quizzes/pdf-text';
 import { academicWeekStart } from '../academic-week.util';
+import {
+  academyIdOf,
+  type TeachingContext,
+} from '../../teaching-context/teaching-context';
 import { readUploadedObject } from '../storage-errors.util';
 import type { CreateOnlineAssessmentDto } from '../dto/create-online-assessment.dto';
 import type { UpdateAssessmentQuestionDto } from '../dto/update-assessment-question.dto';
@@ -43,10 +47,14 @@ export class OnlineAssessmentsService {
   ) {}
 
   async create(tutorId: string, dto: CreateOnlineAssessmentDto) {
-    await this.assessments.assertOwnsBatches(tutorId, dto.batchIds);
+    const academyId = await this.assessments.assertOwnsBatches(
+      tutorId,
+      dto.batchIds,
+    );
 
     return this.repository.create({
       tutorId,
+      academyId,
       mode: 'online',
       title: dto.title,
       subjectId: dto.subjectId,
@@ -131,8 +139,8 @@ export class OnlineAssessmentsService {
     return this.repository.listResultsForAssessment(assessmentId);
   }
 
-  listForTutor(tutorId: string) {
-    return this.repository.listForTutor(tutorId, 'online');
+  listForTutor(tutorId: string, ctx: TeachingContext) {
+    return this.repository.listForTutor(tutorId, academyIdOf(ctx), 'online');
   }
 
   async updateQuestion(

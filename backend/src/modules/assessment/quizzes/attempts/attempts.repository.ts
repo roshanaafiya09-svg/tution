@@ -60,10 +60,11 @@ export class QuizAttemptsRepository {
       .execute();
   }
 
-  /** Every attempt across every batch a tutor teaches — the "measured
-   *  improvement" input to the Proof-of-Teaching score (blueprint §10
-   *  Phase 4), fed through the same week-bucketed trend helper the
-   *  student progress view uses. */
+  /** Every attempt across every INDIVIDUAL batch a tutor teaches — the
+   *  "measured improvement" input to the Proof-of-Teaching score
+   *  (blueprint §10 Phase 4) i.e. their own marketplace reputation, fed
+   *  through the same week-bucketed trend helper the student progress view
+   *  uses. Academy batches are the academy's, not part of this score. */
   listForTutor(tutorId: string) {
     return this.db
       .selectFrom('quiz_attempts')
@@ -76,6 +77,7 @@ export class QuizAttemptsRepository {
         'quiz_attempts.submitted_at',
       ])
       .where('batches.tutor_id', '=', tutorId)
+      .where('batches.academy_id', 'is', null)
       .orderBy('quiz_attempts.submitted_at', 'desc')
       .execute();
   }

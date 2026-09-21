@@ -17,6 +17,10 @@ import { ScorecardTemplateService } from './scorecard-template.service';
 import { ScorecardImportService } from './scorecard-import.service';
 import type { ImportOutcome } from './scorecard-import.service';
 import { academicWeekStart, ASSESSMENT_TIMEZONE } from '../academic-week.util';
+import {
+  academyIdOf,
+  type TeachingContext,
+} from '../../teaching-context/teaching-context';
 import { readUploadedObject } from '../storage-errors.util';
 import type { CreateOfflineAssessmentDto } from '../dto/create-offline-assessment.dto';
 import {
@@ -58,10 +62,14 @@ export class OfflineAssessmentsService {
   ) {}
 
   async create(tutorId: string, dto: CreateOfflineAssessmentDto) {
-    await this.assessments.assertOwnsBatches(tutorId, dto.batchIds);
+    const academyId = await this.assessments.assertOwnsBatches(
+      tutorId,
+      dto.batchIds,
+    );
 
     return this.repository.create({
       tutorId,
+      academyId,
       mode: 'offline',
       title: dto.title,
       subjectId: dto.subjectId,
@@ -73,8 +81,8 @@ export class OfflineAssessmentsService {
     });
   }
 
-  listForTutor(tutorId: string) {
-    return this.repository.listForTutor(tutorId, 'offline');
+  listForTutor(tutorId: string, ctx: TeachingContext) {
+    return this.repository.listForTutor(tutorId, academyIdOf(ctx), 'offline');
   }
 
   async getOwn(tutorId: string, assessmentId: string) {

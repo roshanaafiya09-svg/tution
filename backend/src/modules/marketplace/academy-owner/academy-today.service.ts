@@ -72,9 +72,11 @@ export class AcademyTodayService {
     const activeTeachers =
       await this.academyMembershipsRepository.listActiveForAcademy(academy.id);
     const tutorIds = activeTeachers.map((t) => t.tutor_id);
-    const tutorNames = new Map(
-      activeTeachers.map((t) => [t.tutor_id, t.display_name]),
-    );
+    // Names also cover teachers who have since left (historical classes).
+    const tutorNames =
+      await this.academyMembershipsRepository.displayNamesForAcademy(
+        academy.id,
+      );
 
     const [
       todaySessions,
@@ -88,23 +90,23 @@ export class AcademyTodayService {
       overdueScorecards,
       weeklyCompliance,
     ] = await Promise.all([
-      this.sessionsRepository.listForTutorsBetween(
-        tutorIds,
+      this.sessionsRepository.listForAcademyBetween(
+        academy.id,
         todayStart,
         todayEnd,
       ),
-      this.sessionsRepository.listForTutorsBetween(
-        tutorIds,
+      this.sessionsRepository.listForAcademyBetween(
+        academy.id,
         tomorrowStart,
         tomorrowEnd,
       ),
-      this.batchesRepository.listForTutors(tutorIds),
+      this.batchesRepository.listForAcademy(academy.id),
       this.teacherLeaveService.listAllForAcademy(academy.id),
       this.academyContactRequestsRepository.listForAcademy(academy.id),
       this.academyReviewsService.listForAcademy(academy.id),
-      this.assessmentsRepository.listForTutorsOnDate(tutorIds, today),
-      this.assessmentsRepository.listForTutorsOnDate(tutorIds, tomorrow),
-      this.assessmentsRepository.listOverdueForTutors(tutorIds),
+      this.assessmentsRepository.listForAcademyOnDate(academy.id, today),
+      this.assessmentsRepository.listForAcademyOnDate(academy.id, tomorrow),
+      this.assessmentsRepository.listOverdueForAcademy(academy.id),
       this.academyOwnerAssessmentsService.getWeeklyCompliance(ownerUserId),
     ]);
 

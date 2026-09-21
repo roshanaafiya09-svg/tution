@@ -225,14 +225,14 @@ export default function ParentAcademyProfilePage() {
       ) : (
         <ParentCard className="mb-6 divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
           {offerings.map((o) => (
-            <div key={o.tutorSubjectId} className="flex items-center justify-between px-6 py-3">
+            <div key={o.subjectId} className="flex items-center justify-between px-6 py-3">
               <div>
                 <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{o.subjectName.en}</p>
                 <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                  Grades {o.gradeMin}–{o.gradeMax} · via {o.tutorDisplayName ?? 'a teacher'}
+                  Grades {o.gradeMin}–{o.gradeMax} · {o.batchCount} {o.batchCount === 1 ? 'batch' : 'batches'}
                 </p>
               </div>
-              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{formatMinor(o.hourlyRateMinor, 'INR')}/hr</p>
+              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">from {formatMinor(o.fromFeeMinor, 'INR')}</p>
             </div>
           ))}
         </ParentCard>

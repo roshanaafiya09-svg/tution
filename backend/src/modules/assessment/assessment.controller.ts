@@ -16,8 +16,10 @@ import { AssessmentService } from './assessment.service';
 import { CreateAssignmentDto } from './assignments/dto/create-assignment.dto';
 import { SubmitAssignmentDto } from './submissions/dto/submit-assignment.dto';
 import { GradeSubmissionDto } from './submissions/dto/grade-submission.dto';
+import { TeachingContextScope } from '../teaching-context/teaching-context.guard';
 
 @Controller('assignments')
+@TeachingContextScope()
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AssessmentController {
   constructor(private readonly assessmentService: AssessmentService) {}

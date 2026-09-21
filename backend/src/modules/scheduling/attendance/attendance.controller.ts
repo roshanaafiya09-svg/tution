@@ -4,10 +4,14 @@ import { RolesGuard } from '../../identity/auth/guards/roles.guard';
 import { Roles } from '../../identity/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../identity/auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
+import { TeachingContextScope } from '../../teaching-context/teaching-context.guard';
+import { CurrentTeachingContext } from '../../teaching-context/current-teaching-context.decorator';
+import type { TeachingContext } from '../../teaching-context/teaching-context';
 import { AttendanceService } from './attendance.service';
 import { MarkAttendanceDto } from './dto/mark-attendance.dto';
 
 @Controller('attendance')
+@TeachingContextScope()
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
@@ -71,8 +75,11 @@ export class AttendanceController {
    *  ('batches/' vs 'batch/') from the route above, so no path collision. */
   @Get('batches/mine/history')
   @Roles('tutor')
-  batchesHistoryForOwn(@CurrentUser() user: AccessTokenPayload) {
-    return this.attendanceService.historyForOwnBatches(user.sub);
+  batchesHistoryForOwn(
+    @CurrentUser() user: AccessTokenPayload,
+    @CurrentTeachingContext() ctx: TeachingContext,
+  ) {
+    return this.attendanceService.historyForOwnBatches(user.sub, ctx);
   }
 
   /** Student's own all-time attendance summary, across every batch. */

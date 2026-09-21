@@ -22,7 +22,26 @@ export class InvitesService {
 
   async create(tutorId: string, batchId: string, dto: CreateInviteDto) {
     await this.batchesService.getOwnedBatch(tutorId, batchId);
+    return this.createInvite(tutorId, batchId, dto);
+  }
 
+  /** Academy path: the batch must be owned by this academy and its teacher
+   *  still an active member. The invite enrolls students into the
+   *  academy's batch — it can never be pointed at an Individual batch. */
+  async createForAcademy(
+    academyId: string,
+    batchId: string,
+    dto: CreateInviteDto,
+  ) {
+    const batch = await this.batchesService.getAcademyBatch(academyId, batchId);
+    return this.createInvite(batch.tutor_id, batchId, dto);
+  }
+
+  private async createInvite(
+    tutorId: string,
+    batchId: string,
+    dto: CreateInviteDto,
+  ) {
     const token = randomBytes(12).toString('base64url');
     const expiresAt = new Date(
       Date.now() +
@@ -44,6 +63,11 @@ export class InvitesService {
 
   async listForBatch(tutorId: string, batchId: string) {
     await this.batchesService.getOwnedBatch(tutorId, batchId);
+    return this.repository.listForBatch(batchId);
+  }
+
+  async listForBatchInAcademy(academyId: string, batchId: string) {
+    await this.batchesService.getAcademyBatch(academyId, batchId);
     return this.repository.listForBatch(batchId);
   }
 

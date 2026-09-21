@@ -9,11 +9,12 @@ jest.mock('kysely', () => ({
   sql: Object.assign(() => ({}), { raw: () => ({}) }),
 }));
 
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { AssessmentsService } from './assessments.service';
 import type { AssessmentsRepository } from './assessments.repository';
 import type { BatchesService } from '../scheduling/batches/batches.service';
 import type { BatchesRepository } from '../scheduling/batches/batches.repository';
+import type { TeachingContextService } from '../teaching-context/teaching-context.service';
 
 function buildService(overrides: {
   getOwnedBatch?: jest.Mock;
@@ -36,10 +37,15 @@ function buildService(overrides: {
       jest.fn().mockResolvedValue([]),
   } as unknown as BatchesRepository;
 
+  const teachingContext = {
+    assertActiveMember: jest.fn().mockResolvedValue(undefined),
+  } as unknown as TeachingContextService;
+
   const service = new AssessmentsService(
     repository,
     batchesService,
     batchesRepository,
+    teachingContext,
   );
 
   return { service, getOwnedBatch, batchesRepository };
@@ -77,12 +83,36 @@ describe('AssessmentsService.assertOwnsBatches', () => {
     const getOwnedBatch = jest.fn().mockResolvedValue({ id: 'ok' });
     const { service } = buildService({ getOwnedBatch });
 
+    // Individual batches (no academy_id) -> Individual context (null).
     await expect(
       service.assertOwnsBatches('tutor-1', ['b1']),
-    ).resolves.toBeUndefined();
+    ).resolves.toBeNull();
     await expect(
       service.assertOwnsBatches('tutor-1', ['b1', 'b2', 'b3', 'b4', 'b5']),
-    ).resolves.toBeUndefined();
+    ).resolves.toBeNull();
+  });
+
+  it("returns the academy id when every batch belongs to that academy's context", async () => {
+    const getOwnedBatch = jest
+      .fn()
+      .mockResolvedValue({ id: 'ok', academy_id: 'academy-A' });
+    const { service } = buildService({ getOwnedBatch });
+
+    await expect(
+      service.assertOwnsBatches('tutor-1', ['b1', 'b2']),
+    ).resolves.toBe('academy-A');
+  });
+
+  it('rejects an assessment that mixes Individual and Academy batches', async () => {
+    const getOwnedBatch = jest
+      .fn()
+      .mockResolvedValueOnce({ id: 'b1', academy_id: null })
+      .mockResolvedValueOnce({ id: 'b2', academy_id: 'academy-A' });
+    const { service } = buildService({ getOwnedBatch });
+
+    await expect(
+      service.assertOwnsBatches('tutor-1', ['b1', 'b2']),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
 

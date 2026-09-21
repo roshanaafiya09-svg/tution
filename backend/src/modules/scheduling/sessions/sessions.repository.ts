@@ -70,8 +70,17 @@ export class SessionsRepository {
       .execute();
   }
 
-  listForTutorBetween(tutorId: string, from: Date, to: Date) {
-    return this.db
+  /** A tutor's classes in ONE teaching context (null = Individual, an id
+   *  = that academy's). The context comes from the session's batch, so a
+   *  teacher's Individual 7 PM class never shows up in (or is affected by)
+   *  the Academy profile's schedule and vice versa. */
+  listForTutorBetween(
+    tutorId: string,
+    academyId: string | null,
+    from: Date,
+    to: Date,
+  ) {
+    let query = this.db
       .selectFrom('class_sessions')
       .innerJoin('batches', 'batches.id', 'class_sessions.batch_id')
       .leftJoin(
@@ -94,18 +103,28 @@ export class SessionsRepository {
       ])
       .where('class_sessions.tutor_id', '=', tutorId)
       .where('class_sessions.scheduled_start_utc', '>=', from)
-      .where('class_sessions.scheduled_start_utc', '<', to)
-      .orderBy('class_sessions.scheduled_start_utc')
-      .execute();
+      .where('class_sessions.scheduled_start_utc', '<', to);
+    query =
+      academyId === null
+        ? query.where('batches.academy_id', 'is', null)
+        : query.where('batches.academy_id', '=', academyId);
+    return query.orderBy('class_sessions.scheduled_start_utc').execute();
   }
 
-  /** Multi-tutor sibling of listForTutorBetween — the Academy Dashboard's
-   *  "classes today"/"upcoming classes" span every active member tutor,
-   *  not just one. Also selects tutor_id (the single-tutor version
-   *  doesn't need it) so the UI can attribute each session to its
+  /** The academy's own classes — sessions of batches the academy OWNS
+   *  (batches.academy_id), whichever teacher runs them and whether or not
+   *  that teacher is still a member. Never derived from "tutor_id in
+   *  active members", so a member's Individual classes can't appear here.
+   *  tutorIds optionally narrows to specific teachers within the academy.
+   *  Also selects tutor_id so the UI can attribute each session to its
    *  teacher. */
-  listForTutorsBetween(tutorIds: string[], from: Date, to: Date) {
-    return this.db
+  listForAcademyBetween(
+    academyId: string,
+    from: Date,
+    to: Date,
+    tutorIds?: string[],
+  ) {
+    let query = this.db
       .selectFrom('class_sessions')
       .innerJoin('batches', 'batches.id', 'class_sessions.batch_id')
       .leftJoin(
@@ -128,15 +147,31 @@ export class SessionsRepository {
         'batches.title as batch_title',
         'batches.subject_id',
       ])
-      .where(
+      .where('batches.academy_id', '=', academyId)
+      .where('class_sessions.scheduled_start_utc', '>=', from)
+      .where('class_sessions.scheduled_start_utc', '<', to);
+    if (tutorIds !== undefined) {
+      // An explicit (even empty) list narrows to exactly those teachers.
+      query = query.where(
         'class_sessions.tutor_id',
         'in',
         tutorIds.length ? tutorIds : ['00000000-0000-0000-0000-000000000000'],
-      )
-      .where('class_sessions.scheduled_start_utc', '>=', from)
-      .where('class_sessions.scheduled_start_utc', '<', to)
-      .orderBy('class_sessions.scheduled_start_utc')
-      .execute();
+      );
+    }
+    return query.orderBy('class_sessions.scheduled_start_utc').execute();
+  }
+
+  /** Session lookup that only matches a class owned by this academy (via
+   *  its batch's context) — the Academy side's ID guard for cancel/attend/
+   *  view. An Individual class, or another academy's, is simply not found. */
+  findByIdInAcademy(id: string, academyId: string) {
+    return this.db
+      .selectFrom('class_sessions')
+      .innerJoin('batches', 'batches.id', 'class_sessions.batch_id')
+      .selectAll('class_sessions')
+      .where('class_sessions.id', '=', id)
+      .where('batches.academy_id', '=', academyId)
+      .executeTakeFirst();
   }
 
   /** Upcoming sessions across every batch a student is enrolled in. */
@@ -239,25 +274,32 @@ export class SessionsRepository {
       .execute();
   }
 
-  /** Feeds the trial-end value-recap paywall (blueprint §5). */
+  /** Feeds the trial-end value-recap paywall (blueprint §5) — the
+   *  teacher's own Individual plan, so only Individual-context classes
+   *  count. */
   async countCompletedForTutor(tutorId: string): Promise<number> {
     const row = await this.db
       .selectFrom('class_sessions')
+      .innerJoin('batches', 'batches.id', 'class_sessions.batch_id')
       .select((eb) => eb.fn.countAll().as('count'))
-      .where('tutor_id', '=', tutorId)
-      .where('status', '=', 'completed')
+      .where('class_sessions.tutor_id', '=', tutorId)
+      .where('batches.academy_id', 'is', null)
+      .where('class_sessions.status', '=', 'completed')
       .executeTakeFirstOrThrow();
     return Number(row.count);
   }
 
-  /** Total minutes of completed class time — the "verified hours" input
-   *  to the Proof-of-Teaching score (blueprint §10 Phase 4). */
+  /** Total minutes of completed INDIVIDUAL class time — the "verified
+   *  hours" input to the Proof-of-Teaching score (blueprint §10 Phase 4),
+   *  i.e. the tutor's own marketplace reputation. */
   async sumCompletedMinutesForTutor(tutorId: string): Promise<number> {
     const row = await this.db
       .selectFrom('class_sessions')
-      .select((eb) => eb.fn.sum('duration_min').as('total'))
-      .where('tutor_id', '=', tutorId)
-      .where('status', '=', 'completed')
+      .innerJoin('batches', 'batches.id', 'class_sessions.batch_id')
+      .select((eb) => eb.fn.sum('class_sessions.duration_min').as('total'))
+      .where('class_sessions.tutor_id', '=', tutorId)
+      .where('batches.academy_id', 'is', null)
+      .where('class_sessions.status', '=', 'completed')
       .executeTakeFirstOrThrow();
     return Number(row.total ?? 0);
   }
@@ -323,24 +365,51 @@ export class SessionsRepository {
       .execute();
   }
 
-  /** Every `scheduled` session for a set of tutors within [from, to] —
-   *  the candidate pool for both a teacher-leave request (tutorIds has
-   *  one id) and a holiday's cancellation sweep (tutorIds spans an
-   *  academy's active member teachers). Holiday & Teacher Leave feature. */
-  listScheduledForTutorsBetween(tutorIds: string[], from: Date, to: Date) {
+  /** Same as findByIds but only the classes THIS academy owns — an id
+   *  that is a teacher's Individual class (or another academy's) is
+   *  silently dropped. Used wherever an academy acts on a stored list of
+   *  session ids (approve leave, assign a substitute) so a stale or
+   *  tampered list can never reach outside the academy's own classes. */
+  findByIdsInAcademy(ids: string[], academyId: string) {
+    if (ids.length === 0) return Promise.resolve([]);
     return this.db
       .selectFrom('class_sessions')
-      .selectAll()
-      .where(
-        'tutor_id',
+      .innerJoin('batches', 'batches.id', 'class_sessions.batch_id')
+      .selectAll('class_sessions')
+      .where('class_sessions.id', 'in', ids)
+      .where('batches.academy_id', '=', academyId)
+      .execute();
+  }
+
+  /** Every `scheduled` session OWNED BY THIS ACADEMY within [from, to] —
+   *  the candidate pool for both a teacher-leave request (tutorIds = the
+   *  one teacher) and a holiday's cancellation sweep (all of the academy's
+   *  classes). Scoped by the batch's academy_id, so a teacher's Individual
+   *  classes are never candidates: an academy holiday or leave can't
+   *  cancel or reassign them. Holiday & Teacher Leave feature. */
+  listScheduledForAcademyBetween(
+    academyId: string,
+    from: Date,
+    to: Date,
+    tutorIds?: string[],
+  ) {
+    let query = this.db
+      .selectFrom('class_sessions')
+      .innerJoin('batches', 'batches.id', 'class_sessions.batch_id')
+      .selectAll('class_sessions')
+      .where('batches.academy_id', '=', academyId)
+      .where('class_sessions.status', '=', 'scheduled')
+      .where('class_sessions.scheduled_start_utc', '>=', from)
+      .where('class_sessions.scheduled_start_utc', '<=', to);
+    if (tutorIds !== undefined) {
+      // An explicit (even empty) list narrows to exactly those teachers.
+      query = query.where(
+        'class_sessions.tutor_id',
         'in',
         tutorIds.length ? tutorIds : ['00000000-0000-0000-0000-000000000000'],
-      )
-      .where('status', '=', 'scheduled')
-      .where('scheduled_start_utc', '>=', from)
-      .where('scheduled_start_utc', '<=', to)
-      .orderBy('scheduled_start_utc')
-      .execute();
+      );
+    }
+    return query.orderBy('class_sessions.scheduled_start_utc').execute();
   }
 
   /** Every `scheduled` session across ALL tutors starting in a window —
@@ -449,22 +518,26 @@ export class SessionsRepository {
       .executeTakeFirstOrThrow();
   }
 
-  /** Grouped count of cancelled sessions per holiday, scoped to a set of
-   *  tutors — the Academy Dashboard Reports "Holidays" report's
-   *  "affected classes" column, in one query instead of looping per
-   *  holiday. `holiday_id` was added in migration 0035 specifically so
-   *  this kind of attribution never needs a join table. */
-  async countByHolidayForTutors(
-    tutorIds: string[],
+  /** Grouped count of cancelled sessions per holiday, scoped to the
+   *  academy's own classes — the Academy Dashboard Reports "Holidays"
+   *  report's "affected classes" column, in one query instead of looping
+   *  per holiday. `holiday_id` was added in migration 0035 specifically
+   *  so this kind of attribution never needs a join table. */
+  async countByHolidayForAcademy(
+    academyId: string,
     holidayIds: string[],
   ): Promise<Map<string, number>> {
-    if (tutorIds.length === 0 || holidayIds.length === 0) return new Map();
+    if (holidayIds.length === 0) return new Map();
     const rows = await this.db
       .selectFrom('class_sessions')
-      .select((eb) => ['holiday_id', eb.fn.countAll().as('count')])
-      .where('tutor_id', 'in', tutorIds)
-      .where('holiday_id', 'in', holidayIds)
-      .groupBy('holiday_id')
+      .innerJoin('batches', 'batches.id', 'class_sessions.batch_id')
+      .select((eb) => [
+        'class_sessions.holiday_id',
+        eb.fn.countAll().as('count'),
+      ])
+      .where('batches.academy_id', '=', academyId)
+      .where('class_sessions.holiday_id', 'in', holidayIds)
+      .groupBy('class_sessions.holiday_id')
       .execute();
     return new Map(
       rows
@@ -473,23 +546,24 @@ export class SessionsRepository {
     );
   }
 
-  /** Sibling of countByHolidayForTutors, grouped by
+  /** Sibling of countByHolidayForAcademy, grouped by
    *  teacher_leave_request_id instead — the Reports "Leave" report's
    *  "classes affected" column. */
-  async countByLeaveRequestForTutors(
-    tutorIds: string[],
+  async countByLeaveRequestForAcademy(
+    academyId: string,
     leaveRequestIds: string[],
   ): Promise<Map<string, number>> {
-    if (tutorIds.length === 0 || leaveRequestIds.length === 0) return new Map();
+    if (leaveRequestIds.length === 0) return new Map();
     const rows = await this.db
       .selectFrom('class_sessions')
+      .innerJoin('batches', 'batches.id', 'class_sessions.batch_id')
       .select((eb) => [
-        'teacher_leave_request_id',
+        'class_sessions.teacher_leave_request_id',
         eb.fn.countAll().as('count'),
       ])
-      .where('tutor_id', 'in', tutorIds)
-      .where('teacher_leave_request_id', 'in', leaveRequestIds)
-      .groupBy('teacher_leave_request_id')
+      .where('batches.academy_id', '=', academyId)
+      .where('class_sessions.teacher_leave_request_id', 'in', leaveRequestIds)
+      .groupBy('class_sessions.teacher_leave_request_id')
       .execute();
     return new Map(
       rows

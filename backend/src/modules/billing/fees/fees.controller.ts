@@ -12,6 +12,9 @@ import { RolesGuard } from '../../identity/auth/guards/roles.guard';
 import { Roles } from '../../identity/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../identity/auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
+import { TeachingContextScope } from '../../teaching-context/teaching-context.guard';
+import { CurrentTeachingContext } from '../../teaching-context/current-teaching-context.decorator';
+import type { TeachingContext } from '../../teaching-context/teaching-context';
 import { FeesService } from './fees.service';
 import { GeneratePeriodDto } from './dto/generate-period.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
@@ -22,6 +25,7 @@ function currentPeriodLabel(): string {
 }
 
 @Controller('fees')
+@TeachingContextScope()
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class FeesController {
   constructor(private readonly feesService: FeesService) {}
@@ -41,10 +45,12 @@ export class FeesController {
   @Roles('tutor')
   listForPeriod(
     @CurrentUser() user: AccessTokenPayload,
+    @CurrentTeachingContext() ctx: TeachingContext,
     @Query('period') period?: string,
   ) {
     return this.feesService.listForPeriod(
       user.sub,
+      ctx,
       period ?? currentPeriodLabel(),
     );
   }
@@ -53,10 +59,12 @@ export class FeesController {
   @Roles('tutor')
   totals(
     @CurrentUser() user: AccessTokenPayload,
+    @CurrentTeachingContext() ctx: TeachingContext,
     @Query('period') period?: string,
   ) {
     return this.feesService.periodTotals(
       user.sub,
+      ctx,
       period ?? currentPeriodLabel(),
     );
   }

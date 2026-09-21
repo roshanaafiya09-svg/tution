@@ -68,12 +68,20 @@ export class AcademyOwnerReportsService {
     return academy;
   }
 
+  /** `tutorIds` = the academy's ACTIVE teachers (roster rows and
+   *  counts). `tutorNames` also covers teachers who have since left, so
+   *  the academy's historical classes/batches stay attributable. NEVER use
+   *  `tutorIds` to scope data queries: every report reads the academy's own
+   *  records (batches.academy_id); a teacher filter can only narrow. */
   private async activeTeachers(academyId: string) {
     const teachers =
       await this.academyMembershipsRepository.listActiveForAcademy(academyId);
     return {
       tutorIds: teachers.map((t) => t.tutor_id),
-      tutorNames: new Map(teachers.map((t) => [t.tutor_id, t.display_name])),
+      tutorNames:
+        await this.academyMembershipsRepository.displayNamesForAcademy(
+          academyId,
+        ),
     };
   }
 
@@ -98,10 +106,10 @@ export class AcademyOwnerReportsService {
       govHolidays,
       contactRequests,
     ] = await Promise.all([
-      this.batchesRepository.listForTutors(tutorIds),
-      this.batchesRepository.listDistinctStudentIdsForTutors(tutorIds),
-      this.sessionsRepository.listForTutorsBetween(
-        tutorIds,
+      this.batchesRepository.listForAcademy(academy.id),
+      this.batchesRepository.listDistinctStudentIdsForAcademy(academy.id),
+      this.sessionsRepository.listForAcademyBetween(
+        academy.id,
         startOfDay,
         endOfDay,
       ),
@@ -165,9 +173,10 @@ export class AcademyOwnerReportsService {
       : allTutorIds;
     const { from, to } = rangeOrDefault(filters, 30);
 
-    const enrollments = await this.batchesRepository.listEnrollmentsForTutors(
-      tutorIds,
+    const enrollments = await this.batchesRepository.listEnrollmentsForAcademy(
+      academy.id,
       'active',
+      filters.teacherId ? tutorIds : undefined,
     );
     const scoped = enrollments.filter(
       (e) =>
@@ -181,6 +190,7 @@ export class AcademyOwnerReportsService {
         studentIds,
         from,
         to,
+        academy.id,
       );
     const attendanceByStudent = new Map(
       attendanceRows.map((r) => [r.studentId, r]),
@@ -245,7 +255,12 @@ export class AcademyOwnerReportsService {
     const { from, to } = rangeOrDefault(filters, 30);
 
     const [sessions, leaveRequests] = await Promise.all([
-      this.sessionsRepository.listForTutorsBetween(tutorIds, from, to),
+      this.sessionsRepository.listForAcademyBetween(
+        academy.id,
+        from,
+        to,
+        filters.teacherId ? tutorIds : undefined,
+      ),
       this.teacherLeaveRepository.listForAcademyWithTutor(academy.id),
     ]);
 
@@ -290,11 +305,15 @@ export class AcademyOwnerReportsService {
     const upcomingTo = now.plus({ days: 14 }).toUTC().toJSDate();
 
     const [batches, upcomingSessions] = await Promise.all([
-      this.batchesRepository.listForTutors(tutorIds),
-      this.sessionsRepository.listForTutorsBetween(
-        tutorIds,
+      this.batchesRepository.listForAcademy(
+        academy.id,
+        filters.teacherId ? tutorIds : undefined,
+      ),
+      this.sessionsRepository.listForAcademyBetween(
+        academy.id,
         now.toUTC().toJSDate(),
         upcomingTo,
+        filters.teacherId ? tutorIds : undefined,
       ),
     ]);
 
@@ -358,8 +377,17 @@ export class AcademyOwnerReportsService {
     const { from, to } = rangeOrDefault(filters, 7);
 
     const [sessions, enrollments] = await Promise.all([
-      this.sessionsRepository.listForTutorsBetween(tutorIds, from, to),
-      this.batchesRepository.listEnrollmentsForTutors(tutorIds, 'active'),
+      this.sessionsRepository.listForAcademyBetween(
+        academy.id,
+        from,
+        to,
+        filters.teacherId ? tutorIds : undefined,
+      ),
+      this.batchesRepository.listEnrollmentsForAcademy(
+        academy.id,
+        'active',
+        filters.teacherId ? tutorIds : undefined,
+      ),
     ]);
 
     const completedSessions = sessions.filter(
@@ -477,10 +505,11 @@ export class AcademyOwnerReportsService {
       : allTutorIds;
     const { from, to } = rangeOrDefault(filters, 30);
 
-    const sessions = await this.sessionsRepository.listForTutorsBetween(
-      tutorIds,
+    const sessions = await this.sessionsRepository.listForAcademyBetween(
+      academy.id,
       from,
       to,
+      filters.teacherId ? tutorIds : undefined,
     );
     const scoped = sessions.filter(
       (s) =>
@@ -538,7 +567,6 @@ export class AcademyOwnerReportsService {
     filters: RangeFilters & { teacherId?: string; status?: string },
   ) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const { tutorIds } = await this.activeTeachers(academy.id);
 
     const allRequests =
       await this.teacherLeaveRepository.listForAcademyWithTutor(academy.id);
@@ -551,8 +579,8 @@ export class AcademyOwnerReportsService {
     );
 
     const affectedByRequest =
-      await this.sessionsRepository.countByLeaveRequestForTutors(
-        tutorIds,
+      await this.sessionsRepository.countByLeaveRequestForAcademy(
+        academy.id,
         scoped.map((r) => r.id),
       );
 
@@ -578,7 +606,6 @@ export class AcademyOwnerReportsService {
 
   async holidays(ownerUserId: string, filters: RangeFilters) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const { tutorIds } = await this.activeTeachers(academy.id);
     const now = DateTime.now().setZone(DEFAULT_TIMEZONE);
     const from = filters.from ?? now.minus({ days: 30 }).toISODate()!;
     const to = filters.to ?? now.plus({ days: 90 }).toISODate()!;
@@ -595,8 +622,8 @@ export class AcademyOwnerReportsService {
 
     const allHolidays = [...academyHolidays, ...govHolidays];
     const affectedByHoliday =
-      await this.sessionsRepository.countByHolidayForTutors(
-        tutorIds,
+      await this.sessionsRepository.countByHolidayForAcademy(
+        academy.id,
         allHolidays.map((h) => h.id),
       );
 

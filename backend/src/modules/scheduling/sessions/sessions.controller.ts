@@ -12,6 +12,9 @@ import { RolesGuard } from '../../identity/auth/guards/roles.guard';
 import { Roles } from '../../identity/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../identity/auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
+import { TeachingContextScope } from '../../teaching-context/teaching-context.guard';
+import { CurrentTeachingContext } from '../../teaching-context/current-teaching-context.decorator';
+import type { TeachingContext } from '../../teaching-context/teaching-context';
 import { SessionsService } from './sessions.service';
 import { CreateSessionDto } from './dto/create-session.dto';
 
@@ -26,6 +29,7 @@ function parseWindow(from?: string, to?: string): { from: Date; to: Date } {
 }
 
 @Controller('sessions')
+@TeachingContextScope()
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class SessionsController {
   constructor(private readonly sessionsService: SessionsService) {}
@@ -44,12 +48,14 @@ export class SessionsController {
   @Roles('tutor')
   listOwn(
     @CurrentUser() user: AccessTokenPayload,
+    @CurrentTeachingContext() ctx: TeachingContext,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
     const window = parseWindow(from, to);
     return this.sessionsService.listForTutorBetween(
       user.sub,
+      ctx,
       window.from,
       window.to,
     );

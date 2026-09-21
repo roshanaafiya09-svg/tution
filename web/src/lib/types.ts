@@ -467,18 +467,18 @@ export interface PublicTutorPage {
 
 export type AcademyVerificationStatus = 'pending' | 'verified' | 'rejected';
 
+/** A subject the academy teaches in ITS OWN active batches — never a
+ *  member teacher's Individual listing or hourly rate. */
 export interface AcademyOffering {
-  tutorSubjectId: string;
-  tutorId: string;
-  tutorDisplayName: string | null;
-  tutorSlug: string;
   subjectId: string;
   subjectName: Record<string, string>;
   subjectSlug: string;
-  curriculumId: string;
   gradeMin: number;
   gradeMax: number;
-  hourlyRateMinor: number;
+  /** How many of the academy's active batches teach this subject. */
+  batchCount: number;
+  /** The lowest batch fee among them (minor units). */
+  fromFeeMinor: number;
 }
 
 export interface AcademyCardResult {

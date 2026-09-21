@@ -33,17 +33,15 @@ export class AcademyOwnerParentsService {
     return academy;
   }
 
-  /** Every active enrollment across this academy's active teachers'
-   *  batches — same call listStudentsAcrossAcademy makes, so Students and
-   *  Parents always agree on "which children belong to this academy". */
+  /** Every active enrollment in batches THE ACADEMY OWNS — same call
+   *  listStudentsAcrossAcademy makes, so Students and Parents always agree
+   *  on "which children belong to this academy". A member teacher's
+   *  Individual students (and their parents) are not part of it. */
   private async listAcademyEnrollments(academyId: string) {
-    const activeTeachers =
-      await this.academyMembershipsRepository.listActiveForAcademy(academyId);
-    const teacherNames = new Map(
-      activeTeachers.map((t) => [t.tutor_id, t.display_name]),
-    );
-    const enrollments = await this.batchesRepository.listEnrollmentsForTutors(
-      activeTeachers.map((t) => t.tutor_id),
+    const teacherNames =
+      await this.academyMembershipsRepository.displayNamesForAcademy(academyId);
+    const enrollments = await this.batchesRepository.listEnrollmentsForAcademy(
+      academyId,
       'active',
     );
     return { enrollments, teacherNames };

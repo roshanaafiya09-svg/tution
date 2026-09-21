@@ -109,6 +109,13 @@ export class AcademyOwnerController {
     return this.academyOwnerService.createMyAcademy(user.sub, dto);
   }
 
+  /** The ACADEMY's own plan/trial state — separate from any member
+   *  teacher's Individual plan. */
+  @Get('me/subscription')
+  getSubscription(@CurrentUser() user: AccessTokenPayload) {
+    return this.academyOwnerService.getSubscription(user.sub);
+  }
+
   @Get('me/stats')
   getStats(@CurrentUser() user: AccessTokenPayload) {
     return this.academyOwnerService.getStats(user.sub);

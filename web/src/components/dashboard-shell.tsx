@@ -28,7 +28,14 @@ import {
   SIDEBAR_WIDTH_EXPANDED,
 } from '@/components/dashboard/teacher-sidebar';
 import { QuickSearch } from '@/components/dashboard/quick-search';
-import { teacherNotificationHref, teacherPageTitle } from '@/components/dashboard/teacher-nav';
+import { ContextSwitcher } from '@/components/dashboard/context-switcher';
+import {
+  requiredContextFor,
+  teacherNotificationHref,
+  teacherPageTitle,
+} from '@/components/dashboard/teacher-nav';
+import { TeachingContextProvider, useTeachingContext } from '@/components/teaching-context-provider';
+import { INDIVIDUAL } from '@/lib/teaching-context';
 
 const COLLAPSE_KEY = 'scholar.teacherSidebarCollapsed';
 
@@ -48,8 +55,49 @@ function useMediaQuery(query: string): boolean {
   return matches;
 }
 
+/** The teacher dashboard. The provider wraps everything so the header's
+ *  profile switcher, the sidebar and every page share one current profile. */
 export function DashboardShell({ children }: { children: React.ReactNode }) {
+  return (
+    <TeachingContextProvider>
+      <DashboardShellInner>{children}</DashboardShellInner>
+    </TeachingContextProvider>
+  );
+}
+
+/** Shown instead of a page that belongs to the other profile (a direct link
+ *  or bookmark to e.g. Earnings while working under an academy). Nothing is
+ *  fetched for it — pages of the wrong profile never render. */
+function WrongProfileNotice({ required }: { required: 'individual' | 'academy' }) {
+  const { profiles, current, switchTo } = useTeachingContext();
+  const target =
+    required === 'individual' ? profiles.find((p) => p.kind === 'individual') : profiles.find((p) => p.kind === 'academy');
+  return (
+    <div className="mx-auto max-w-lg rounded-xl border border-neutral-200 bg-white p-8 text-center dark:border-neutral-800 dark:bg-neutral-900">
+      <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
+        {required === 'individual' ? 'This is part of your Individual profile' : 'This is part of an Academy profile'}
+      </h2>
+      <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
+        {required === 'individual'
+          ? `You're working as ${current.label}. Your marketplace listing, rates, availability, earnings, verification and plan belong to your own independent teaching — they are never shared with an academy.`
+          : "Leave requests go to an academy, so they're available while you work under one."}
+      </p>
+      {target && (
+        <button
+          type="button"
+          onClick={() => switchTo(target.value)}
+          className="mt-5 inline-flex items-center rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 focus-visible:outline-none focus-visible:shadow-focus-ring"
+        >
+          Switch to {target.label}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function DashboardShellInner({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const { current: profile, ready: profilesReady } = useTeachingContext();
   const pathname = usePathname();
   const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -179,6 +227,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               </h1>
             </div>
 
+            <ContextSwitcher />
+
             <div className="hidden flex-1 justify-end md:flex">
               <QuickSearch />
             </div>
@@ -247,7 +297,26 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           )}
         </header>
 
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</main>
+        {profile.value !== INDIVIDUAL && (
+          <div className="border-b border-brand-200 bg-brand-50 px-4 py-2 text-center text-xs text-brand-800 sm:px-6 lg:px-8 dark:border-brand-900 dark:bg-brand-950/40 dark:text-brand-200">
+            You&apos;re working as <strong>{profile.label}</strong>. Everything here — classes, students, attendance,
+            assessments and fees — belongs to this academy. Your Individual teaching is separate and isn&apos;t shown.
+          </div>
+        )}
+
+        {/* Keyed by profile: switching remounts the page so nothing fetched
+            under the other profile can linger on screen. Held back until the
+            allowed profiles are known so a stale academy profile can't fire
+            requests the server would reject. */}
+        <main key={profile.value} className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          {!profilesReady ? (
+            <PageLoading />
+          ) : requiredContextFor(pathname) && requiredContextFor(pathname) !== profile.kind ? (
+            <WrongProfileNotice required={requiredContextFor(pathname)!} />
+          ) : (
+            children
+          )}
+        </main>
       </div>
     </div>
   );

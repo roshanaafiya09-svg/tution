@@ -110,29 +110,39 @@ export class AssessmentSchedulerService {
   async remindWeeklyAssessment(): Promise<void> {
     try {
       const weekStartDate = academicWeekStart();
-      const tutorIds =
-        await this.batchesRepository.listDistinctTutorIdsWithActiveBatches();
-      if (tutorIds.length === 0) return;
+      // Compliance is per (teacher, teaching context): a teacher who has
+      // run an Individual assessment this week is not thereby compliant
+      // for an academy they teach in (and vice versa).
+      const contexts = await this.batchesRepository.listActiveTutorContexts();
+      if (contexts.length === 0) return;
+      const contextKey = (tutorId: string, academyId: string | null) =>
+        `${tutorId}:${academyId ?? 'individual'}`;
 
-      const thisWeek = await this.repository.listForTutorsInWeek(
-        tutorIds,
+      const thisWeek = await this.repository.listInWeekForReminders(
+        [...new Set(contexts.map((c) => c.tutor_id))],
         weekStartDate,
       );
       // A bare draft isn't compliance (nothing scheduled or published) —
       // same rule the Academy weekly-compliance tiles use, so a teacher
       // the academy sees as "not scheduled" is also the one nudged.
-      const tutorsWithAssessment = new Set(
-        thisWeek.filter((a) => a.status !== 'draft').map((a) => a.tutor_id),
+      const compliant = new Set(
+        thisWeek
+          .filter((a) => a.status !== 'draft')
+          .map((a) => contextKey(a.tutor_id, a.academy_id)),
       );
-      const pending = tutorIds.filter((id) => !tutorsWithAssessment.has(id));
+      const pending = contexts.filter(
+        (c) => !compliant.has(contextKey(c.tutor_id, c.academy_id)),
+      );
 
-      for (const tutorId of pending) {
+      for (const { tutor_id: tutorId, academy_id: academyId } of pending) {
         await this.notifyOnce(
           tutorId,
           'assessment_weekly_reminder',
-          { weekStartDate },
+          { weekStartDate, context: academyId ?? 'individual' },
           "This week's assessment is still pending",
-          'Every teacher needs at least one assessment per week — create one for your batches.',
+          academyId
+            ? 'Every teacher needs at least one assessment per week — create one for your academy batches.'
+            : 'Every teacher needs at least one assessment per week — create one for your individual batches.',
         );
       }
     } catch (err) {

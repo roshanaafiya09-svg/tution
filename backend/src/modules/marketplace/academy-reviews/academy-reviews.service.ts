@@ -5,9 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { AcademyReviewsRepository } from './academy-reviews.repository';
-import { AcademyMembershipsRepository } from '../academy-memberships/academy-memberships.repository';
 import { AttendanceRepository } from '../../scheduling/attendance/attendance.repository';
-import { BookingsService } from '../bookings/bookings.service';
 import type { SubmitAcademyReviewDto } from './dto/submit-academy-review.dto';
 
 /**
@@ -22,33 +20,22 @@ import type { SubmitAcademyReviewDto } from './dto/submit-academy-review.dto';
 export class AcademyReviewsService {
   constructor(
     private readonly repository: AcademyReviewsRepository,
-    private readonly academyMembershipsRepository: AcademyMembershipsRepository,
     private readonly attendanceRepository: AttendanceRepository,
-    private readonly bookingsService: BookingsService,
   ) {}
 
   async submit(studentId: string, dto: SubmitAcademyReviewDto) {
-    const activeMembers =
-      await this.academyMembershipsRepository.listActiveForAcademy(
+    // A verified session means a class in a batch THE ACADEMY OWNS. A
+    // student who only attended a member teacher's private Individual class
+    // (or booked them on the marketplace) hasn't been taught by the
+    // academy and can't review it.
+    const hasAttendance =
+      await this.attendanceRepository.hasVerifiedAttendanceInAcademy(
+        studentId,
         dto.academyId,
       );
-    if (activeMembers.length === 0) {
+    if (!hasAttendance) {
       throw new BadRequestException(
-        'This academy has no active teachers to verify a session with',
-      );
-    }
-    const tutorIds = activeMembers.map((m) => m.tutor_id);
-
-    const [hasAttendance, hasCompletedBooking] = await Promise.all([
-      this.attendanceRepository.hasVerifiedAttendanceWithAnyTutor(
-        studentId,
-        tutorIds,
-      ),
-      this.bookingsService.hasCompletedBookingWithAny(studentId, tutorIds),
-    ]);
-    if (!hasAttendance && !hasCompletedBooking) {
-      throw new BadRequestException(
-        "You can only review an academy you've had a verified session with one of its teachers",
+        "You can only review an academy you've attended a class with",
       );
     }
 

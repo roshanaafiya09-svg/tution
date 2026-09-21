@@ -5,7 +5,7 @@ jest.mock('kysely', () => ({
   sql: Object.assign(() => ({}), { raw: () => ({}) }),
 }));
 
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import {
   AcademyOwnerAssessmentsService,
   pickPrimaryAssessment,
@@ -26,7 +26,7 @@ function buildService(overrides: {
   findActiveMembership?: jest.Mock;
   findById?: jest.Mock;
   listActiveForAcademy?: jest.Mock;
-  listForTutorsInWeek?: jest.Mock;
+  listForAcademyInWeek?: jest.Mock;
   listBatchesForAssessment?: jest.Mock;
   listResultsForAssessment?: jest.Mock;
 }) {
@@ -49,17 +49,35 @@ function buildService(overrides: {
         ]),
   } as unknown as AcademyMembershipsRepository;
 
+  // Names for attributing the academy's own (historical) records: the real
+  // repository returns every teacher who was ever a member; the fake derives
+  // them from the same roster the test already provides.
+  const membershipsFake = academyMembershipsRepository as unknown as {
+    listActiveForAcademy: (
+      id: string,
+    ) => Promise<Array<{ tutor_id: string; display_name: string }>>;
+    displayNamesForAcademy: (id: string) => Promise<Map<string, string>>;
+  };
+  membershipsFake.displayNamesForAcademy = async (id) =>
+    new Map(
+      (await membershipsFake.listActiveForAcademy(id)).map((t) => [
+        t.tutor_id,
+        t.display_name,
+      ]),
+    );
+
   const assessmentsRepository = {
     findById:
       overrides.findById ??
       jest.fn().mockResolvedValue({
         id: ASSESSMENT_ID,
         tutor_id: TUTOR_ID,
+        academy_id: ACADEMY_ID,
         mode: 'offline',
         status: 'completed',
       }),
-    listForTutorsInWeek:
-      overrides.listForTutorsInWeek ?? jest.fn().mockResolvedValue([]),
+    listForAcademyInWeek:
+      overrides.listForAcademyInWeek ?? jest.fn().mockResolvedValue([]),
     listBatchesForAssessment:
       overrides.listBatchesForAssessment ?? jest.fn().mockResolvedValue([]),
     listResultsForAssessment:
@@ -84,14 +102,36 @@ function buildService(overrides: {
 }
 
 describe('AcademyOwnerAssessmentsService — cross-academy access', () => {
-  it("rejects reading an assessment whose teacher is not an active member of the caller's academy", async () => {
+  it('rejects an assessment owned by another academy as not found, even though its teacher may be one of ours', async () => {
     const { service } = buildService({
-      findActiveMembership: jest.fn().mockResolvedValue(undefined),
+      findById: jest.fn().mockResolvedValue({
+        id: ASSESSMENT_ID,
+        tutor_id: TUTOR_ID,
+        academy_id: 'another-academy',
+        mode: 'offline',
+        status: 'completed',
+      }),
     });
 
     await expect(
       service.getAssessmentDetail(OWNER_USER_ID, ASSESSMENT_ID),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("rejects a member teacher's private INDIVIDUAL assessment (academy_id null) as not found", async () => {
+    const { service } = buildService({
+      findById: jest.fn().mockResolvedValue({
+        id: ASSESSMENT_ID,
+        tutor_id: TUTOR_ID,
+        academy_id: null,
+        mode: 'offline',
+        status: 'completed',
+      }),
+    });
+
+    await expect(
+      service.getAssessmentDetail(OWNER_USER_ID, ASSESSMENT_ID),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it("rejects when no academy is linked to the caller's account", async () => {
@@ -114,7 +154,7 @@ describe('AcademyOwnerAssessmentsService — cross-academy access', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('allows reading an assessment belonging to an active member teacher', async () => {
+  it('allows reading an assessment the academy owns', async () => {
     const { service } = buildService({});
     const detail = await service.getAssessmentDetail(
       OWNER_USER_ID,
@@ -125,19 +165,25 @@ describe('AcademyOwnerAssessmentsService — cross-academy access', () => {
 
   it('question paper access is gated the same way as assessment detail access', async () => {
     const { service } = buildService({
-      findActiveMembership: jest.fn().mockResolvedValue(undefined),
+      findById: jest.fn().mockResolvedValue({
+        id: ASSESSMENT_ID,
+        tutor_id: TUTOR_ID,
+        academy_id: null,
+        mode: 'offline',
+        status: 'completed',
+      }),
     });
 
     await expect(
       service.getQuestionPaperDownloadUrl(OWNER_USER_ID, ASSESSMENT_ID),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
 
 describe('AcademyOwnerAssessmentsService.getWeeklyCompliance', () => {
   it('reports NOT SCHEDULED for a teacher with no assessment this week', async () => {
     const { service } = buildService({
-      listForTutorsInWeek: jest.fn().mockResolvedValue([]),
+      listForAcademyInWeek: jest.fn().mockResolvedValue([]),
     });
 
     const result = await service.getWeeklyCompliance(
@@ -152,7 +198,7 @@ describe('AcademyOwnerAssessmentsService.getWeeklyCompliance', () => {
 
   it('reports COMPLETED for a teacher whose weekly assessment is done, even with additional assessments that week', async () => {
     const { service } = buildService({
-      listForTutorsInWeek: jest.fn().mockResolvedValue([
+      listForAcademyInWeek: jest.fn().mockResolvedValue([
         {
           id: 'a1',
           tutor_id: TUTOR_ID,
@@ -181,10 +227,10 @@ describe('AcademyOwnerAssessmentsService.getWeeklyCompliance', () => {
   });
 
   it('returns valid zero compliance (not an error) for an academy with no active teachers', async () => {
-    const listForTutorsInWeek = jest.fn().mockResolvedValue([]);
+    const listForAcademyInWeek = jest.fn().mockResolvedValue([]);
     const { service } = buildService({
       listActiveForAcademy: jest.fn().mockResolvedValue([]),
-      listForTutorsInWeek,
+      listForAcademyInWeek,
     });
 
     const result = await service.getWeeklyCompliance(
@@ -203,7 +249,7 @@ describe('AcademyOwnerAssessmentsService.getWeeklyCompliance', () => {
       },
       teachers: [],
     });
-    expect(listForTutorsInWeek).toHaveBeenCalledWith([], '2026-09-14');
+    expect(listForAcademyInWeek).toHaveBeenCalledWith(ACADEMY_ID, '2026-09-14');
   });
 
   it('reports PENDING for scheduled / published / scorecard_pending and OVERDUE for overdue', async () => {
@@ -213,7 +259,7 @@ describe('AcademyOwnerAssessmentsService.getWeeklyCompliance', () => {
     }));
     const { service } = buildService({
       listActiveForAcademy: jest.fn().mockResolvedValue(teachers),
-      listForTutorsInWeek: jest.fn().mockResolvedValue([
+      listForAcademyInWeek: jest.fn().mockResolvedValue([
         { id: 'a', tutor_id: 't-a', mode: 'offline', status: 'scheduled' },
         { id: 'b', tutor_id: 't-b', mode: 'online', status: 'published' },
         {
@@ -247,7 +293,7 @@ describe('AcademyOwnerAssessmentsService.getWeeklyCompliance', () => {
         { tutor_id: 't-wait', display_name: 'Waiting' },
         { tutor_id: 't-none', display_name: 'None' },
       ]),
-      listForTutorsInWeek: jest.fn().mockResolvedValue([
+      listForAcademyInWeek: jest.fn().mockResolvedValue([
         { id: 'a1', tutor_id: 't-done', mode: 'online', status: 'completed' },
         { id: 'a2', tutor_id: 't-wait', mode: 'offline', status: 'scheduled' },
       ]),
@@ -287,7 +333,7 @@ describe('AcademyOwnerAssessmentsService.getWeeklyCompliance', () => {
 describe('weekly compliance — status priority and week handling', () => {
   it('shows an OVERDUE assessment ahead of a newer pending one so the academy sees the problem', async () => {
     const { service } = buildService({
-      listForTutorsInWeek: jest.fn().mockResolvedValue([
+      listForAcademyInWeek: jest.fn().mockResolvedValue([
         { id: 'new', tutor_id: TUTOR_ID, mode: 'online', status: 'published' },
         { id: 'old', tutor_id: TUTOR_ID, mode: 'offline', status: 'overdue' },
       ]),
@@ -305,7 +351,7 @@ describe('weekly compliance — status priority and week handling', () => {
 
   it('prefers a real scheduled assessment over a newer bare draft', async () => {
     const { service } = buildService({
-      listForTutorsInWeek: jest.fn().mockResolvedValue([
+      listForAcademyInWeek: jest.fn().mockResolvedValue([
         { id: 'draft', tutor_id: TUTOR_ID, mode: 'online', status: 'draft' },
         {
           id: 'sched',
@@ -327,7 +373,7 @@ describe('weekly compliance — status priority and week handling', () => {
 
   it('counts a teacher whose only assessment is a draft as not scheduled, so the tiles add up', async () => {
     const { service } = buildService({
-      listForTutorsInWeek: jest
+      listForAcademyInWeek: jest
         .fn()
         .mockResolvedValue([
           { id: 'draft', tutor_id: TUTOR_ID, mode: 'online', status: 'draft' },
@@ -347,8 +393,8 @@ describe('weekly compliance — status priority and week handling', () => {
   });
 
   it("snaps any date inside the week to that week's Monday", async () => {
-    const listForTutorsInWeek = jest.fn().mockResolvedValue([]);
-    const { service } = buildService({ listForTutorsInWeek });
+    const listForAcademyInWeek = jest.fn().mockResolvedValue([]);
+    const { service } = buildService({ listForAcademyInWeek });
 
     const result = await service.getWeeklyCompliance(
       OWNER_USER_ID,
@@ -356,7 +402,7 @@ describe('weekly compliance — status priority and week handling', () => {
     );
 
     expect(result.weekStartDate).toBe('2026-09-14');
-    expect(listForTutorsInWeek).toHaveBeenCalledWith([TUTOR_ID], '2026-09-14');
+    expect(listForAcademyInWeek).toHaveBeenCalledWith(ACADEMY_ID, '2026-09-14');
   });
 
   it('exposes student names on assessment detail results', async () => {

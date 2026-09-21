@@ -173,6 +173,11 @@ export interface TutorAvailabilityExceptionsTable {
 export interface BatchesTable {
   id: string;
   tutor_id: string;
+  /** Teaching context (migration 0040). NULL = the tutor's Individual
+   *  context; set = owned by that academy. Immutable after insert (DB
+   *  trigger + `never` update type) — a batch never changes context.
+   *  `tutor_id` is who teaches it, NOT who owns it. */
+  academy_id: ColumnType<string | null, string | null | undefined, never>;
   title: string;
   subject_id: string;
   grade_level_id: string;
@@ -362,6 +367,21 @@ export interface FeeLedgerTable {
 export interface SubscriptionsTable {
   id: string;
   tutor_id: string;
+  plan_id: Generated<string>;
+  status: Generated<'trialing' | 'active' | 'past_due' | 'cancelled'>;
+  trial_ends_at: Timestamp;
+  current_period_end: Timestamp | null;
+  provider: string | null;
+  provider_ref: string | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+/** The ACADEMY's plan (migration 0041) — separate from the teacher's
+ *  Individual plan in SubscriptionsTable; never linked to it. */
+export interface AcademySubscriptionsTable {
+  id: string;
+  academy_id: string;
   plan_id: Generated<string>;
   status: Generated<'trialing' | 'active' | 'past_due' | 'cancelled'>;
   trial_ends_at: Timestamp;
@@ -938,6 +958,9 @@ export type AssessmentStatus =
 export interface AssessmentsTable {
   id: string;
   tutor_id: string;
+  /** Same convention as BatchesTable.academy_id — every batch the
+   *  assessment is delivered to must share this context (DB trigger). */
+  academy_id: ColumnType<string | null, string | null | undefined, never>;
   mode: AssessmentMode;
   title: string;
   subject_id: string;
@@ -1037,6 +1060,7 @@ export interface DB {
 
   fee_ledger: FeeLedgerTable;
   subscriptions: SubscriptionsTable;
+  academy_subscriptions: AcademySubscriptionsTable;
   audit_logs: AuditLogsTable;
   notifications: NotificationsTable;
   device_tokens: DeviceTokensTable;

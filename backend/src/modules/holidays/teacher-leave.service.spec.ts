@@ -55,11 +55,11 @@ function buildService(overrides: {
   findActiveMembership?: jest.Mock;
   listActiveForAcademy?: jest.Mock;
   findAcademyById?: jest.Mock;
-  findByIds?: jest.Mock;
+  findByIdsInAcademy?: jest.Mock;
   assignSubstitute?: jest.Mock;
   setHolidayOrLeaveCancellation?: jest.Mock;
   hasScheduledOverlapForTutor?: jest.Mock;
-  listScheduledForTutorsBetween?: jest.Mock;
+  listScheduledForAcademyBetween?: jest.Mock;
   listDistinctStudentIdsForBatches?: jest.Mock;
   findByIdBatch?: jest.Mock;
   listActiveParentIdsForStudents?: jest.Mock;
@@ -99,10 +99,11 @@ function buildService(overrides: {
   } as unknown as AcademiesRepository;
 
   const sessionsRepository = {
-    listScheduledForTutorsBetween:
-      overrides.listScheduledForTutorsBetween ??
+    listScheduledForAcademyBetween:
+      overrides.listScheduledForAcademyBetween ??
       jest.fn().mockResolvedValue([SESSION]),
-    findByIds: overrides.findByIds ?? jest.fn().mockResolvedValue([SESSION]),
+    findByIdsInAcademy:
+      overrides.findByIdsInAcademy ?? jest.fn().mockResolvedValue([SESSION]),
     assignSubstitute:
       overrides.assignSubstitute ?? jest.fn().mockResolvedValue(undefined),
     setHolidayOrLeaveCancellation:
@@ -174,6 +175,26 @@ describe('TeacherLeaveService.create', () => {
       expect.objectContaining({ tutorId: TUTOR_ID, academyId: ACADEMY_ID }),
     );
     expect(snapshotSessions).toHaveBeenCalledWith(REQUEST_ID, [SESSION.id]);
+  });
+
+  it('only considers the classes this teacher runs FOR THIS ACADEMY — never their Individual classes', async () => {
+    const listScheduledForAcademyBetween = jest
+      .fn()
+      .mockResolvedValue([SESSION]);
+    const { service } = buildService({ listScheduledForAcademyBetween });
+
+    await service.create(TUTOR_ID, {
+      academyId: ACADEMY_ID,
+      startDate: '2026-09-20',
+      leaveType: 'full_day',
+    } as never);
+
+    expect(listScheduledForAcademyBetween).toHaveBeenCalledWith(
+      ACADEMY_ID,
+      expect.any(Date),
+      expect.any(Date),
+      [TUTOR_ID],
+    );
   });
 
   it('rejects a request for an academy the tutor is not an active member of', async () => {
@@ -296,6 +317,43 @@ describe('TeacherLeaveService.approve', () => {
       expect.arrayContaining(['student-1', 'parent-1']),
     );
     expect(rosterCall.type).toBe('class_cancelled_leave');
+  });
+
+  it('only ever cancels classes the academy OWNS — an Individual class left in an old snapshot is filtered out at decision time', async () => {
+    const findForAcademy = jest.fn().mockResolvedValue({
+      id: REQUEST_ID,
+      tutor_id: TUTOR_ID,
+      status: 'pending',
+      start_date: '2026-09-20',
+      end_date: '2026-09-20',
+    });
+    const listSessionIdsForRequest = jest
+      .fn()
+      .mockResolvedValue([SESSION.id, 'individual-session']);
+    // The academy-scoped lookup drops the Individual session.
+    const findByIdsInAcademy = jest.fn().mockResolvedValue([SESSION]);
+    const setHolidayOrLeaveCancellation = jest
+      .fn()
+      .mockResolvedValue(undefined);
+    const { service } = buildService({
+      findForAcademy,
+      listSessionIdsForRequest,
+      findByIdsInAcademy,
+      setHolidayOrLeaveCancellation,
+    });
+
+    await service.approve(ACADEMY_ID, REQUEST_ID, 'admin-1');
+
+    expect(findByIdsInAcademy).toHaveBeenCalledWith(
+      [SESSION.id, 'individual-session'],
+      ACADEMY_ID,
+    );
+    expect(setHolidayOrLeaveCancellation).toHaveBeenCalledTimes(1);
+    expect(setHolidayOrLeaveCancellation).not.toHaveBeenCalledWith(
+      'individual-session',
+      expect.anything(),
+      expect.anything(),
+    );
   });
 
   it('assigns a substitute instead of cancelling when one is given, and rejects a double-booked substitute', async () => {

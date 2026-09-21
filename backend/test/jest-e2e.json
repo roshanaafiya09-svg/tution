@@ -3,8 +3,9 @@
   "rootDir": ".",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
+  "forceExit": true,
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   },
-  "transformIgnorePatterns": ["node_modules/(?!(kysely)/)"]
+  "transformIgnorePatterns": ["node_modules/(?!(kysely|@nestjs/schedule)/)"]
 }

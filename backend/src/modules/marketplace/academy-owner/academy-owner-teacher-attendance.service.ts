@@ -82,12 +82,20 @@ export class AcademyOwnerTeacherAttendanceService {
     return academy;
   }
 
+  /** `tutorIds` = ACTIVE teachers, only ever used to narrow a teacher
+   *  filter — every session read is scoped to classes the academy OWNS
+   *  (batches.academy_id), never to "sessions of my active teachers", so a
+   *  member's Individual classes can't be listed or marked here.
+   *  `tutorNames` also covers teachers who have left (historical rows). */
   private async activeTutorIds(academyId: string) {
     const teachers =
       await this.academyMembershipsRepository.listActiveForAcademy(academyId);
     return {
       tutorIds: teachers.map((t) => t.tutor_id),
-      tutorNames: new Map(teachers.map((t) => [t.tutor_id, t.display_name])),
+      tutorNames:
+        await this.academyMembershipsRepository.displayNamesForAcademy(
+          academyId,
+        ),
     };
   }
 
@@ -123,22 +131,21 @@ export class AcademyOwnerTeacherAttendanceService {
    *  present/absent/on-leave, attendance %. */
   async getTodaySummary(ownerUserId: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const { tutorIds } = await this.activeTutorIds(academy.id);
-
     const now = DateTime.now().setZone(DEFAULT_TIMEZONE);
     const startOfDay = now.startOf('day').toJSDate();
     const endOfDay = now.endOf('day').toJSDate();
 
     const sessions: SessionWithCancellation[] =
-      await this.sessionsRepository.listForTutorsBetween(
-        tutorIds,
+      await this.sessionsRepository.listForAcademyBetween(
+        academy.id,
         startOfDay,
         endOfDay,
       );
 
-    const attendanceRows = await this.teacherAttendanceRepository.findBySessionIds(
-      sessions.map((s) => s.id),
-    );
+    const attendanceRows =
+      await this.teacherAttendanceRepository.findBySessionIds(
+        sessions.map((s) => s.id),
+      );
     const attendanceBySession = new Map(
       attendanceRows.map((r) => [r.session_id, r.status]),
     );
@@ -177,8 +184,9 @@ export class AcademyOwnerTeacherAttendanceService {
     filters: TeacherAttendanceFilters,
   ) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const { tutorIds: allTutorIds, tutorNames } =
-      await this.activeTutorIds(academy.id);
+    const { tutorIds: allTutorIds, tutorNames } = await this.activeTutorIds(
+      academy.id,
+    );
     const tutorIds = filters.teacherId
       ? allTutorIds.filter((id) => id === filters.teacherId)
       : allTutorIds;
@@ -189,14 +197,20 @@ export class AcademyOwnerTeacherAttendanceService {
       : new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
 
     const sessions: SessionWithCancellation[] =
-      await this.sessionsRepository.listForTutorsBetween(tutorIds, from, to);
+      await this.sessionsRepository.listForAcademyBetween(
+        academy.id,
+        from,
+        to,
+        filters.teacherId ? tutorIds : undefined,
+      );
     const scoped = sessions.filter(
       (s) => !filters.batchId || s.batch_id === filters.batchId,
     );
 
-    const attendanceRows = await this.teacherAttendanceRepository.findBySessionIds(
-      scoped.map((s) => s.id),
-    );
+    const attendanceRows =
+      await this.teacherAttendanceRepository.findBySessionIds(
+        scoped.map((s) => s.id),
+      );
     const attendanceBySession = new Map(
       attendanceRows.map((r) => [r.session_id, r.status]),
     );
@@ -250,7 +264,9 @@ export class AcademyOwnerTeacherAttendanceService {
             marked === 0 ? null : Math.round((g.present / marked) * 100),
         };
       })
-      .filter((row) => !filters.status || this.rowMatchesStatus(row, filters.status))
+      .filter(
+        (row) => !filters.status || this.rowMatchesStatus(row, filters.status),
+      )
       .sort((a, b) => (a.date < b.date ? 1 : -1));
   }
 
@@ -273,10 +289,11 @@ export class AcademyOwnerTeacherAttendanceService {
     range: { from?: string; to?: string },
   ) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const membership = await this.academyMembershipsRepository.findActiveMembership(
-      academy.id,
-      teacherId,
-    );
+    const membership =
+      await this.academyMembershipsRepository.findActiveMembership(
+        academy.id,
+        teacherId,
+      );
     if (!membership) {
       throw new ForbiddenException("That teacher isn't active at your academy");
     }
@@ -288,10 +305,16 @@ export class AcademyOwnerTeacherAttendanceService {
       : new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     const sessions: SessionWithCancellation[] =
-      await this.sessionsRepository.listForTutorsBetween([teacherId], from, to);
-    const attendanceRows = await this.teacherAttendanceRepository.findBySessionIds(
-      sessions.map((s) => s.id),
-    );
+      await this.sessionsRepository.listForAcademyBetween(
+        academy.id,
+        from,
+        to,
+        [teacherId],
+      );
+    const attendanceRows =
+      await this.teacherAttendanceRepository.findBySessionIds(
+        sessions.map((s) => s.id),
+      );
     const attendanceBySession = new Map(
       attendanceRows.map((r) => [r.session_id, r.status]),
     );
@@ -343,16 +366,14 @@ export class AcademyOwnerTeacherAttendanceService {
    *  marking — see deriveOutcome). */
   async markAttendance(ownerUserId: string, dto: MarkTeacherAttendanceDto) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const session = await this.sessionsRepository.findById(dto.sessionId);
-    if (!session) throw new NotFoundException('Class session not found');
-
-    const membership = await this.academyMembershipsRepository.findActiveMembership(
+    // Only a class this academy OWNS can be marked — a member teacher's
+    // Individual class (or another academy's) is "not found", so the
+    // academy can neither read nor write attendance for private teaching.
+    const session = await this.sessionsRepository.findByIdInAcademy(
+      dto.sessionId,
       academy.id,
-      session.tutor_id,
     );
-    if (!membership) {
-      throw new ForbiddenException("That class isn't taught at your academy");
-    }
+    if (!session) throw new NotFoundException('Class session not found');
     if (session.status === 'cancelled') {
       throw new BadRequestException(
         'A cancelled class has nothing to record attendance for',

@@ -8,7 +8,7 @@ jest.mock('kysely', () => ({
   sql: Object.assign(() => ({}), { raw: () => ({}) }),
 }));
 
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { HolidayService } from './holiday.service';
 import type { HolidaysRepository } from './holidays.repository';
 import type { AcademiesRepository } from '../marketplace/academies/academies.repository';
@@ -56,11 +56,12 @@ function buildService(overrides: {
   setBatchScope?: jest.Mock;
   findAcademy?: jest.Mock;
   listActiveForAcademy?: jest.Mock;
-  listScheduledForTutorsBetween?: jest.Mock;
+  listScheduledForAcademyBetween?: jest.Mock;
+  findByIdInAcademy?: jest.Mock;
   setHolidayOrLeaveCancellation?: jest.Mock;
   listDistinctStudentIdsForBatches?: jest.Mock;
   listDistinctTutorIdsForBatches?: jest.Mock;
-  listDistinctStudentIdsForTutors?: jest.Mock;
+  listEnrollmentsForAcademy?: jest.Mock;
   listActiveParentIdsForStudents?: jest.Mock;
   listRecentForUserByType?: jest.Mock;
   notify?: jest.Mock;
@@ -88,9 +89,11 @@ function buildService(overrides: {
   } as unknown as AcademyMembershipsRepository;
 
   const batchesRepository = {
-    listDistinctStudentIdsForTutors:
-      overrides.listDistinctStudentIdsForTutors ??
-      jest.fn().mockResolvedValue(['student-academy-wide']),
+    listEnrollmentsForAcademy:
+      overrides.listEnrollmentsForAcademy ??
+      jest.fn().mockResolvedValue([{ student_id: 'student-academy-wide' }]),
+    findByIdInAcademy:
+      overrides.findByIdInAcademy ?? jest.fn().mockResolvedValue({ id: 'b' }),
     listDistinctStudentIdsForBatches:
       overrides.listDistinctStudentIdsForBatches ??
       jest.fn().mockResolvedValue(['student-batch-scoped']),
@@ -100,8 +103,8 @@ function buildService(overrides: {
   } as unknown as BatchesRepository;
 
   const sessionsRepository = {
-    listScheduledForTutorsBetween:
-      overrides.listScheduledForTutorsBetween ??
+    listScheduledForAcademyBetween:
+      overrides.listScheduledForAcademyBetween ??
       jest.fn().mockResolvedValue([SESSION]),
     setHolidayOrLeaveCancellation:
       overrides.setHolidayOrLeaveCancellation ??
@@ -196,9 +199,49 @@ describe('HolidayService.createAcademyHoliday', () => {
       ),
     ).rejects.toThrow(BadRequestException);
   });
+
+  it("rejects a batch-scoped holiday that names a batch the academy does not own (e.g. a teacher's Individual batch)", async () => {
+    const findByIdInAcademy = jest.fn().mockResolvedValue(undefined);
+    const createAcademyHoliday = jest.fn();
+    const { service } = buildService({
+      findByIdInAcademy,
+      createAcademyHoliday,
+    });
+
+    await expect(
+      service.createAcademyHoliday(
+        ACADEMY_ID,
+        {
+          name: 'Batch Holiday',
+          startDate: '2026-09-20',
+          scope: 'batches',
+          batchIds: ['individual-batch'],
+        },
+        'admin-1',
+      ),
+    ).rejects.toThrow(NotFoundException);
+    expect(findByIdInAcademy).toHaveBeenCalledWith(
+      'individual-batch',
+      ACADEMY_ID,
+    );
+    expect(createAcademyHoliday).not.toHaveBeenCalled();
+  });
 });
 
 describe('HolidayService.applyHolidayForAcademy', () => {
+  it("only considers the academy's OWN classes — never a teacher's Individual classes (sessions are looked up by academy id, not by teacher)", async () => {
+    const listScheduledForAcademyBetween = jest.fn().mockResolvedValue([]);
+    const { service } = buildService({ listScheduledForAcademyBetween });
+
+    await service.applyHolidayForAcademy(HOLIDAY.id, ACADEMY_ID);
+
+    expect(listScheduledForAcademyBetween).toHaveBeenCalledTimes(1);
+    const [academyIdArg, , , tutorFilter] = listScheduledForAcademyBetween.mock
+      .calls[0] as [string, Date, Date, string[] | undefined];
+    expect(academyIdArg).toBe(ACADEMY_ID);
+    expect(tutorFilter).toBeUndefined();
+  });
+
   it('cancels matching sessions and notifies the resolved recipients', async () => {
     const setHolidayOrLeaveCancellation = jest
       .fn()
@@ -222,9 +265,9 @@ describe('HolidayService.applyHolidayForAcademy', () => {
   });
 
   it('scope="batches" only resolves that batch\'s students/teachers, never the whole academy', async () => {
-    const listDistinctStudentIdsForTutors = jest
+    const listEnrollmentsForAcademy = jest
       .fn()
-      .mockResolvedValue(['student-academy-wide']);
+      .mockResolvedValue([{ student_id: 'student-academy-wide' }]);
     const listDistinctStudentIdsForBatches = jest
       .fn()
       .mockResolvedValue(['student-batch-scoped']);
@@ -238,14 +281,14 @@ describe('HolidayService.applyHolidayForAcademy', () => {
     const { service } = buildService({
       findById,
       listBatchIdsForHoliday,
-      listDistinctStudentIdsForTutors,
+      listEnrollmentsForAcademy,
       listDistinctStudentIdsForBatches,
       notify,
     });
 
     await service.applyHolidayForAcademy(HOLIDAY.id, ACADEMY_ID);
 
-    expect(listDistinctStudentIdsForTutors).not.toHaveBeenCalled();
+    expect(listEnrollmentsForAcademy).not.toHaveBeenCalled();
     expect(notify.mock.calls[0][0].userIds).toContain('student-batch-scoped');
     expect(notify.mock.calls[0][0].userIds).not.toContain(
       'student-academy-wide',

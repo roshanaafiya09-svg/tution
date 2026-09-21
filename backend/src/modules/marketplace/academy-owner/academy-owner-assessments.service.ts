@@ -1,8 +1,4 @@
-import {
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { AcademiesRepository } from '../academies/academies.repository';
 import { AcademyMembershipsRepository } from '../academy-memberships/academy-memberships.repository';
 import { AssessmentsRepository } from '../../assessments/assessments.repository';
@@ -110,6 +106,9 @@ export class AcademyOwnerAssessmentsService {
     // week's Monday, the value assessments.week_start_date holds.
     const week = academicWeekStart(weekStartDate);
 
+    // Rows are the academy's ACTIVE teachers; the assessments counted are
+    // only those the academy OWNS (assessments.academy_id) — a teacher's
+    // Individual assessments never make them look compliant here.
     const teachers =
       await this.academyMembershipsRepository.listActiveForAcademy(academy.id);
     const tutorIds = teachers.map((t) => t.tutor_id);
@@ -117,8 +116,8 @@ export class AcademyOwnerAssessmentsService {
       teachers.map((t) => [t.tutor_id, t.display_name]),
     );
 
-    const assessments = await this.assessmentsRepository.listForTutorsInWeek(
-      tutorIds,
+    const assessments = await this.assessmentsRepository.listForAcademyInWeek(
+      academy.id,
       week,
     );
     const byTutor = new Map<string, typeof assessments>();
@@ -175,15 +174,22 @@ export class AcademyOwnerAssessmentsService {
     return { weekStartDate: week, summary, teachers: rows };
   }
 
-  /** Academy Assessment Details (§21) — verifies the assessment's owning
-   *  teacher is an active member of the caller's academy before
-   *  returning anything, so an academy admin can never read another
-   *  academy's assessment by guessing an id. */
+  /** Loads an assessment the caller's academy OWNS. An Individual
+   *  assessment (even by one of the academy's own teachers) or another
+   *  academy's is "not found" — an academy admin can never read either by
+   *  guessing an id. */
+  private async findOwnedAssessment(academyId: string, assessmentId: string) {
+    const assessment = await this.assessmentsRepository.findById(assessmentId);
+    if (!assessment || assessment.academy_id !== academyId) {
+      throw new NotFoundException('Assessment not found');
+    }
+    return assessment;
+  }
+
+  /** Academy Assessment Details (§21). */
   async getAssessmentDetail(ownerUserId: string, assessmentId: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const assessment = await this.assessmentsRepository.findById(assessmentId);
-    if (!assessment) throw new NotFoundException('Assessment not found');
-    await this.assertTeacherInAcademy(academy.id, assessment.tutor_id);
+    const assessment = await this.findOwnedAssessment(academy.id, assessmentId);
 
     const [batches, results, scorecardImports] = await Promise.all([
       this.assessmentsRepository.listBatchesForAssessment(assessmentId),
@@ -236,23 +242,7 @@ export class AcademyOwnerAssessmentsService {
 
   async getQuestionPaperDownloadUrl(ownerUserId: string, assessmentId: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const assessment = await this.assessmentsRepository.findById(assessmentId);
-    if (!assessment) throw new NotFoundException('Assessment not found');
-    await this.assertTeacherInAcademy(academy.id, assessment.tutor_id);
+    const assessment = await this.findOwnedAssessment(academy.id, assessmentId);
     return this.offlineAssessments.resolveQuestionPaperUrl(assessment);
-  }
-
-  private async assertTeacherInAcademy(
-    academyId: string,
-    tutorId: string,
-  ): Promise<void> {
-    const membership =
-      await this.academyMembershipsRepository.findActiveMembership(
-        academyId,
-        tutorId,
-      );
-    if (!membership) {
-      throw new ForbiddenException("That teacher isn't active at your academy");
-    }
   }
 }

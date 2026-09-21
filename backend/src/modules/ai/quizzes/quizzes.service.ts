@@ -12,6 +12,10 @@ import type { StorageProvider } from '../../../common/storage/storage-provider.i
 import { AiService } from '../ai.service';
 import { AnalyticsService } from '../../analytics/analytics.service';
 import { extractPdfText } from './pdf-text';
+import {
+  academyIdOf,
+  type TeachingContext,
+} from '../../teaching-context/teaching-context';
 import type { UpdateQuizQuestionDto } from './dto/update-quiz-question.dto';
 
 const DEFAULT_QUESTION_COUNT = 10;
@@ -79,8 +83,8 @@ export class QuizzesService {
     return this.getWithQuestions(tutorId, draft.id);
   }
 
-  listForTutor(tutorId: string) {
-    return this.repository.listForTutor(tutorId);
+  listForTutor(tutorId: string, ctx: TeachingContext) {
+    return this.repository.listForTutor(tutorId, academyIdOf(ctx));
   }
 
   async getWithQuestions(tutorId: string, draftId: string) {

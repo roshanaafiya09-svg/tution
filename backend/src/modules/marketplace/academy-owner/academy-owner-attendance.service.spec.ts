@@ -8,7 +8,7 @@ jest.mock('kysely', () => ({
   sql: Object.assign(() => ({}), { raw: () => ({}) }),
 }));
 
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { AcademyOwnerAttendanceService } from './academy-owner-attendance.service';
 import type { AcademiesRepository } from '../academies/academies.repository';
 import type { AcademyMembershipsRepository } from '../academy-memberships/academy-memberships.repository';
@@ -24,12 +24,12 @@ const BATCH_ID = 'batch-1';
 function buildService(overrides: {
   findByOwnerUserId?: jest.Mock;
   listActiveForAcademy?: jest.Mock;
-  listForTutors?: jest.Mock;
-  listForTutorsBetween?: jest.Mock;
+  listForAcademy?: jest.Mock;
+  listForAcademyBetween?: jest.Mock;
   listForBatches?: jest.Mock;
   listForBatch?: jest.Mock;
   listEnrollments?: jest.Mock;
-  listEnrollmentsForTutors?: jest.Mock;
+  listEnrollmentsForAcademy?: jest.Mock;
   summaryForStudent?: jest.Mock;
   summaryForStudentBetween?: jest.Mock;
   listForStudent?: jest.Mock;
@@ -53,9 +53,26 @@ function buildService(overrides: {
       jest.fn().mockResolvedValue({ id: 'membership-1' }),
   } as unknown as AcademyMembershipsRepository;
 
+  // Names for attributing the academy's own (historical) records: the real
+  // repository returns every teacher who was ever a member; the fake derives
+  // them from the same roster the test already provides.
+  const membershipsFake = academyMembershipsRepository as unknown as {
+    listActiveForAcademy: (
+      id: string,
+    ) => Promise<Array<{ tutor_id: string; display_name: string }>>;
+    displayNamesForAcademy: (id: string) => Promise<Map<string, string>>;
+  };
+  membershipsFake.displayNamesForAcademy = async (id) =>
+    new Map(
+      (await membershipsFake.listActiveForAcademy(id)).map((t) => [
+        t.tutor_id,
+        t.display_name,
+      ]),
+    );
+
   const batchesRepository = {
-    listForTutors:
-      overrides.listForTutors ??
+    listForAcademy:
+      overrides.listForAcademy ??
       jest
         .fn()
         .mockResolvedValue([
@@ -63,16 +80,16 @@ function buildService(overrides: {
         ]),
     listEnrollments:
       overrides.listEnrollments ?? jest.fn().mockResolvedValue([]),
-    listEnrollmentsForTutors:
-      overrides.listEnrollmentsForTutors ?? jest.fn().mockResolvedValue([]),
-    findById:
+    listEnrollmentsForAcademy:
+      overrides.listEnrollmentsForAcademy ?? jest.fn().mockResolvedValue([]),
+    findByIdInAcademy:
       overrides.findById ??
       jest.fn().mockResolvedValue({ id: BATCH_ID, tutor_id: TUTOR_ID }),
   } as unknown as BatchesRepository;
 
   const sessionsRepository = {
-    listForTutorsBetween:
-      overrides.listForTutorsBetween ?? jest.fn().mockResolvedValue([]),
+    listForAcademyBetween:
+      overrides.listForAcademyBetween ?? jest.fn().mockResolvedValue([]),
   } as unknown as SessionsRepository;
 
   const attendanceRepository = {
@@ -110,11 +127,11 @@ function buildService(overrides: {
 
 describe('AcademyOwnerAttendanceService.getTodaySummary', () => {
   it('excludes cancelled sessions from classes-today and students-expected', async () => {
-    const listForTutorsBetween = jest.fn().mockResolvedValue([
+    const listForAcademyBetween = jest.fn().mockResolvedValue([
       { id: 's1', batch_id: BATCH_ID, tutor_id: TUTOR_ID, status: 'scheduled' },
       { id: 's2', batch_id: BATCH_ID, tutor_id: TUTOR_ID, status: 'cancelled' },
     ]);
-    const service = buildService({ listForTutorsBetween });
+    const service = buildService({ listForAcademyBetween });
 
     const summary = await service.getTodaySummary(OWNER_ID);
 
@@ -123,7 +140,7 @@ describe('AcademyOwnerAttendanceService.getTodaySummary', () => {
   });
 
   it('never treats an unmarked seat as absent', async () => {
-    const listForTutorsBetween = jest.fn().mockResolvedValue([
+    const listForAcademyBetween = jest.fn().mockResolvedValue([
       {
         id: 's1',
         batch_id: BATCH_ID,
@@ -133,7 +150,7 @@ describe('AcademyOwnerAttendanceService.getTodaySummary', () => {
     ]);
     // No attendance rows exist yet for this session.
     const service = buildService({
-      listForTutorsBetween,
+      listForAcademyBetween,
       listForBatches: jest.fn().mockResolvedValue([]),
     });
 
@@ -147,7 +164,7 @@ describe('AcademyOwnerAttendanceService.getTodaySummary', () => {
 
 describe('AcademyOwnerAttendanceService.listAttendanceTable', () => {
   it('only derives absences for completed sessions, not scheduled ones', async () => {
-    const listForTutorsBetween = jest.fn().mockResolvedValue([
+    const listForAcademyBetween = jest.fn().mockResolvedValue([
       {
         id: 's1',
         batch_id: BATCH_ID,
@@ -174,7 +191,7 @@ describe('AcademyOwnerAttendanceService.listAttendanceTable', () => {
         status: 'present',
       },
     ]);
-    const service = buildService({ listForTutorsBetween, listForBatches });
+    const service = buildService({ listForAcademyBetween, listForBatches });
 
     const rows = await service.listAttendanceTable(OWNER_ID, {});
     const scheduledRow = rows.find((r) => r.sessionId === 's1')!;
@@ -190,20 +207,48 @@ describe('AcademyOwnerAttendanceService.listAttendanceTable', () => {
 describe('AcademyOwnerAttendanceService academy isolation', () => {
   it('rejects a student not enrolled anywhere in this academy', async () => {
     const service = buildService({
-      listEnrollmentsForTutors: jest.fn().mockResolvedValue([]),
+      listEnrollmentsForAcademy: jest.fn().mockResolvedValue([]),
     });
     await expect(
       service.getStudentAttendance(OWNER_ID, 'someone-elses-student'),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('rejects a batch not taught at this academy', async () => {
-    const service = buildService({
-      findActiveMembership: jest.fn().mockResolvedValue(undefined),
-    });
+  it("rejects a batch this academy doesn't own (another academy's or a teacher's Individual batch) as not found", async () => {
+    const findById = jest.fn().mockResolvedValue(undefined);
+    const service = buildService({ findById });
     await expect(
       service.getBatchAttendance(OWNER_ID, 'someone-elses-batch'),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(findById).toHaveBeenCalledWith('someone-elses-batch', 'academy-1');
+  });
+
+  it("a student's attendance is limited to THIS academy's classes — their attendance in a teacher's Individual batch is never returned", async () => {
+    const summaryForStudentBetween = jest.fn().mockResolvedValue({
+      total: 1,
+      present: 1,
+      late: 0,
+      absent: 0,
+      rate: 100,
+    });
+    const listForStudent = jest.fn().mockResolvedValue([]);
+    const service = buildService({
+      listEnrollmentsForAcademy: jest
+        .fn()
+        .mockResolvedValue([{ student_id: 'student-1' }]),
+      summaryForStudentBetween,
+      listForStudent,
+    });
+
+    await service.getStudentAttendance(OWNER_ID, 'student-1');
+
+    expect(summaryForStudentBetween).toHaveBeenCalledWith(
+      'student-1',
+      expect.any(Date),
+      expect.any(Date),
+      'academy-1',
+    );
+    expect(listForStudent).toHaveBeenCalledWith('student-1', 'academy-1');
   });
 
   it('rejects a caller with no academy at all', async () => {

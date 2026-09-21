@@ -162,16 +162,21 @@ export class PaymentsRepository {
       .executeTakeFirstOrThrow();
   }
 
-  /** Captured fee-collection payments for this tutor's students, not
-   *  yet folded into a payout, within [from, to) — the candidates for
-   *  the next payout run. Filtered on updated_at since capture is the
+  /** Captured fee-collection payments for this tutor's INDIVIDUAL
+   *  students, not yet folded into a payout, within [from, to) — the
+   *  candidates for the next payout run. The tutor's own payout covers
+   *  their own (Individual) business only: fees collected for an
+   *  academy's batches belong to the academy and are never paid out to
+   *  the teacher personally. Filtered on updated_at since capture is the
    *  last write a payment row gets in the happy path (see markCaptured). */
   listUnpaidOutCapturedForTutor(tutorId: string, from: Date, to: Date) {
     return this.db
       .selectFrom('payments')
       .innerJoin('fee_ledger', 'fee_ledger.id', 'payments.fee_ledger_id')
+      .innerJoin('batches', 'batches.id', 'fee_ledger.batch_id')
       .select(['payments.id', 'payments.amount_minor', 'payments.currency'])
       .where('fee_ledger.tutor_id', '=', tutorId)
+      .where('batches.academy_id', 'is', null)
       .where('payments.status', '=', 'captured')
       .where('payments.payout_id', 'is', null)
       .where('payments.updated_at', '>=', from)

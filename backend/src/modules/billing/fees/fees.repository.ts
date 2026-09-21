@@ -72,8 +72,14 @@ export class FeesRepository {
       .executeTakeFirstOrThrow();
   }
 
-  listForPeriod(tutorId: string, periodLabel: string) {
-    return this.db
+  /** Fee entries for one period IN ONE teaching context (null =
+   *  Individual, an id = that academy's), taken from the entry's batch. */
+  listForPeriod(
+    tutorId: string,
+    academyId: string | null,
+    periodLabel: string,
+  ) {
+    let query = this.db
       .selectFrom('fee_ledger')
       .innerJoin('batches', 'batches.id', 'fee_ledger.batch_id')
       .leftJoin(
@@ -98,7 +104,12 @@ export class FeesRepository {
         'users.phone_e164',
       ])
       .where('fee_ledger.tutor_id', '=', tutorId)
-      .where('fee_ledger.period_label', '=', periodLabel)
+      .where('fee_ledger.period_label', '=', periodLabel);
+    query =
+      academyId === null
+        ? query.where('batches.academy_id', 'is', null)
+        : query.where('batches.academy_id', '=', academyId);
+    return query
       .orderBy('fee_ledger.status')
       .orderBy('profiles_student.display_name')
       .execute();
@@ -133,23 +144,41 @@ export class FeesRepository {
       .execute();
   }
 
-  /** Money totals for a period — the "who hasn't paid" view's header. */
-  async periodTotals(tutorId: string, periodLabel: string) {
-    const row = await this.db
+  /** Money totals for a period in ONE teaching context — the "who
+   *  hasn't paid" view's header. Individual and Academy money are never
+   *  added together. */
+  async periodTotals(
+    tutorId: string,
+    academyId: string | null,
+    periodLabel: string,
+  ) {
+    let query = this.db
       .selectFrom('fee_ledger')
+      .innerJoin('batches', 'batches.id', 'fee_ledger.batch_id')
       .select((eb) => [
-        eb.fn.sum('expected_minor').as('expected'),
+        eb.fn.sum('fee_ledger.expected_minor').as('expected'),
         eb.fn
-          .sum(eb.fn.coalesce('recorded_paid_minor', eb.lit(0)))
+          .sum(eb.fn.coalesce('fee_ledger.recorded_paid_minor', eb.lit(0)))
           .as('collected'),
         eb.fn.countAll().as('entries'),
         eb.fn
-          .sum(eb.case().when('status', '=', 'paid').then(1).else(0).end())
+          .sum(
+            eb
+              .case()
+              .when('fee_ledger.status', '=', 'paid')
+              .then(1)
+              .else(0)
+              .end(),
+          )
           .as('paid_count'),
       ])
-      .where('tutor_id', '=', tutorId)
-      .where('period_label', '=', periodLabel)
-      .executeTakeFirstOrThrow();
+      .where('fee_ledger.tutor_id', '=', tutorId)
+      .where('fee_ledger.period_label', '=', periodLabel);
+    query =
+      academyId === null
+        ? query.where('batches.academy_id', 'is', null)
+        : query.where('batches.academy_id', '=', academyId);
+    const row = await query.executeTakeFirstOrThrow();
 
     const expectedMinor = Number(row.expected ?? 0);
     const collectedMinor = Number(row.collected ?? 0);
@@ -165,12 +194,16 @@ export class FeesRepository {
     };
   }
 
-  /** All-time total across every period — feeds the trial-end value-recap paywall (blueprint §5). */
+  /** All-time total across every period — feeds the trial-end
+   *  value-recap paywall (blueprint §5), which is about the teacher's own
+   *  Individual plan, so only Individual-context fees count. */
   async sumExpectedForTutor(tutorId: string): Promise<number> {
     const row = await this.db
       .selectFrom('fee_ledger')
-      .select((eb) => eb.fn.sum('expected_minor').as('total'))
-      .where('tutor_id', '=', tutorId)
+      .innerJoin('batches', 'batches.id', 'fee_ledger.batch_id')
+      .select((eb) => eb.fn.sum('fee_ledger.expected_minor').as('total'))
+      .where('fee_ledger.tutor_id', '=', tutorId)
+      .where('batches.academy_id', 'is', null)
       .executeTakeFirstOrThrow();
     return Number(row.total ?? 0);
   }

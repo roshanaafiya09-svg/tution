@@ -86,8 +86,10 @@ export class MessagesRepository {
 
   /** One row per (batch, student) thread the tutor has any message in,
    *  most-recently-active first — the tutor's message inbox. */
-  listThreadsForTutor(tutorId: string) {
-    return this.db
+  /** A tutor's threads IN ONE teaching context (null = Individual, an
+   *  id = that academy's), by the thread's batch. */
+  listThreadsForTutor(tutorId: string, academyId: string | null) {
+    let query = this.db
       .selectFrom('messages')
       .innerJoin('batches', 'batches.id', 'messages.batch_id')
       .leftJoin(
@@ -103,7 +105,12 @@ export class MessagesRepository {
         eb.fn.max('messages.created_at').as('last_message_at'),
         eb.fn.countAll().as('message_count'),
       ])
-      .where('batches.tutor_id', '=', tutorId)
+      .where('batches.tutor_id', '=', tutorId);
+    query =
+      academyId === null
+        ? query.where('batches.academy_id', 'is', null)
+        : query.where('batches.academy_id', '=', academyId);
+    return query
       .groupBy([
         'messages.batch_id',
         'messages.student_id',

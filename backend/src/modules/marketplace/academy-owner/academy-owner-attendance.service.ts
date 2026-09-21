@@ -1,8 +1,4 @@
-import {
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { AcademiesRepository } from '../academies/academies.repository';
 import { AcademyMembershipsRepository } from '../academy-memberships/academy-memberships.repository';
@@ -27,9 +23,12 @@ interface AttendanceFilters {
 /**
  * Academy-wide Attendance dashboard (Main > Academic > Attendance, new
  * feature). No new tables and no new repository — composes
- * SessionsRepository.listForTutorsBetween (already used by Today/Timetable)
+ * SessionsRepository.listForAcademyBetween (already used by Today/Timetable)
  * with AttendanceRepository.listForBatches/summaryForStudent(Between)
  * (already used by the tutor/student/parent-facing attendance views).
+ * Everything is scoped to batches THE ACADEMY OWNS (batches.academy_id):
+ * a student's attendance in a teacher's Individual batch, or in another
+ * academy, never appears here.
  *
  * Correctness invariant carried over from AttendanceService: a cancelled
  * session (holiday, teacher leave, or manual) can never have attendance
@@ -57,32 +56,30 @@ export class AcademyOwnerAttendanceService {
     return academy;
   }
 
-  private async activeTutorIds(academyId: string) {
-    const teachers =
-      await this.academyMembershipsRepository.listActiveForAcademy(academyId);
-    return {
-      tutorIds: teachers.map((t) => t.tutor_id),
-      tutorNames: new Map(teachers.map((t) => [t.tutor_id, t.display_name])),
-    };
+  /** Display names for attributing the academy's own classes to teachers
+   *  — includes teachers who have since left (the academy keeps that
+   *  history). */
+  private tutorNames(academyId: string) {
+    return this.academyMembershipsRepository.displayNamesForAcademy(academyId);
   }
 
   /** Today's summary cards — classes today (non-cancelled), students
    *  expected, present/absent, attendance %. */
   async getTodaySummary(ownerUserId: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const { tutorIds, tutorNames } = await this.activeTutorIds(academy.id);
+    const tutorNames = await this.tutorNames(academy.id);
 
     const now = DateTime.now().setZone(DEFAULT_TIMEZONE);
     const startOfDay = now.startOf('day').toJSDate();
     const endOfDay = now.endOf('day').toJSDate();
 
     const [sessions, batches] = await Promise.all([
-      this.sessionsRepository.listForTutorsBetween(
-        tutorIds,
+      this.sessionsRepository.listForAcademyBetween(
+        academy.id,
         startOfDay,
         endOfDay,
       ),
-      this.batchesRepository.listForTutors(tutorIds),
+      this.batchesRepository.listForAcademy(academy.id),
     ]);
     const enrolledByBatch = new Map(
       batches.map((b) => [b.id, Number(b.enrolled_count)]),
@@ -126,16 +123,12 @@ export class AcademyOwnerAttendanceService {
 
   /** The Attendance table — one row per session, date/batch/teacher/
    *  total/present/absent/%/status. Server-side date-range filter (via
-   *  listForTutorsBetween's SQL where clause); batch/tutor/status filters
+   *  listForAcademyBetween's SQL where clause); batch/tutor/status filters
    *  narrow the already date-bounded result set. */
   async listAttendanceTable(ownerUserId: string, filters: AttendanceFilters) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const { tutorIds: allTutorIds, tutorNames } = await this.activeTutorIds(
-      academy.id,
-    );
-    const tutorIds = filters.tutorId
-      ? allTutorIds.filter((id) => id === filters.tutorId)
-      : allTutorIds;
+    const tutorNames = await this.tutorNames(academy.id);
+    const tutorIds = filters.tutorId ? [filters.tutorId] : undefined;
 
     const to = filters.to ? new Date(filters.to) : new Date();
     const from = filters.from
@@ -143,8 +136,13 @@ export class AcademyOwnerAttendanceService {
       : new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
 
     const [sessions, batches] = await Promise.all([
-      this.sessionsRepository.listForTutorsBetween(tutorIds, from, to),
-      this.batchesRepository.listForTutors(tutorIds),
+      this.sessionsRepository.listForAcademyBetween(
+        academy.id,
+        from,
+        to,
+        tutorIds,
+      ),
+      this.batchesRepository.listForAcademy(academy.id, tutorIds),
     ]);
     const enrolledByBatch = new Map(
       batches.map((b) => [b.id, Number(b.enrolled_count)]),
@@ -211,9 +209,9 @@ export class AcademyOwnerAttendanceService {
    *  this academy). */
   async getStudentAttendance(ownerUserId: string, studentId: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const { tutorIds } = await this.activeTutorIds(academy.id);
-    const enrollments =
-      await this.batchesRepository.listEnrollmentsForTutors(tutorIds);
+    const enrollments = await this.batchesRepository.listEnrollmentsForAcademy(
+      academy.id,
+    );
     const belongs = enrollments.some((e) => e.student_id === studentId);
     if (!belongs) {
       throw new NotFoundException(
@@ -221,32 +219,30 @@ export class AcademyOwnerAttendanceService {
       );
     }
 
+    // Scoped to this academy's own classes — the same student's attendance
+    // in a teacher's Individual batch (or another academy) is not shown.
     const [summary, history] = await Promise.all([
       this.attendanceRepository.summaryForStudentBetween(
         studentId,
         new Date(0),
         new Date(),
+        academy.id,
       ),
-      this.attendanceRepository.listForStudent(studentId),
+      this.attendanceRepository.listForStudent(studentId, academy.id),
     ]);
     return { summary, history: history.slice(0, 20) };
   }
 
   /** A single batch's attendance — total, per-student breakdown, recent
-   *  history. Ownership check mirrors
-   *  AcademyOwnerBatchesService.resolveMemberBatch. */
+   *  history. The batch must be owned by THIS academy; an Individual batch
+   *  or another academy's is "not found". */
   async getBatchAttendance(ownerUserId: string, batchId: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    const batch = await this.batchesRepository.findById(batchId);
+    const batch = await this.batchesRepository.findByIdInAcademy(
+      batchId,
+      academy.id,
+    );
     if (!batch) throw new NotFoundException('Batch not found');
-    const membership =
-      await this.academyMembershipsRepository.findActiveMembership(
-        academy.id,
-        batch.tutor_id,
-      );
-    if (!membership) {
-      throw new ForbiddenException("That batch isn't taught at your academy");
-    }
 
     const [students, history] = await Promise.all([
       this.batchesRepository.listEnrollments(batchId),

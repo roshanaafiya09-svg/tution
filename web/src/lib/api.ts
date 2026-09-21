@@ -1,6 +1,7 @@
 import * as Sentry from '@sentry/nextjs';
 import posthog from 'posthog-js';
 import { clearCachedFetch } from './use-cached-fetch';
+import { teachingContext } from './teaching-context';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -172,13 +173,20 @@ async function fetchWithRetry(url: string, init: RequestInit, retry: boolean): P
   }
 }
 
+/** Which teaching profile (Individual, or one academy) this request is
+ *  made in. Verified server-side on every call; a missing header means
+ *  Individual, so it can never widen access to an academy's data. */
+function contextHeaders(): Record<string, string> {
+  return { 'X-Teaching-Context': teachingContext.value };
+}
+
 async function request<T>(
   method: string,
   path: string,
   body?: unknown,
   retryOn401 = true,
 ): Promise<T> {
-  const headers: Record<string, string> = { ...AUTH_HEADERS };
+  const headers: Record<string, string> = { ...AUTH_HEADERS, ...contextHeaders() };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
@@ -214,7 +222,7 @@ async function request<T>(
  *  binary downloads must go through here to get the same Authorization
  *  header and silent 401 refresh-and-retry as every JSON call. */
 async function requestBlob(path: string, retryOn401 = true): Promise<Blob> {
-  const headers: Record<string, string> = { ...AUTH_HEADERS };
+  const headers: Record<string, string> = { ...AUTH_HEADERS, ...contextHeaders() };
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
   const res = await fetchWithRetry(
@@ -257,15 +265,18 @@ function dedupedGet<T>(path: string, run: () => Promise<T>): Promise<T> {
     const hit = cachedStatic<T>(path);
     if (hit !== undefined) return Promise.resolve(hit);
   }
-  const existing = inflightGets.get(path);
+  // Keyed by profile too: the same URL in two teaching contexts is two
+  // different requests and must never share one response.
+  const key = `${teachingContext.value}|${path}`;
+  const existing = inflightGets.get(key);
   if (existing) return existing as Promise<T>;
   const pending = run()
     .then((value) => {
       if (isStaticPath(path)) staticGetCache.set(path, { at: Date.now(), value });
       return value;
     })
-    .finally(() => inflightGets.delete(path));
-  inflightGets.set(path, pending);
+    .finally(() => inflightGets.delete(key));
+  inflightGets.set(key, pending);
   return pending;
 }
 
@@ -310,6 +321,7 @@ export async function apiLogout(): Promise<void> {
     // Unreachable backend — still sign out locally below.
   } finally {
     session.clear();
+    teachingContext.reset();
     // Logout here is a client-side redirect, not a full page reload, so
     // the module-level dashboard cache would otherwise leak this user's
     // data into the next login in the same tab.

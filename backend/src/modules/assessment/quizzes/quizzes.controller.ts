@@ -6,6 +6,7 @@ import { CurrentUser } from '../../identity/auth/decorators/current-user.decorat
 import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
 import { StudentQuizzesService } from './quizzes.service';
 import { SubmitQuizAttemptDto } from './dto/submit-quiz-attempt.dto';
+import { TeachingContextScope } from '../../teaching-context/teaching-context.guard';
 
 /** Student-facing quiz-taking (Phase 3). Shares the `/quizzes` prefix
  *  with ai/quizzes' tutor-authoring controller but every route here is
@@ -13,6 +14,7 @@ import { SubmitQuizAttemptDto } from './dto/submit-quiz-attempt.dto';
  *  none of them collide with that controller's /quizzes/me or
  *  /quizzes/:id routes. */
 @Controller('quizzes')
+@TeachingContextScope()
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class StudentQuizzesController {
   constructor(private readonly quizzesService: StudentQuizzesService) {}

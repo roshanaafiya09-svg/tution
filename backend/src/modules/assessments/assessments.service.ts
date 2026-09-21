@@ -1,8 +1,14 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { TeachingContextService } from '../teaching-context/teaching-context.service';
+import {
+  academyIdOf,
+  currentTeachingContext,
+} from '../teaching-context/teaching-context';
 import { AssessmentsRepository } from './assessments.repository';
 import { BatchesService } from '../scheduling/batches/batches.service';
 import { BatchesRepository } from '../scheduling/batches/batches.repository';
@@ -19,18 +25,33 @@ export class AssessmentsService {
     private readonly repository: AssessmentsRepository,
     private readonly batchesService: BatchesService,
     private readonly batchesRepository: BatchesRepository,
+    private readonly teachingContext: TeachingContextService,
   ) {}
 
   /** Never trusts client-supplied batch ids as authorization — every one
    *  is re-checked against the caller's own batches (§4/§32). Dedupes
    *  defensively even though the DTO already enforces uniqueness. */
-  async assertOwnsBatches(tutorId: string, batchIds: string[]): Promise<void> {
+  /** Also returns the teaching context (academy id, or null for
+   *  Individual) the assessment will live in: one assessment can only be
+   *  delivered to batches of ONE context — it can never straddle a
+   *  teacher's Individual batches and an academy's. */
+  async assertOwnsBatches(
+    tutorId: string,
+    batchIds: string[],
+  ): Promise<string | null> {
     const unique = Array.from(new Set(batchIds));
-    await Promise.all(
+    const batches = await Promise.all(
       unique.map((batchId) =>
         this.batchesService.getOwnedBatch(tutorId, batchId),
       ),
     );
+    const contexts = new Set(batches.map((b) => b.academy_id));
+    if (contexts.size > 1) {
+      throw new BadRequestException(
+        'An assessment can only be assigned to batches from one profile — not a mix of Individual and Academy batches.',
+      );
+    }
+    return batches[0]?.academy_id ?? null;
   }
 
   async getOwnedAssessment(tutorId: string, assessmentId: string) {
@@ -38,6 +59,20 @@ export class AssessmentsService {
     if (!assessment) throw new NotFoundException('Assessment not found');
     if (assessment.tutor_id !== tutorId) {
       throw new ForbiddenException('Not your assessment');
+    }
+    if (assessment.academy_id) {
+      await this.teachingContext.assertActiveMember(
+        assessment.academy_id,
+        tutorId,
+      );
+    }
+    const active = currentTeachingContext();
+    if (active && academyIdOf(active) !== assessment.academy_id) {
+      throw new ForbiddenException(
+        assessment.academy_id
+          ? 'This is an Academy assessment. Switch to that academy profile to manage it.'
+          : 'This is an Individual assessment. Switch to your Individual profile to manage it.',
+      );
     }
     return assessment;
   }
