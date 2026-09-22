@@ -80,4 +80,17 @@ export class AcademiesController {
   ) {
     return this.academiesService.requestToJoin(slug, user.sub, dto);
   }
+
+  /** "Leave Academy" from Teacher Profile > Teaching Arrangement —
+   *  immediate, teacher-initiated departure (mirrors the academy owner's
+   *  own "remove teacher" action from the other side). */
+  @Post(':slug/leave')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('tutor')
+  leaveAcademy(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('slug') slug: string,
+  ) {
+    return this.academiesService.leaveAcademy(slug, user.sub);
+  }
 }

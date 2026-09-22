@@ -45,11 +45,21 @@ const SESSION = {
   status: 'scheduled' as const,
 };
 
+const PENDING_REQUEST = {
+  id: REQUEST_ID,
+  tutor_id: TUTOR_ID,
+  academy_id: ACADEMY_ID,
+  status: 'pending' as const,
+  start_date: '2026-09-20',
+  end_date: '2026-09-20',
+};
+
 function buildService(overrides: {
   findById?: jest.Mock;
   findForAcademy?: jest.Mock;
   listSessionIdsForRequest?: jest.Mock;
   setStatus?: jest.Mock;
+  decide?: jest.Mock;
   create?: jest.Mock;
   snapshotSessions?: jest.Mock;
   findActiveMembership?: jest.Mock;
@@ -77,6 +87,17 @@ function buildService(overrides: {
     setStatus:
       overrides.setStatus ??
       jest.fn().mockResolvedValue({ id: REQUEST_ID, status: 'approved' }),
+    // Default: a successful approval that cancelled the one snapshotted
+    // session. Override with `mockResolvedValue(undefined)` to simulate
+    // "already decided by someone else" (concurrent/repeated decision),
+    // or with a different `sessions` array to simulate the DB-side
+    // eligibility filter having excluded some/all of them.
+    decide:
+      overrides.decide ??
+      jest.fn().mockResolvedValue({
+        request: { ...PENDING_REQUEST, status: 'approved' as const },
+        sessions: [SESSION],
+      }),
     create:
       overrides.create ??
       jest.fn().mockResolvedValue({ id: REQUEST_ID, status: 'pending' }),
@@ -281,32 +302,27 @@ describe('TeacherLeaveService ownership', () => {
 });
 
 describe('TeacherLeaveService.approve', () => {
-  it("cancels the affected sessions and notifies only the tutor and that class's students/parents", async () => {
-    const findForAcademy = jest.fn().mockResolvedValue({
-      id: REQUEST_ID,
-      tutor_id: TUTOR_ID,
-      status: 'pending',
-      start_date: '2026-09-20',
-      end_date: '2026-09-20',
+  it("commits the atomic decision and notifies only the tutor and that class's students/parents (TEST 5, 18, 19)", async () => {
+    const findForAcademy = jest.fn().mockResolvedValue({ ...PENDING_REQUEST });
+    const decide = jest.fn().mockResolvedValue({
+      request: { ...PENDING_REQUEST, status: 'approved' as const },
+      sessions: [SESSION],
     });
-    const setHolidayOrLeaveCancellation = jest
-      .fn()
-      .mockResolvedValue(undefined);
     const notify = jest
       .fn<Promise<void>, [NotifyInput]>()
       .mockResolvedValue(undefined);
-    const { service } = buildService({
-      findForAcademy,
-      setHolidayOrLeaveCancellation,
-      notify,
-    });
+    const { service } = buildService({ findForAcademy, decide, notify });
 
     await service.approve(ACADEMY_ID, REQUEST_ID, 'admin-1');
 
-    expect(setHolidayOrLeaveCancellation).toHaveBeenCalledWith(
-      SESSION.id,
-      'teacher_leave',
-      expect.objectContaining({ teacherLeaveRequestId: REQUEST_ID }),
+    // The atomic claim + session mutation happen together, inside the
+    // repository's own transaction — see decide's doc comment.
+    expect(decide).toHaveBeenCalledWith(
+      REQUEST_ID,
+      ACADEMY_ID,
+      'approved',
+      'admin-1',
+      null,
     );
     // One notify() call for the tutor's own approval, one for the class's roster.
     expect(notify).toHaveBeenCalledTimes(2);
@@ -317,91 +333,47 @@ describe('TeacherLeaveService.approve', () => {
       expect.arrayContaining(['student-1', 'parent-1']),
     );
     expect(rosterCall.type).toBe('class_cancelled_leave');
+    // TEST 19 — never the teacher's OWN Individual students, only the
+    // roster actually resolved from the affected Academy sessions.
+    expect(rosterCall.userIds).not.toContain(TUTOR_ID);
   });
 
-  it('only ever cancels classes the academy OWNS — an Individual class left in an old snapshot is filtered out at decision time', async () => {
-    const findForAcademy = jest.fn().mockResolvedValue({
-      id: REQUEST_ID,
-      tutor_id: TUTOR_ID,
-      status: 'pending',
-      start_date: '2026-09-20',
-      end_date: '2026-09-20',
+  it('passes a substitute straight through to the atomic decision instead of cancelling', async () => {
+    const findForAcademy = jest.fn().mockResolvedValue({ ...PENDING_REQUEST });
+    const decide = jest.fn().mockResolvedValue({
+      request: { ...PENDING_REQUEST, status: 'approved' as const },
+      sessions: [SESSION],
     });
-    const listSessionIdsForRequest = jest
-      .fn()
-      .mockResolvedValue([SESSION.id, 'individual-session']);
-    // The academy-scoped lookup drops the Individual session.
-    const findByIdsInAcademy = jest.fn().mockResolvedValue([SESSION]);
-    const setHolidayOrLeaveCancellation = jest
-      .fn()
-      .mockResolvedValue(undefined);
-    const { service } = buildService({
-      findForAcademy,
-      listSessionIdsForRequest,
-      findByIdsInAcademy,
-      setHolidayOrLeaveCancellation,
-    });
-
-    await service.approve(ACADEMY_ID, REQUEST_ID, 'admin-1');
-
-    expect(findByIdsInAcademy).toHaveBeenCalledWith(
-      [SESSION.id, 'individual-session'],
-      ACADEMY_ID,
-    );
-    expect(setHolidayOrLeaveCancellation).toHaveBeenCalledTimes(1);
-    expect(setHolidayOrLeaveCancellation).not.toHaveBeenCalledWith(
-      'individual-session',
-      expect.anything(),
-      expect.anything(),
-    );
-  });
-
-  it('assigns a substitute instead of cancelling when one is given, and rejects a double-booked substitute', async () => {
-    const findForAcademy = jest.fn().mockResolvedValue({
-      id: REQUEST_ID,
-      tutor_id: TUTOR_ID,
-      status: 'pending',
-      start_date: '2026-09-20',
-      end_date: '2026-09-20',
-    });
-    const assignSubstitute = jest.fn().mockResolvedValue(undefined);
-    const setHolidayOrLeaveCancellation = jest.fn();
-    const { service } = buildService({
-      findForAcademy,
-      assignSubstitute,
-      setHolidayOrLeaveCancellation,
-    });
+    const { service } = buildService({ findForAcademy, decide });
 
     await service.approve(ACADEMY_ID, REQUEST_ID, 'admin-1', 'substitute-1');
 
-    expect(assignSubstitute).toHaveBeenCalledWith(
-      SESSION.id,
-      'substitute-1',
+    expect(decide).toHaveBeenCalledWith(
       REQUEST_ID,
+      ACADEMY_ID,
+      'approved',
+      'admin-1',
+      'substitute-1',
     );
-    expect(setHolidayOrLeaveCancellation).not.toHaveBeenCalled();
   });
 
-  it('refuses a substitute who already has a class at the same time', async () => {
-    const findForAcademy = jest.fn().mockResolvedValue({
-      id: REQUEST_ID,
-      tutor_id: TUTOR_ID,
-      status: 'pending',
-      start_date: '2026-09-20',
-      end_date: '2026-09-20',
-    });
+  it('refuses a substitute who already has a class at the same time, before ever attempting the decision', async () => {
+    const findForAcademy = jest.fn().mockResolvedValue({ ...PENDING_REQUEST });
     const hasScheduledOverlapForTutor = jest.fn().mockResolvedValue(true);
+    const decide = jest.fn();
     const { service } = buildService({
       findForAcademy,
       hasScheduledOverlapForTutor,
+      decide,
     });
 
     await expect(
       service.approve(ACADEMY_ID, REQUEST_ID, 'admin-1', 'substitute-1'),
     ).rejects.toThrow(BadRequestException);
+    expect(decide).not.toHaveBeenCalled();
   });
 
-  it("won't let an academy approve a request that isn't theirs", async () => {
+  it("won't let an academy approve a request that isn't theirs (TEST 17)", async () => {
     const findForAcademy = jest.fn().mockResolvedValue(undefined);
     const { service } = buildService({ findForAcademy });
 
@@ -410,12 +382,10 @@ describe('TeacherLeaveService.approve', () => {
     ).rejects.toThrow(NotFoundException);
   });
 
-  it('refuses to re-decide an already-decided request', async () => {
-    const findForAcademy = jest.fn().mockResolvedValue({
-      id: REQUEST_ID,
-      tutor_id: TUTOR_ID,
-      status: 'approved',
-    });
+  it('refuses to re-decide an already-decided request read as such up front', async () => {
+    const findForAcademy = jest
+      .fn()
+      .mockResolvedValue({ ...PENDING_REQUEST, status: 'approved' });
     const { service } = buildService({ findForAcademy });
 
     await expect(
@@ -423,76 +393,111 @@ describe('TeacherLeaveService.approve', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
-  it('never cancels sessions or notifies when a concurrent decision wins the race', async () => {
-    // Regression test for the setStatus TOCTOU: findForAcademy still
-    // reports 'pending' (read before the race), but the atomic UPDATE
-    // itself finds the row already decided and matches zero rows —
-    // setStatus returning undefined models exactly that.
-    const findForAcademy = jest.fn().mockResolvedValue({
-      id: REQUEST_ID,
-      tutor_id: TUTOR_ID,
-      status: 'pending',
-      start_date: '2026-09-20',
-      end_date: '2026-09-20',
-    });
-    const setStatus = jest.fn().mockResolvedValue(undefined);
-    const setHolidayOrLeaveCancellation = jest.fn();
+  it('TEST 7/10 — refuses to approve once the teacher is no longer an active academy member', async () => {
+    const findForAcademy = jest.fn().mockResolvedValue({ ...PENDING_REQUEST });
+    const findActiveMembership = jest.fn().mockResolvedValue(undefined);
+    const decide = jest.fn();
     const notify = jest.fn();
     const { service } = buildService({
       findForAcademy,
-      setStatus,
-      setHolidayOrLeaveCancellation,
+      findActiveMembership,
+      decide,
       notify,
     });
 
     await expect(
       service.approve(ACADEMY_ID, REQUEST_ID, 'admin-1'),
     ).rejects.toThrow(ConflictException);
+    // Zero Individual (or any) side effects — the decision was never
+    // even attempted, let alone committed.
+    expect(decide).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+  });
 
-    expect(setHolidayOrLeaveCancellation).not.toHaveBeenCalled();
+  it('TEST 9 — never cancels sessions or notifies when a concurrent decision wins the race', async () => {
+    // Regression test for the decide() TOCTOU: findForAcademy still
+    // reports 'pending' (read before the race), but the atomic UPDATE
+    // inside decide() itself finds the row already decided and matches
+    // zero rows — decide() resolving undefined models exactly that.
+    const findForAcademy = jest.fn().mockResolvedValue({ ...PENDING_REQUEST });
+    const decide = jest.fn().mockResolvedValue(undefined);
+    const notify = jest.fn();
+    const { service } = buildService({ findForAcademy, decide, notify });
+
+    await expect(
+      service.approve(ACADEMY_ID, REQUEST_ID, 'admin-1'),
+    ).rejects.toThrow(ConflictException);
     expect(notify).not.toHaveBeenCalled();
   });
 
   it('still validates a substitute before attempting to claim the decision', async () => {
-    // A bad substitute must fail before setStatus is ever called, so a
+    // A bad substitute must fail before decide() is ever called, so a
     // failed approval attempt never leaves the request half-decided.
-    const findForAcademy = jest.fn().mockResolvedValue({
-      id: REQUEST_ID,
-      tutor_id: TUTOR_ID,
-      status: 'pending',
-      start_date: '2026-09-20',
-      end_date: '2026-09-20',
-    });
-    const setStatus = jest.fn();
-    const findActiveMembership = jest.fn().mockResolvedValue(undefined);
+    const findForAcademy = jest.fn().mockResolvedValue({ ...PENDING_REQUEST });
+    // The teacher-membership re-check and the substitute-membership
+    // check both go through findActiveMembership — only the substitute
+    // lookup should fail here.
+    const findActiveMembership = jest
+      .fn()
+      .mockImplementation((_academyId: string, tutorId: string) =>
+        Promise.resolve(tutorId === TUTOR_ID ? { id: 'm1' } : undefined),
+      );
+    const decide = jest.fn();
     const { service } = buildService({
       findForAcademy,
-      setStatus,
       findActiveMembership,
+      decide,
     });
 
     await expect(
       service.approve(ACADEMY_ID, REQUEST_ID, 'admin-1', 'substitute-1'),
     ).rejects.toThrow(BadRequestException);
+    expect(decide).not.toHaveBeenCalled();
+  });
 
-    expect(setStatus).not.toHaveBeenCalled();
+  it('TEST 20 — sessions the DB-side eligibility check excluded (completed/cancelled/wrong context) are simply absent from the notified roster', async () => {
+    // decide() itself performs the eligibility filtering inside its
+    // transaction (see its repository-level doc comment / e2e coverage);
+    // at the service level what matters is that the service only ever
+    // acts on whatever `decide()` says was actually mutated.
+    const findForAcademy = jest.fn().mockResolvedValue({ ...PENDING_REQUEST });
+    const decide = jest.fn().mockResolvedValue({
+      request: { ...PENDING_REQUEST, status: 'approved' as const },
+      sessions: [], // nothing was eligible this time
+    });
+    const notify = jest.fn().mockResolvedValue(undefined);
+    const { service } = buildService({ findForAcademy, decide, notify });
+
+    await service.approve(ACADEMY_ID, REQUEST_ID, 'admin-1');
+
+    // Only the tutor's own approval notice — no roster notification for
+    // classes that were never actually cancelled.
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'teacher_leave_approved' }),
+    );
   });
 });
 
 describe('TeacherLeaveService.reject', () => {
-  it('notifies only the requesting tutor, never the whole academy', async () => {
-    const findForAcademy = jest.fn().mockResolvedValue({
-      id: REQUEST_ID,
-      tutor_id: TUTOR_ID,
-      status: 'pending',
-      start_date: '2026-09-20',
-      end_date: '2026-09-20',
+  it('notifies only the requesting tutor, never the whole academy (TEST 6, 11)', async () => {
+    const findForAcademy = jest.fn().mockResolvedValue({ ...PENDING_REQUEST });
+    const decide = jest.fn().mockResolvedValue({
+      request: { ...PENDING_REQUEST, status: 'rejected' as const },
+      sessions: [],
     });
     const notify = jest.fn().mockResolvedValue(undefined);
-    const { service } = buildService({ findForAcademy, notify });
+    const { service } = buildService({ findForAcademy, decide, notify });
 
     await service.reject(ACADEMY_ID, REQUEST_ID, 'admin-1');
 
+    expect(decide).toHaveBeenCalledWith(
+      REQUEST_ID,
+      ACADEMY_ID,
+      'rejected',
+      'admin-1',
+      null,
+    );
     expect(notify).toHaveBeenCalledTimes(1);
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -502,22 +507,25 @@ describe('TeacherLeaveService.reject', () => {
     );
   });
 
-  it('never notifies when a concurrent decision wins the race', async () => {
-    const findForAcademy = jest.fn().mockResolvedValue({
-      id: REQUEST_ID,
-      tutor_id: TUTOR_ID,
-      status: 'pending',
-      start_date: '2026-09-20',
-      end_date: '2026-09-20',
-    });
-    const setStatus = jest.fn().mockResolvedValue(undefined);
+  it('TEST 8 — repeated rejection is idempotent: a second decide() call reports the conflict, no duplicate notification', async () => {
+    const findForAcademy = jest.fn().mockResolvedValue({ ...PENDING_REQUEST });
+    const decide = jest.fn().mockResolvedValue(undefined);
     const notify = jest.fn();
-    const { service } = buildService({ findForAcademy, setStatus, notify });
+    const { service } = buildService({ findForAcademy, decide, notify });
 
     await expect(
       service.reject(ACADEMY_ID, REQUEST_ID, 'admin-1'),
     ).rejects.toThrow(ConflictException);
     expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("won't let an academy reject a request that isn't theirs (TEST 17)", async () => {
+    const findForAcademy = jest.fn().mockResolvedValue(undefined);
+    const { service } = buildService({ findForAcademy });
+
+    await expect(
+      service.reject(OTHER_ACADEMY_ID, REQUEST_ID, 'admin-1'),
+    ).rejects.toThrow(NotFoundException);
   });
 });
 

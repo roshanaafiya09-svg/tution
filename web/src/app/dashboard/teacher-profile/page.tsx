@@ -8,6 +8,7 @@ import {
   CalendarClock,
   ExternalLink,
   Languages,
+  LogOut,
   MapPin,
   Pencil,
   School,
@@ -38,6 +39,7 @@ import {
   Button,
   buttonVariants,
   CardSkeleton,
+  ConfirmDialog,
   ErrorState,
   Field,
   InlineError,
@@ -184,6 +186,8 @@ export default function TeacherProfilePage() {
   const [academyPoolError, setAcademyPoolError] = useState(false);
   const [selectedAcademy, setSelectedAcademy] = useState<AcademyCardResult | null>(null);
   const [sendingJoinRequest, setSendingJoinRequest] = useState(false);
+  const [leaveTarget, setLeaveTarget] = useState<TutorAcademyAffiliation | null>(null);
+  const [leavingAcademy, setLeavingAcademy] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -292,6 +296,28 @@ export default function TeacherProfilePage() {
       });
     } finally {
       setSendingJoinRequest(false);
+    }
+  }
+
+  /** Immediate, no-approval departure — mirrors what happens when the
+   *  academy itself removes a teacher, just triggered from this side.
+   *  Never touches Individual activity; historical Academy records and
+   *  any already-scheduled future Academy classes stay with the academy. */
+  async function confirmLeaveAcademy() {
+    if (!leaveTarget) return;
+    setLeavingAcademy(true);
+    try {
+      await api.post(`/marketplace/academies/${leaveTarget.slug}/leave`, {});
+      toast({ title: `You've left ${leaveTarget.name}.`, variant: 'info' });
+      setLeaveTarget(null);
+      await membershipsQuery.reload();
+    } catch (err) {
+      toast({
+        title: err instanceof ApiError ? err.message : "Couldn't leave that academy",
+        variant: 'error',
+      });
+    } finally {
+      setLeavingAcademy(false);
     }
   }
 
@@ -1149,14 +1175,27 @@ export default function TeacherProfilePage() {
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {academies.map((a) => (
-                      <Link
+                      <div
                         key={a.id}
-                        href={`/dashboard/find-an-academy/${a.slug}`}
-                        className="flex items-center gap-1.5 rounded-full bg-neutral-100 px-3 py-1 text-sm text-neutral-700 transition-colors hover:bg-brand-50 hover:text-brand-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-brand-500/15 dark:hover:text-brand-200"
+                        className="flex items-center gap-1 rounded-full bg-neutral-100 pl-3 pr-1 py-1 text-sm text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
                       >
-                        <School className="h-3.5 w-3.5" aria-hidden />
-                        {a.name}
-                      </Link>
+                        <Link
+                          href={`/dashboard/find-an-academy/${a.slug}`}
+                          className="flex items-center gap-1.5 transition-colors hover:text-brand-700 dark:hover:text-brand-200"
+                        >
+                          <School className="h-3.5 w-3.5" aria-hidden />
+                          {a.name}
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => setLeaveTarget(a)}
+                          title={`Leave ${a.name}`}
+                          aria-label={`Leave ${a.name}`}
+                          className="rounded-full p-1 text-neutral-400 transition-colors hover:bg-error-bg hover:text-error dark:text-neutral-500 dark:hover:bg-error/15 dark:hover:text-error-dark"
+                        >
+                          <LogOut className="h-3 w-3" aria-hidden />
+                        </button>
+                      </div>
                     ))}
                   </div>
                   <Link
@@ -1264,6 +1303,16 @@ export default function TeacherProfilePage() {
           </>
         )
       )}
+
+      <ConfirmDialog
+        open={leaveTarget !== null}
+        onOpenChange={(open) => !open && setLeaveTarget(null)}
+        onConfirm={confirmLeaveAcademy}
+        title={leaveTarget ? `Leave ${leaveTarget.name}?` : 'Leave academy?'}
+        description="You'll lose access to this academy's classes and students. Your Individual teaching is never affected, and the academy keeps your teaching history."
+        confirmLabel={leavingAcademy ? 'Leaving…' : 'Leave'}
+        danger
+      />
     </div>
   );
 }

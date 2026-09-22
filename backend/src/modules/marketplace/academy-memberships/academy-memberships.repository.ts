@@ -182,12 +182,45 @@ export class AcademyMembershipsRepository {
       .executeTakeFirstOrThrow();
   }
 
+  /**
+   * Ends a membership AND, in the same transaction, retires any leave
+   * request the departing teacher still has pending against THIS academy
+   * — a pending request left dangling could otherwise be approved later
+   * against a teacher who is no longer a member, generating a stray
+   * `teacher_leave` cancellation with no real membership behind it (see
+   * TeacherLeaveService.approve's defense-in-depth membership re-check
+   * for the other half of this guarantee). 'cancelled' is the same
+   * terminal status a teacher's own withdraw() already uses — this is
+   * simply the automatic, membership-driven route to it, never decided
+   * by an academy admin (`decided_by` stays null, same as withdraw()).
+   *
+   * Reaches directly into `teacher_leave_requests` — a table owned by
+   * the holidays module — rather than injecting TeacherLeaveService,
+   * the same "repository crosses table boundaries directly when a
+   * shared transaction needs it" pattern AttendanceRepository already
+   * uses for `parent_child_links` (see its doc comment). This also
+   * sidesteps a real module cycle: AcademyOwnerModule/HolidaysModule
+   * already depend on AcademiesModule, so wiring the dependency the
+   * other way round here is not an option.
+   */
   markLeft(id: string) {
-    return this.db
-      .updateTable('academy_memberships')
-      .set({ status: 'left', left_at: new Date() })
-      .where('id', '=', id)
-      .returningAll()
-      .executeTakeFirstOrThrow();
+    return this.db.transaction().execute(async (trx) => {
+      const membership = await trx
+        .updateTable('academy_memberships')
+        .set({ status: 'left', left_at: new Date() })
+        .where('id', '=', id)
+        .returningAll()
+        .executeTakeFirstOrThrow();
+
+      await trx
+        .updateTable('teacher_leave_requests')
+        .set({ status: 'cancelled', decided_at: new Date() })
+        .where('academy_id', '=', membership.academy_id)
+        .where('tutor_id', '=', membership.tutor_id)
+        .where('status', '=', 'pending')
+        .execute();
+
+      return membership;
+    });
   }
 }

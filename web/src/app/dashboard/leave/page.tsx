@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { CalendarOff, Plus } from 'lucide-react';
 import { api } from '@/lib/api';
+import { academyContext } from '@/lib/teaching-context';
 import type { LeaveAffectedSession, Session, TeacherLeaveRequest } from '@/lib/types';
 import {
   Button,
@@ -89,10 +90,18 @@ export default function TeacherLeavePage() {
 
   // Classes the leave could cover. A failure here must never read as "no classes
   // in that range" — that would let someone file a specific-classes leave against nothing.
+  // Scoped to the SELECTED academy's own profile regardless of whichever
+  // profile happens to be globally active elsewhere in the app — otherwise
+  // a teacher who belongs to 2+ academies (or is currently viewing
+  // Individual) could be shown the wrong academy's classes, or their
+  // Individual ones, in a leave request meant for a different academy.
   const candidateQuery = useApiQuery(
-    () => api.get<Session[]>(`/sessions/me?from=${form.startDate}&to=${addDays(form.endDate || form.startDate, 1)}`),
-    [form.startDate, form.endDate],
-    { enabled: showForm && form.leaveType === 'specific_classes' && Boolean(form.startDate) },
+    () =>
+      api.get<Session[]>(`/sessions/me?from=${form.startDate}&to=${addDays(form.endDate || form.startDate, 1)}`, {
+        context: academyContext(form.academyId),
+      }),
+    [form.startDate, form.endDate, form.academyId],
+    { enabled: showForm && form.leaveType === 'specific_classes' && Boolean(form.startDate) && Boolean(form.academyId) },
   );
   const candidateSessions = candidateQuery.data ?? [];
 

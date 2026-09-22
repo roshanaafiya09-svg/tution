@@ -1,4 +1,4 @@
-import { teachingContext } from '../teaching-context';
+import { teachingContext, type TeachingContextValue } from '../teaching-context';
 import { clearCachedFetch } from '../use-cached-fetch';
 import { apiConfig } from './config';
 import { ApiError, ErrorCodes, isAbortError } from './errors';
@@ -207,8 +207,12 @@ interface RequestSpec {
   body?: unknown;
   /** Attach the bearer token and run 401 refresh handling. Default true. */
   auth?: boolean;
-  /** Attach X-Teaching-Context. Default true (only meaningful when authed). */
-  context?: boolean;
+  /** Attach X-Teaching-Context. `false` omits it; a specific value
+   *  overrides the ambient `teachingContext.value` for just this one
+   *  call (e.g. previewing another academy's data without switching the
+   *  teacher's globally active profile); omitted uses the ambient value.
+   *  Default: the ambient value. */
+  context?: boolean | TeachingContextValue;
   /** Automatically retry transient failures. Default false. */
   retry?: boolean;
   timeoutMs?: number;
@@ -241,7 +245,10 @@ async function attemptOnce<T>(
     ? { ...(spec.headers ?? {}) }
     : { ...AUTH_HEADERS, ...(spec.headers ?? {}), 'X-Request-Id': requestId };
   if (!spec.absoluteUrl) {
-    if (authed && spec.context !== false) headers['X-Teaching-Context'] = teachingContext.value;
+    if (authed && spec.context !== false) {
+      headers['X-Teaching-Context'] =
+        typeof spec.context === 'string' ? spec.context : teachingContext.value;
+    }
     if (spec.body !== undefined) headers['Content-Type'] = 'application/json';
     if (tokenUsed) headers.Authorization = `Bearer ${tokenUsed}`;
   }
@@ -554,6 +561,9 @@ export interface GetOptions {
   timeoutMs?: number;
   /** Set false to opt a GET out of automatic transient retry. */
   retry?: boolean;
+  /** Override X-Teaching-Context for just this call — see RequestSpec's
+   *  `context` field. Defaults to the ambient teachingContext.value. */
+  context?: TeachingContextValue;
 }
 
 export interface MutationOptions {
@@ -565,6 +575,7 @@ export interface MutationOptions {
 
 export const api = {
   get: <T>(path: string, options: GetOptions = {}): Promise<T> => {
+    const scope = options.context ?? teachingContext.value;
     const run = () =>
       execute<T>({
         method: 'GET',
@@ -572,9 +583,12 @@ export const api = {
         retry: options.retry ?? true,
         timeoutMs: options.timeoutMs,
         signal: options.signal,
+        context: options.context,
       });
     // A caller-supplied signal is per-caller, so it cannot share a request.
-    return options.signal ? run() : dedupedGet<T>(path, teachingContext.value, run);
+    // Keyed by the actual scope used (an override or the ambient value) —
+    // never conflating a context-overridden call with the ambient one.
+    return options.signal ? run() : dedupedGet<T>(path, scope, run);
   },
   post: <T>(path: string, body?: unknown, options: MutationOptions = {}) =>
     execute<T>({ method: 'POST', path, body, ...options }),

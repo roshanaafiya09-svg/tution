@@ -398,6 +398,61 @@ export class AcademiesService {
     return this.academyMembershipRequestsRepository.listForTutor(tutorId);
   }
 
+  /**
+   * Teacher Profile > Teaching Arrangement > "Leave Academy" — the
+   * teacher-initiated counterpart to the academy owner's existing
+   * removeTeacher (AcademyOwnerService). Immediate, no approval step:
+   * the same one-sided departure the academy owner's own action already
+   * performs, just triggered from the other side of the relationship.
+   * Deactivates the membership only (AcademyMembershipsRepository.
+   * markLeft's guarantees: never deletes/modifies the teacher's account,
+   * profile, batches, students, or history; also retires any leave
+   * request still pending against this academy in the same transaction,
+   * so it can never later be approved against a teacher who has already
+   * left — see markLeft's doc comment). Future Academy classes already
+   * scheduled to this teacher stay Academy-owned; the academy manages
+   * them from here on (cancel/reassign), same as after an
+   * academy-initiated removal.
+   */
+  async leaveAcademy(slug: string, tutorId: string) {
+    const academy = await this.academiesRepository.findBySlug(slug);
+    if (!academy) {
+      throw new NotFoundException('Academy not found');
+    }
+    const membership =
+      await this.academyMembershipsRepository.findActiveMembership(
+        academy.id,
+        tutorId,
+      );
+    if (!membership) {
+      throw new BadRequestException(
+        "You aren't an active member of this academy",
+      );
+    }
+
+    const left = await this.academyMembershipsRepository.markLeft(
+      membership.id,
+    );
+
+    if (academy.owner_user_id) {
+      try {
+        await this.notificationsService.notify({
+          userIds: [academy.owner_user_id],
+          type: 'academy_teacher_left',
+          title: 'A teacher has left',
+          body: 'A teacher has left your academy.',
+          payload: { academyId: academy.id, tutorId },
+        });
+      } catch (err) {
+        this.logger.warn(
+          `Failed to notify academy owner of teacher departure (${tutorId} from ${academy.id}): ${err}`,
+        );
+      }
+    }
+
+    return left;
+  }
+
   /** Distinct students enrolled in the academy's OWN batches. A member
    *  teacher's Individual students and marketplace bookings are their own
    *  business and are never counted towards the academy. */

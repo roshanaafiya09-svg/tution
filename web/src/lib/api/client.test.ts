@@ -272,6 +272,35 @@ describe('api client — teaching profile (Individual / Academy) is attached cen
     ]);
   });
 
+  it('a per-call context override wins over the ambient profile, without changing it for later calls', async () => {
+    session.set('t', 'c');
+    const OTHER_ACADEMY_ID = 'academy-other';
+    const m = mockFetch({ 'GET /leave-candidates': ok([]) });
+    // Ambient profile stays Individual throughout.
+    await api.get('/leave-candidates', { context: academyContext(ACADEMY_ID) });
+    await api.get('/leave-candidates', { context: academyContext(OTHER_ACADEMY_ID) });
+    await api.get('/leave-candidates');
+    expect(m.calls.map((c) => c.headers['x-teaching-context'])).toEqual([
+      `academy:${ACADEMY_ID}`,
+      `academy:${OTHER_ACADEMY_ID}`,
+      'individual',
+    ]);
+    expect(teachingContext.value).toBe('individual');
+  });
+
+  it('a context-overridden call and the ambient one never share a deduped in-flight response', async () => {
+    session.set('t', 'c');
+    const m = mockFetch({
+      'GET /leave-candidates': (call) =>
+        call.headers['x-teaching-context'] === 'individual' ? ok(['individual']) : ok(['academy']),
+    });
+    const overridden = api.get<string[]>('/leave-candidates', { context: academyContext(ACADEMY_ID) });
+    const ambient = api.get<string[]>('/leave-candidates');
+    expect(await overridden).toEqual(['academy']);
+    expect(await ambient).toEqual(['individual']);
+    expect(m.to('GET /leave-candidates')).toHaveLength(2);
+  });
+
   it('the same URL in two profiles is two requests — responses are never shared across profiles', async () => {
     session.set('t', 'c');
     const m = mockFetch({

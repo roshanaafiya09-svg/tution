@@ -210,29 +210,35 @@ export class TeacherLeaveService {
   }
 
   async reject(academyId: string, id: string, decidedBy: string) {
-    const request = await this.getPendingForAcademy(academyId, id);
-    // Atomic claim of the decision — see setStatus's doc comment. Only
-    // the caller that wins this ever sends the rejection notification
-    // below.
-    const updated = await this.repository.setStatus(id, 'rejected', decidedBy);
-    if (!updated) {
+    await this.getPendingForAcademy(academyId, id);
+    // Atomic claim + commit of the decision — see TeacherLeaveRepository.
+    // decide's doc comment. A rejection never touches sessions (decision
+    // !== 'approved' short-circuits before any session query/mutation).
+    const result = await this.repository.decide(
+      id,
+      academyId,
+      'rejected',
+      decidedBy,
+      null,
+    );
+    if (!result) {
       throw new ConflictException(
         'This leave request has already been decided',
       );
     }
 
     const dateLabel = this.formatDateLabel(
-      request.start_date,
-      request.end_date,
+      result.request.start_date,
+      result.request.end_date,
     );
     await this.notificationsService.notify({
-      userIds: [request.tutor_id],
+      userIds: [result.request.tutor_id],
       type: 'teacher_leave_rejected',
       title: 'Leave request rejected',
       body: `Your leave request for ${dateLabel} has been rejected by the academy.`,
       payload: { leaveRequestId: id },
     });
-    return { ...request, status: 'rejected' as const };
+    return result.request;
   }
 
   async approve(
@@ -242,20 +248,35 @@ export class TeacherLeaveService {
     substituteTutorId?: string,
   ) {
     const request = await this.getPendingForAcademy(academyId, id);
-    const sessionIds = await this.repository.listSessionIdsForRequest(id);
-    // Re-scoped to the academy's own classes at decision time: a request
-    // snapshotted before teaching contexts existed may list the teacher's
-    // Individual classes, which an academy decision must never cancel.
-    const sessions = await this.sessionsRepository.findByIdsInAcademy(
-      sessionIds,
-      academyId,
-    );
 
-    // Validate first (pure reads, no mutation) — a bad substitute must
-    // fail before the decision is committed below, not after, or the
-    // request would be left 'approved' with no substitute assigned and
-    // no sessions cancelled either.
+    // Defense-in-depth: a pending request is already auto-cancelled the
+    // instant the teacher's membership ends (see
+    // AcademyMembershipsRepository.markLeft), so in normal operation this
+    // never trips — the atomic claim below would already find the row no
+    // longer 'pending'. This fails closed instead of silently approving
+    // into a stray teacher_leave cancellation if that invariant is ever
+    // broken elsewhere.
+    const membership =
+      await this.academyMembershipsRepository.findActiveMembership(
+        academyId,
+        request.tutor_id,
+      );
+    if (!membership) {
+      throw new ConflictException(
+        "This teacher is no longer an active member of the academy — the leave request can't be approved",
+      );
+    }
+
+    // Validate a substitute first (pure reads, no mutation) — a bad
+    // substitute must fail before the decision is committed below, not
+    // after, or the request would be left 'approved' with no substitute
+    // assigned and no sessions cancelled either.
     if (substituteTutorId) {
+      const sessionIds = await this.repository.listSessionIdsForRequest(id);
+      const sessions = await this.sessionsRepository.findByIdsInAcademy(
+        sessionIds,
+        academyId,
+      );
       await this.validateSubstitute(
         academyId,
         request.tutor_id,
@@ -264,37 +285,31 @@ export class TeacherLeaveService {
       );
     }
 
-    // Atomic claim of the decision — see setStatus's doc comment. Only
-    // the caller that wins this ever mutates sessions or sends
-    // notifications below, so a double-click/concurrent decide can never
-    // cancel/reassign the same classes twice.
-    const updated = await this.repository.setStatus(id, 'approved', decidedBy);
-    if (!updated) {
+    // Atomic claim + session mutation, together in one transaction — see
+    // TeacherLeaveRepository.decide's doc comment. Only the caller that
+    // wins this ever mutates sessions or sends notifications below, so a
+    // double-click/concurrent decide can never cancel/reassign the same
+    // classes twice, and a crash mid-way can never leave some sessions
+    // cancelled and others untouched.
+    const result = await this.repository.decide(
+      id,
+      academyId,
+      'approved',
+      decidedBy,
+      substituteTutorId ?? null,
+    );
+    if (!result) {
       throw new ConflictException(
         'This leave request has already been decided',
       );
     }
 
-    if (substituteTutorId) {
-      await this.assignSubstituteToSessions(sessions, substituteTutorId, id);
-    } else {
-      for (const session of sessions) {
-        await this.sessionsRepository.setHolidayOrLeaveCancellation(
-          session.id,
-          'teacher_leave',
-          {
-            teacherLeaveRequestId: id,
-          },
-        );
-      }
-    }
-
     const dateLabel = this.formatDateLabel(
-      request.start_date,
-      request.end_date,
+      result.request.start_date,
+      result.request.end_date,
     );
     await this.notificationsService.notify({
-      userIds: [request.tutor_id],
+      userIds: [result.request.tutor_id],
       type: 'teacher_leave_approved',
       title: 'Leave approved',
       body: `Your leave request for ${dateLabel} has been approved.`,
@@ -303,11 +318,11 @@ export class TeacherLeaveService {
 
     await this.notifyAffectedClasses(
       academyId,
-      sessions,
+      result.sessions,
       substituteTutorId ?? null,
       id,
     );
-    return { ...request, status: 'approved' as const };
+    return result.request;
   }
 
   /** Assigns (or changes) a substitute for an already-approved leave
