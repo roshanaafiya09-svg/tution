@@ -24,6 +24,7 @@ function buildService(overrides: {
   getOwnedSession?: jest.Mock;
   findEnrollment?: jest.Mock;
   upsert?: jest.Mock;
+  listForSession?: jest.Mock;
 }) {
   const getOwnedSession =
     overrides.getOwnedSession ??
@@ -41,7 +42,11 @@ function buildService(overrides: {
 
   const upsert =
     overrides.upsert ?? jest.fn().mockResolvedValue({ id: 'attendance-1' });
-  const repository = { upsert } as unknown as AttendanceRepository;
+  const listForSession = overrides.listForSession ?? jest.fn().mockResolvedValue([]);
+  const repository = {
+    upsert,
+    listForSession,
+  } as unknown as AttendanceRepository;
 
   const batchesService = {} as unknown as BatchesService;
   const analytics = { capture: jest.fn() } as unknown as AnalyticsService;
@@ -59,7 +64,7 @@ function buildService(overrides: {
     notificationsService,
   );
 
-  return { service, getOwnedSession, upsert };
+  return { service, getOwnedSession, upsert, listForSession };
 }
 
 describe('AttendanceService.markManually — holiday/cancelled-class guard', () => {
@@ -87,5 +92,50 @@ describe('AttendanceService.markManually — holiday/cancelled-class guard', () 
     await service.markManually(TUTOR_ID, SESSION_ID, 'student-1', 'present');
 
     expect(upsert).toHaveBeenCalled();
+  });
+
+  it('refuses to mark a student who is not an active enrollment in the session batch (TEST 10)', async () => {
+    const findEnrollment = jest.fn().mockResolvedValue(undefined);
+    const { service } = buildService({ findEnrollment });
+
+    await expect(
+      service.markManually(TUTOR_ID, SESSION_ID, 'stranger', 'present'),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('refuses to mark a student whose enrollment has left (not currently active)', async () => {
+    const findEnrollment = jest.fn().mockResolvedValue({ status: 'left' });
+    const { service } = buildService({ findEnrollment });
+
+    await expect(
+      service.markManually(TUTOR_ID, SESSION_ID, 'former-student', 'present'),
+    ).rejects.toThrow(BadRequestException);
+  });
+});
+
+describe('AttendanceService.listForSession — roster-based listing (C4 fix)', () => {
+  it("builds the roster from the session's batch, not from the session id alone, so listForSession queries the full expected roster rather than only rows that already exist", async () => {
+    const getOwnedSession = jest.fn().mockResolvedValue({
+      id: SESSION_ID,
+      batch_id: 'batch-42',
+      status: 'scheduled',
+    });
+    const { service, listForSession } = buildService({ getOwnedSession });
+
+    await service.listForSession(TUTOR_ID, SESSION_ID);
+
+    expect(listForSession).toHaveBeenCalledWith(SESSION_ID, 'batch-42');
+  });
+
+  it('still enforces ownership before listing — an unowned session throws before the roster is ever queried', async () => {
+    const getOwnedSession = jest
+      .fn()
+      .mockRejectedValue(new Error('not your session'));
+    const { service, listForSession } = buildService({ getOwnedSession });
+
+    await expect(
+      service.listForSession(TUTOR_ID, SESSION_ID),
+    ).rejects.toThrow('not your session');
+    expect(listForSession).not.toHaveBeenCalled();
   });
 });

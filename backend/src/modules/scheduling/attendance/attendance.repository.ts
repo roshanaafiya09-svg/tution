@@ -10,23 +10,40 @@ export type AttendanceStatus = 'present' | 'absent' | 'late';
 export class AttendanceRepository {
   constructor(@Inject(KYSELY_CONNECTION) private readonly db: Kysely<DB>) {}
 
-  listForSession(sessionId: string) {
+  /**
+   * The attendance roster for one session — every student ACTIVELY
+   * ENROLLED in the session's batch, left-joined to whatever attendance
+   * row exists for this specific session (there may be none yet). This is
+   * the fix for C4: the list must be built from the expected roster, not
+   * from "students who happen to have an attendance row" — a student who
+   * never tapped Join (or an offline class where nobody taps anything)
+   * must still appear, with status `null` meaning Unmarked rather than
+   * being silently dropped or treated as absent.
+   */
+  listForSession(sessionId: string, batchId: string) {
     return this.db
-      .selectFrom('attendance')
+      .selectFrom('enrollments')
       .leftJoin(
         'profiles_student',
         'profiles_student.user_id',
-        'attendance.student_id',
+        'enrollments.student_id',
+      )
+      .leftJoin('attendance', (join) =>
+        join
+          .onRef('attendance.student_id', '=', 'enrollments.student_id')
+          .on('attendance.session_id', '=', sessionId),
       )
       .select([
+        'enrollments.student_id',
         'attendance.id',
-        'attendance.student_id',
         'attendance.status',
         'attendance.joined_at',
         'attendance.method',
         'profiles_student.display_name',
       ])
-      .where('attendance.session_id', '=', sessionId)
+      .where('enrollments.batch_id', '=', batchId)
+      .where('enrollments.status', '=', 'active')
+      .orderBy('profiles_student.display_name')
       .execute();
   }
 

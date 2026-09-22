@@ -34,13 +34,32 @@ export default function SessionAttendancePage() {
     }
   }
 
+  async function markAllPresent() {
+    if (!rows) return;
+    try {
+      await Promise.all(
+        rows.map((row) => api.post(`/attendance/session/${id}/mark`, { studentId: row.student_id, status: 'present' })),
+      );
+      await load();
+    } catch {
+      toast({ title: 'Could not update attendance', variant: 'error' });
+    }
+  }
+
   return (
     <div>
       <TeacherPageHeader
         eyebrow="Classroom management"
         title="Attendance"
-        description="Students who tapped Join are marked automatically — override anything that's wrong."
+        description="Every enrolled student is shown here — a tapped Join pre-fills Present, but you have the final say."
         back={{ href: '/dashboard/batches', label: 'Batches' }}
+        action={
+          rows && rows.length > 0 ? (
+            <Button variant="secondary" size="sm" onClick={() => void markAllPresent()}>
+              Mark all Present
+            </Button>
+          ) : undefined
+        }
       />
 
       <div className="mt-8">
@@ -51,17 +70,19 @@ export default function SessionAttendancePage() {
         ) : rows.length === 0 ? (
           <EmptyPanel
             icon={UserCheck}
-            title="No attendance recorded yet"
-            description="Attendance appears here as students join the class."
+            title="No students enrolled"
+            description="Enroll students in this batch to take attendance for this class."
           />
         ) : (
           <AcademicCard className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
             {rows.map((row) => (
               <StudentCard
-                key={row.id}
+                key={row.student_id}
                 name={row.display_name ?? row.student_id.slice(0, 8)}
-                meta={row.method === 'join_tap' ? 'Tapped Join' : 'Marked by you'}
-                badge={<StatusBadge status={row.status} />}
+                meta={
+                  row.method === 'join_tap' ? 'Tapped Join' : row.method === 'manual' ? 'Marked by you' : 'Not marked yet'
+                }
+                badge={<StatusBadge status={row.status ?? 'unmarked'} />}
                 className="flex-wrap"
                 action={
                   <div className="flex gap-1">

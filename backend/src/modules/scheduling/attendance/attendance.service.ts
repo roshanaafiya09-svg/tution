@@ -41,8 +41,11 @@ export class AttendanceService {
   ) {}
 
   async listForSession(tutorId: string, sessionId: string) {
-    await this.sessionsService.getOwnedSession(tutorId, sessionId);
-    return this.repository.listForSession(sessionId);
+    const session = await this.sessionsService.getOwnedSession(
+      tutorId,
+      sessionId,
+    );
+    return this.repository.listForSession(sessionId, session.batch_id);
   }
 
   async markManually(

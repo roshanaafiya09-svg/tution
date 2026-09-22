@@ -293,12 +293,16 @@ export interface Announcement {
   created_at: string;
 }
 
+/** One row per student EXPECTED for the session (active enrollment in its
+ *  batch), whether or not attendance has been recorded yet. `status: null`
+ *  means Unmarked — not absent, not present — and `id`/`method`/`joined_at`
+ *  are null until the teacher (or a join-tap) records something. */
 export interface AttendanceRow {
-  id: string;
+  id: string | null;
   student_id: string;
-  status: 'present' | 'absent' | 'late';
+  status: 'present' | 'absent' | 'late' | null;
   joined_at: string | null;
-  method: 'join_tap' | 'manual';
+  method: 'join_tap' | 'manual' | null;
   display_name: string | null;
 }
 

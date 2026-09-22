@@ -8,6 +8,7 @@ const STATUS_STYLES: Record<string, string> = {
   present: 'bg-success-bg text-success dark:bg-success/15 dark:text-success-dark',
   absent: 'bg-error-bg text-error dark:bg-error/15 dark:text-error-dark',
   late: 'bg-warning-bg text-warning dark:bg-warning/15 dark:text-warning-dark',
+  unmarked: 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400',
   scheduled: 'bg-info-bg text-info dark:bg-info/15 dark:text-info-dark',
   completed: 'bg-success-bg text-success dark:bg-success/15 dark:text-success-dark',
   cancelled: 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400',
