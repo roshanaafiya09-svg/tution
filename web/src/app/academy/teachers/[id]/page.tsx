@@ -12,15 +12,15 @@ import { academyInitials } from '@/lib/academies';
 export default function AcademyTeacherDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [teacher, setTeacher] = useState<AcademyTeacherDetail | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setTeacher(null);
     api
       .get<AcademyTeacherDetail>(`/academy/me/teachers/${id}`)
       .then(setTeacher)
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [id]);
 
   useEffect(() => {
@@ -28,7 +28,7 @@ export default function AcademyTeacherDetailPage() {
   }, [load]);
 
   if (loadError) {
-    return <ErrorState description="Could not load this teacher. Check your connection and try again." onRetry={load} />;
+    return <ErrorState error={loadError} what="this teacher" onRetry={load} />;
   }
 
   if (!teacher) {

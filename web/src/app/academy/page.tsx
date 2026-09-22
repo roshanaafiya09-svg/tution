@@ -35,54 +35,57 @@ import { buttonVariants, CardSkeleton, ErrorState, StatCard, StatusBadge } from 
 import { AcademyCard, AcademyHero, type DayPeriod } from '@/components/academy';
 import { SectionHeader, ActionCard, ActivityFeed, EmptyPanel, type ActivityItem } from '@/components/dashboard';
 import { useAcademyDashboard } from '@/components/academy-shell';
-
-interface AcademyBundle {
-  profile: AcademyOwnerProfile;
-  pendingRequests: AcademyPendingRequest[];
-  photos: AcademyPhoto[];
-  kyc: AcademyKycVerificationStatus | null;
-  todaysHolidays: EffectiveHolidays;
-  today: AcademyToday;
-}
+import { useApiQuery } from '@/lib/query';
 
 export default function AcademyTodayPage() {
   const { hasAcademy } = useAcademyDashboard();
 
-  const fetchBundle = useCallback(async (): Promise<AcademyBundle | null> => {
+  // The core: profile + today's overview. Without these there is nothing to
+  // show. A 404 means "no academy yet" (handled by hasAcademy below), not a
+  // failure. Pending teacher requests, photos, KYC and today's holiday are
+  // each their own widget query — one failing never blanks another.
+  const fetchBundle = useCallback(async (): Promise<{ profile: AcademyOwnerProfile; today: AcademyToday } | null> => {
     if (hasAcademy === false) return null;
     try {
-      const profileRes = await api.get<AcademyOwnerProfile>('/academy/me');
-      const todayDate = new Date().toISOString().slice(0, 10);
-      const [pendingRes, photosRes, kycRes, todaysHolidaysRes, todayRes] = await Promise.all([
-        api.get<AcademyPendingRequest[]>('/academy/me/teachers/pending').catch(() => [] as AcademyPendingRequest[]),
-        api.get<AcademyPhoto[]>('/academy/me/photos').catch(() => [] as AcademyPhoto[]),
-        api.get<AcademyKycVerificationStatus>('/academy/verification/me').catch(() => null),
-        api
-          .get<EffectiveHolidays>(`/academy/me/holidays?from=${todayDate}&to=${todayDate}`)
-          .catch(() => ({ governmentHolidays: [], academyHolidays: [] }) as EffectiveHolidays),
+      const [profileRes, todayRes] = await Promise.all([
+        api.get<AcademyOwnerProfile>('/academy/me'),
         api.get<AcademyToday>('/academy/me/today'),
       ]);
-      return {
-        profile: profileRes,
-        pendingRequests: pendingRes,
-        photos: photosRes,
-        kyc: kycRes,
-        todaysHolidays: todaysHolidaysRes,
-        today: todayRes,
-      };
+      return { profile: profileRes, today: todayRes };
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) return null;
       throw err;
     }
   }, [hasAcademy]);
 
-  const { data: bundle, error: loadError, reload: load } = useCachedFetch('academy-dashboard', fetchBundle);
+  const { data: bundle, error: loadError, reload: reloadBundle } = useCachedFetch('academy-dashboard', fetchBundle);
+
+  const pendingQuery = useApiQuery(() => api.get<AcademyPendingRequest[]>('/academy/me/teachers/pending'), [], {
+    enabled: hasAcademy === true,
+  });
+  const photosQuery = useApiQuery(() => api.get<AcademyPhoto[]>('/academy/me/photos'), [], {
+    enabled: hasAcademy === true,
+  });
+  const kycQuery = useApiQuery(() => api.get<AcademyKycVerificationStatus>('/academy/verification/me'), [], {
+    enabled: hasAcademy === true,
+  });
+  const todayDate = new Date().toISOString().slice(0, 10);
+  const holidaysQuery = useApiQuery(
+    () => api.get<EffectiveHolidays>(`/academy/me/holidays?from=${todayDate}&to=${todayDate}`),
+    [todayDate],
+    { enabled: hasAcademy === true },
+  );
+
+  function load() {
+    reloadBundle();
+    for (const query of [pendingQuery, photosQuery, kycQuery, holidaysQuery]) void query.reload();
+  }
 
   const profile = bundle?.profile ?? null;
-  const pendingRequests = bundle?.pendingRequests ?? [];
-  const photos = bundle?.photos ?? [];
-  const kyc = bundle?.kyc ?? null;
-  const todaysHolidays = bundle?.todaysHolidays ?? { governmentHolidays: [], academyHolidays: [] };
+  const pendingRequests = pendingQuery.data ?? [];
+  const photos = photosQuery.data ?? [];
+  const kyc = kycQuery.data ?? null;
+  const todaysHolidays = holidaysQuery.data ?? { governmentHolidays: [], academyHolidays: [] };
   const today = bundle?.today ?? null;
 
   if (hasAcademy === false) {
@@ -90,12 +93,7 @@ export default function AcademyTodayPage() {
   }
 
   if (loadError) {
-    return (
-      <ErrorState
-        description="We couldn't load today's academy activity."
-        onRetry={() => void load()}
-      />
-    );
+    return <ErrorState error={loadError} what="today's academy activity" onRetry={load} />;
   }
 
   if (!profile || !today) {
@@ -124,7 +122,7 @@ export default function AcademyTodayPage() {
       tone: 'brand',
     });
   }
-  if (!kyc || kyc.status === 'not_started' || kyc.status === 'rejected' || kyc.status === 'needs_manual_review') {
+  if (kycQuery.status === 'success' && (!kyc || kyc.status === 'not_started' || kyc.status === 'rejected' || kyc.status === 'needs_manual_review')) {
     gettingStarted.push({
       key: 'kyc',
       href: '/academy/verification',
@@ -134,7 +132,7 @@ export default function AcademyTodayPage() {
       tone: 'brand',
     });
   }
-  if (photos.length === 0) {
+  if (photosQuery.status === 'success' && photos.length === 0) {
     gettingStarted.push({
       key: 'photos',
       href: '/academy/photos',
@@ -144,7 +142,7 @@ export default function AcademyTodayPage() {
       tone: 'info',
     });
   }
-  if (pendingRequests.length > 0) {
+  if (pendingQuery.status === 'success' && pendingRequests.length > 0) {
     gettingStarted.push({
       key: 'teachers',
       href: '/academy/teachers',
@@ -270,6 +268,16 @@ export default function AcademyTodayPage() {
           </p>
         </AcademyHero>
       </div>
+
+      {[pendingQuery, photosQuery, kycQuery, holidaysQuery].some((q) => q.status === 'error') && (
+        <ErrorState
+          compact
+          error={[pendingQuery, photosQuery, kycQuery, holidaysQuery].find((q) => q.status === 'error')?.error}
+          title="Some setup information couldn't be loaded"
+          message="Pending requests, photos, verification status or today's holiday may be missing below."
+          onRetry={load}
+        />
+      )}
 
       {todaysHolidayName && (
         <div className="animate-fade-up rounded-xl border border-info-bg bg-info-bg/60 px-4 py-3 dark:border-info/20 dark:bg-info/10" style={{ animationDelay: '30ms' }}>

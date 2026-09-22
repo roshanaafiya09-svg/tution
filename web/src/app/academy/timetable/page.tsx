@@ -29,7 +29,7 @@ export default function AcademyTimetablePage() {
   const [teachers, setTeachers] = useState<AcademyActiveTeacher[]>([]);
   const [batches, setBatches] = useState<AcademyManagedBatch[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const [tutorId, setTutorId] = useState('');
   const [batchId, setBatchId] = useState('');
@@ -44,22 +44,22 @@ export default function AcademyTimetablePage() {
       setSessions([]);
       return;
     }
-    setLoadError(false);
+    setLoadError(null);
     try {
       const [sessionRows, teacherRows, batchRows, subjectRows] = await Promise.all([
         api.get<AcademyTodaySession[]>(
           `/academy/me/sessions?from=${weekStart.toISOString()}&to=${weekEnd.toISOString()}`,
         ),
-        api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active').catch(() => [] as AcademyActiveTeacher[]),
-        api.get<AcademyManagedBatch[]>('/academy/me/batches').catch(() => [] as AcademyManagedBatch[]),
-        api.get<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
+        api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active'),
+        api.get<AcademyManagedBatch[]>('/academy/me/batches'),
+        api.get<Subject[]>('/catalog/subjects'),
       ]);
       setSessions(sessionRows);
       setTeachers(teacherRows);
       setBatches(batchRows);
       setSubjects(subjectRows);
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, [hasAcademy, weekStart, weekEnd]);
 
@@ -170,7 +170,7 @@ export default function AcademyTimetablePage() {
 
       <div className="mt-6">
         {loadError ? (
-          <ErrorState description="Could not load the timetable. Check your connection and try again." onRetry={() => void load()} />
+          <ErrorState error={loadError} what="the timetable" onRetry={() => void load()} />
         ) : sessions === null ? (
           <div className="grid gap-4 sm:grid-cols-2">
             <CardSkeleton />

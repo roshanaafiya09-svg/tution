@@ -55,16 +55,16 @@ export default function SettingsPage() {
   const [recap, setRecap] = useState<SubscriptionRecap | null>(null);
   const [academies, setAcademies] = useState<TutorAcademyAffiliation[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setLoaded(false);
     Promise.all([
       api.get<Me>('/auth/me'),
-      api.get<TutorProfile | null>('/profiles/tutor/me').catch(() => null),
-      api.get<SubscriptionRecap | null>('/subscriptions/recap').catch(() => null),
-      api.get<TutorAcademyAffiliation[]>('/marketplace/academies/me/memberships').catch(() => []),
+      api.get<TutorProfile | null>('/profiles/tutor/me'),
+      api.get<SubscriptionRecap | null>('/subscriptions/recap'),
+      api.get<TutorAcademyAffiliation[]>('/marketplace/academies/me/memberships'),
     ])
       .then(([meRow, profileRow, recapRow, academyRows]) => {
         setMe(meRow);
@@ -73,7 +73,7 @@ export default function SettingsPage() {
         setAcademies(academyRows);
         setLoaded(true);
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, []);
 
   useEffect(() => {
@@ -91,7 +91,7 @@ export default function SettingsPage() {
       />
 
       {loadError ? (
-        <ErrorState description="Could not load your settings. Check your connection and try again." onRetry={load} />
+        <ErrorState error={loadError} what="your settings" onRetry={load} />
       ) : !loaded ? (
         <div className="space-y-4">
           <CardSkeleton className="h-24 rounded-2xl" />

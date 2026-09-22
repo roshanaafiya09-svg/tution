@@ -27,21 +27,20 @@ export default function TeacherAcademyProfilePage() {
   const [page, setPage] = useState<PublicAcademyPage | null>(null);
   const [ownRequest, setOwnRequest] = useState<TutorJoinRequestSummary | null>(null);
   const [isMember, setIsMember] = useState(false);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [notFound, setNotFound] = useState(false);
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setNotFound(false);
     Promise.all([
       api.get<PublicAcademyPage>(`/marketplace/academies/${slug}`),
-      api.get<TutorJoinRequestSummary[]>('/marketplace/academies/me/join-requests').catch(() => [] as TutorJoinRequestSummary[]),
+      api.get<TutorJoinRequestSummary[]>('/marketplace/academies/me/join-requests'),
       api
-        .get<{ id: string; slug: string }[]>('/marketplace/academies/me/memberships')
-        .catch(() => [] as { id: string; slug: string }[]),
+        .get<{ id: string; slug: string }[]>('/marketplace/academies/me/memberships'),
     ])
       .then(([pageRes, requests, memberships]) => {
         setPage(pageRes);
@@ -53,7 +52,7 @@ export default function TeacherAcademyProfilePage() {
       })
       .catch((err: unknown) => {
         if (err instanceof ApiError && err.status === 404) setNotFound(true);
-        else setLoadError(true);
+        else setLoadError(err ?? true);
       });
   }, [slug]);
 
@@ -81,7 +80,7 @@ export default function TeacherAcademyProfilePage() {
 
   if (loadError) {
     return (
-      <ErrorState description="Could not load this academy's profile. Check your connection and try again." onRetry={load} />
+      <ErrorState error={loadError} what="this academy's profile" onRetry={load} />
     );
   }
 

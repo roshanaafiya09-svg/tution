@@ -24,7 +24,7 @@ import { ParentCard } from '@/components/parent';
 export default function ParentAccountPage() {
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -33,11 +33,11 @@ export default function ParentAccountPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setLoadError(false);
+    setLoadError(null);
     try {
       setMe(await api.get<Me>('/auth/me'));
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, []);
 
@@ -82,7 +82,7 @@ export default function ParentAccountPage() {
       <PageHeader eyebrow="Your account" title="Account" description="Your login details, plus data export and account deletion controls." />
 
       {loadError ? (
-        <ErrorState description="Could not load your account. Check your connection and try again." onRetry={() => void load()} />
+        <ErrorState error={loadError} what="your account" onRetry={() => void load()} />
       ) : !me ? (
         <div className="max-w-2xl">
           <CardSkeleton />

@@ -27,7 +27,7 @@ export default function ProfilePage() {
   const router = useRouter();
   const toast = useToast();
   const [profile, setProfile] = useState<TutorProfile | null | undefined>(undefined);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [form, setForm] = useState({ displayName: '', headline: '', bio: '', yearsExperience: '' });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -40,7 +40,7 @@ export default function ProfilePage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     api
       .get<TutorProfile | null>('/profiles/tutor/me')
       .then((row) => {
@@ -54,7 +54,7 @@ export default function ProfilePage() {
           });
         }
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, []);
 
   useEffect(() => {
@@ -135,7 +135,7 @@ export default function ProfilePage() {
           .
         </p>
       {loadError ? (
-        <ErrorState description="Could not load your profile. Check your connection and try again." onRetry={load} />
+        <ErrorState error={loadError} what="your profile" onRetry={load} />
       ) : profile === undefined ? (
         <div className="max-w-2xl">
           <CardSkeleton />

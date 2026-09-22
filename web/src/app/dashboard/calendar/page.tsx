@@ -211,7 +211,7 @@ export default function CalendarPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [rules, setRules] = useState<AvailabilityRule[]>([]);
   const [exceptions, setExceptions] = useState<AvailabilityException[]>([]);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const { rangeStart, rangeEnd } = useMemo(() => {
     if (view === 'day') return { rangeStart: startOfDay(anchor), rangeEnd: addDays(startOfDay(anchor), 1) };
@@ -221,14 +221,14 @@ export default function CalendarPage() {
   }, [view, anchor]);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setSessions(null);
     Promise.all([
       api.get<Session[]>(`/sessions/me?from=${rangeStart.toISOString()}&to=${rangeEnd.toISOString()}`),
-      api.get<Booking[]>('/marketplace/bookings/tutor').catch(() => [] as Booking[]),
-      api.get<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
-      api.get<AvailabilityRule[]>('/availability/me').catch(() => [] as AvailabilityRule[]),
-      api.get<AvailabilityException[]>('/availability/exceptions/me').catch(() => [] as AvailabilityException[]),
+      api.get<Booking[]>('/marketplace/bookings/tutor'),
+      api.get<Subject[]>('/catalog/subjects'),
+      api.get<AvailabilityRule[]>('/availability/me'),
+      api.get<AvailabilityException[]>('/availability/exceptions/me'),
     ])
       .then(([sessionRows, bookingRows, subjectRows, ruleRows, exceptionRows]) => {
         setSessions(sessionRows);
@@ -237,7 +237,7 @@ export default function CalendarPage() {
         setRules(ruleRows);
         setExceptions(exceptionRows);
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [rangeStart, rangeEnd]);
 
   useEffect(() => {
@@ -372,7 +372,7 @@ export default function CalendarPage() {
       </div>
 
       {loadError ? (
-        <ErrorState description="Could not load your calendar. Check your connection and try again." onRetry={load} />
+        <ErrorState error={loadError} what="your calendar" onRetry={load} />
       ) : sessions === null ? (
         <CardSkeleton className="h-96 rounded-2xl" />
       ) : (

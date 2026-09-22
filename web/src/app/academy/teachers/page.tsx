@@ -27,7 +27,7 @@ export default function AcademyTeachersPage() {
   const [active, setActive] = useState<AcademyActiveTeacher[] | null>(null);
   const [pending, setPending] = useState<AcademyPendingRequest[] | null>(null);
   const [removed, setRemoved] = useState<AcademyRemovedTeacher[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [confirmTarget, setConfirmTarget] = useState<
     { kind: 'accept' | 'reject' | 'remove'; id: string; name: string } | null
   >(null);
@@ -39,18 +39,18 @@ export default function AcademyTeachersPage() {
       setRemoved([]);
       return;
     }
-    setLoadError(false);
+    setLoadError(null);
     try {
       const [activeRes, pendingRes, removedRes] = await Promise.all([
         api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active'),
-        api.get<AcademyPendingRequest[]>('/academy/me/teachers/pending').catch(() => [] as AcademyPendingRequest[]),
-        api.get<AcademyRemovedTeacher[]>('/academy/me/teachers/removed').catch(() => [] as AcademyRemovedTeacher[]),
+        api.get<AcademyPendingRequest[]>('/academy/me/teachers/pending'),
+        api.get<AcademyRemovedTeacher[]>('/academy/me/teachers/removed'),
       ]);
       setActive(activeRes);
       setPending(pendingRes);
       setRemoved(removedRes);
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, [hasAcademy]);
 
@@ -76,7 +76,7 @@ export default function AcademyTeachersPage() {
   if (loadError) {
     return (
       <ErrorState
-        description="Could not load your teachers. Check your connection and try again."
+        error={loadError} what="your teachers"
         onRetry={() => void load()}
       />
     );

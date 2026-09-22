@@ -29,6 +29,7 @@ import {
 } from '@/components/ui';
 import { AcademyCard, AcademyPageIntro, AcademySectionHeader } from '@/components/academy';
 import { academyInitials } from '@/lib/academies';
+import { useApiQuery } from '@/lib/query';
 
 type Tab = 'students' | 'schedule' | 'sessions';
 
@@ -53,23 +54,23 @@ export default function AcademyBatchDetailPage() {
   const [batch, setBatch] = useState<AcademyManagedBatch | null>(null);
   const [sessions, setSessions] = useState<AcademyManagedSession[]>([]);
   const [attendance, setAttendance] = useState<AcademyBatchAttendance | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [showEdit, setShowEdit] = useState(false);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setBatch(null);
     Promise.all([
       api.get<AcademyManagedBatch>(`/academy/me/batches/${id}`),
-      api.get<AcademyManagedSession[]>(`/academy/me/batches/${id}/sessions`).catch(() => [] as AcademyManagedSession[]),
-      api.get<AcademyBatchAttendance>(`/academy/me/attendance/batch/${id}`).catch(() => null),
+      api.get<AcademyManagedSession[]>(`/academy/me/batches/${id}/sessions`),
+      api.get<AcademyBatchAttendance>(`/academy/me/attendance/batch/${id}`),
     ])
       .then(([b, s, a]) => {
         setBatch(b);
         setSessions(s);
         setAttendance(a);
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [id]);
 
   useEffect(() => {
@@ -82,7 +83,7 @@ export default function AcademyBatchDetailPage() {
   }
 
   if (loadError) {
-    return <ErrorState description="Could not load this batch. Check your connection and try again." onRetry={load} />;
+    return <ErrorState error={loadError} what="this batch" onRetry={load} />;
   }
 
   if (!batch) {
@@ -188,26 +189,25 @@ function EditBatchForm({ batch, onSaved }: { batch: AcademyManagedBatch; onSaved
   const [feeRupees, setFeeRupees] = useState(String(batch.feeMinor / 100));
   const [subjectId, setSubjectId] = useState(batch.subjectId);
   const [gradeLevelId, setGradeLevelId] = useState(batch.gradeLevelId);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [curricula, setCurricula] = useState<Curriculum[]>([]);
-  const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    void api.get<Subject[]>('/catalog/subjects').then(setSubjects).catch(() => setSubjects([]));
-    void api.get<Curriculum[]>('/catalog/curricula').then(setCurricula).catch(() => setCurricula([]));
-  }, []);
-
-  useEffect(() => {
-    if (curricula.length === 0) return;
-    // Best-effort: load grade levels for the first curriculum so the current
-    // gradeLevelId still resolves to a visible option.
-    void api
-      .get<GradeLevel[]>(`/catalog/curricula/${curricula[0].id}/grade-levels`)
-      .then((rows) => setGradeLevels((prev) => [...prev, ...rows.filter((r) => !prev.some((p) => p.id === r.id))]))
-      .catch(() => undefined);
-  }, [curricula]);
+  // Option lists for the pickers. If any of them fails to load the form says so and
+  // Save is disabled — saving with blank pickers could overwrite the batch's real subject/grade.
+  const subjectsQuery = useApiQuery(() => api.get<Subject[]>('/catalog/subjects'), []);
+  const curriculaQuery = useApiQuery(() => api.get<Curriculum[]>('/catalog/curricula'), []);
+  const firstCurriculumId = curriculaQuery.data?.[0]?.id;
+  // Grade levels of the first curriculum, so the current gradeLevelId still resolves to an option.
+  const gradeQuery = useApiQuery(
+    () => api.get<GradeLevel[]>(`/catalog/curricula/${firstCurriculumId}/grade-levels`),
+    [firstCurriculumId],
+    { enabled: Boolean(firstCurriculumId) },
+  );
+  const subjects = subjectsQuery.data ?? [];
+  const gradeLevels = gradeQuery.data ?? [];
+  const optionsQuery = [subjectsQuery, curriculaQuery, gradeQuery].find((q) => q.status === 'error');
+  const optionsReady =
+    subjectsQuery.status === 'success' && curriculaQuery.status === 'success' && gradeQuery.status === 'success';
 
   async function save() {
     setError(null);
@@ -230,6 +230,15 @@ function EditBatchForm({ batch, onSaved }: { batch: AcademyManagedBatch; onSaved
 
   return (
     <AcademyCard>
+      {optionsQuery && optionsQuery.status === 'error' && (
+        <ErrorState
+          compact
+          className="mb-4"
+          error={optionsQuery.error}
+          what="the subject and grade options"
+          onRetry={() => void Promise.all([subjectsQuery, curriculaQuery, gradeQuery].map((q) => (q.status === 'error' ? q.reload() : undefined)))}
+        />
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Batch name">
           <Input value={title} onChange={(e) => setTitle(e.target.value)} />
@@ -265,7 +274,7 @@ function EditBatchForm({ batch, onSaved }: { batch: AcademyManagedBatch; onSaved
         </div>
       )}
       <div className="mt-4">
-        <Button onClick={() => void save()} disabled={saving} loading={saving}>
+        <Button onClick={() => void save()} disabled={saving || !optionsReady} loading={saving}>
           {saving ? 'Saving…' : 'Save changes'}
         </Button>
       </div>
@@ -353,19 +362,19 @@ function StudentsTab({ batchId, attendance }: { batchId: string; attendance: Aca
   const [students, setStudents] = useState<Enrollment[] | null>(null);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [copied, setCopied] = useState(false);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(async () => {
-    setLoadError(false);
+    setLoadError(null);
     try {
       const [s, inv] = await Promise.all([
         api.get<Enrollment[]>(`/academy/me/batches/${batchId}/students`),
-        api.get<Invite[]>(`/academy/me/batches/${batchId}/invites`).catch(() => [] as Invite[]),
+        api.get<Invite[]>(`/academy/me/batches/${batchId}/invites`),
       ]);
       setStudents(s);
       setInvites(inv);
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, [batchId]);
 
@@ -377,13 +386,13 @@ function StudentsTab({ batchId, attendance }: { batchId: string; attendance: Aca
     try {
       await api.post(`/academy/me/batches/${batchId}/invites`, { maxUses: 50 });
       await load();
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }
 
   if (loadError) {
-    return <ErrorState description="Could not load students for this batch." onRetry={() => void load()} />;
+    return <ErrorState error={loadError} what="students for this batch" onRetry={() => void load()} />;
   }
 
   const activeInvite = invites.find((i) => i.used_count < i.max_uses && new Date(i.expires_at) > new Date());
@@ -461,18 +470,18 @@ function StudentsTab({ batchId, attendance }: { batchId: string; attendance: Aca
 
 function SessionsTab({ batchId }: { batchId: string }) {
   const [sessions, setSessions] = useState<AcademyManagedSession[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ startLocal: '', durationMin: '60', meetingUrl: '', repeat: 'none', count: '8' });
 
   const load = useCallback(async () => {
-    setLoadError(false);
+    setLoadError(null);
     try {
       setSessions(await api.get<AcademyManagedSession[]>(`/academy/me/batches/${batchId}/sessions`));
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, [batchId]);
 
@@ -502,7 +511,7 @@ function SessionsTab({ batchId }: { batchId: string }) {
   }
 
   if (loadError) {
-    return <ErrorState description="Could not load sessions for this batch." onRetry={() => void load()} />;
+    return <ErrorState error={loadError} what="sessions for this batch" onRetry={() => void load()} />;
   }
 
   return (

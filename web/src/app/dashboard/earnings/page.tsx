@@ -27,35 +27,25 @@ function monthLabel(period: string): string {
 export default function EarningsPage() {
   const [totals, setTotals] = useState<FeeTotals[] | null>(null);
   const [payouts, setPayouts] = useState<Payout[]>([]);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const periods = recentPeriods(MONTHS_SHOWN);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setTotals(null);
     Promise.all([
       Promise.all(
         periods.map((period) =>
-          api.get<FeeTotals>(`/fees/period/totals?period=${period}`).catch(
-            (): FeeTotals => ({
-              periodLabel: period,
-              expectedMinor: 0,
-              collectedMinor: 0,
-              outstandingMinor: 0,
-              entries: 0,
-              paidCount: 0,
-              currency: 'INR',
-            }),
-          ),
+          api.get<FeeTotals>(`/fees/period/totals?period=${period}`),
         ),
       ),
-      api.get<Payout[]>('/payouts/me').catch(() => [] as Payout[]),
+      api.get<Payout[]>('/payouts/me'),
     ])
       .then(([totalRows, payoutRows]) => {
         setTotals(totalRows);
         setPayouts(payoutRows);
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
     // `periods` is derived from today's date and stable within a render pass.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -91,7 +81,7 @@ export default function EarningsPage() {
       />
 
       {loadError ? (
-        <ErrorState description="Could not load your earnings. Check your connection and try again." onRetry={load} />
+        <ErrorState error={loadError} what="your earnings" onRetry={load} />
       ) : totals === null ? (
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

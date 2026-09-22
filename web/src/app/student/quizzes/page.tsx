@@ -13,23 +13,23 @@ export default function StudentQuizzesPage() {
   const [subjects, setSubjects] = useState<Subject[] | null>(null);
   const [batchId, setBatchId] = useState<string | null>(null);
   const [quizzes, setQuizzes] = useState<StudentQuizSummary[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [quizzesError, setQuizzesError] = useState(false);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setBatches(null);
     setSubjects(null);
     Promise.all([
       api.get<Batch[]>('/batches/enrolled'),
-      apiGetPublic<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
+      apiGetPublic<Subject[]>('/catalog/subjects'),
     ])
       .then(([list, subs]) => {
         setBatches(list);
         setSubjects(subs);
         if (list.length > 0) setBatchId((current) => current ?? list[0].id);
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, []);
 
   useEffect(() => {
@@ -64,7 +64,7 @@ export default function StudentQuizzesPage() {
           <CardSkeleton className="rounded-2xl" />
         </div>
       ) : loadError ? (
-        <ErrorState description="Could not load your batches. Check your connection and try again." onRetry={load} />
+        <ErrorState error={loadError} what="your batches" onRetry={load} />
       ) : batches.length === 0 ? (
         <NoBatchesEmptyState icon={ListChecks} description="Ask your tutor for an invite link, or find a teacher to see quizzes here." />
       ) : (
@@ -89,7 +89,7 @@ export default function StudentQuizzesPage() {
           {quizzes === null ? (
             <CardSkeleton className="rounded-2xl" />
           ) : quizzesError ? (
-            <ErrorState description="Could not load quizzes for this batch." onRetry={loadQuizzes} />
+            <ErrorState error={loadError} what="quizzes for this batch" onRetry={loadQuizzes} />
           ) : quizzes.length === 0 ? (
             <EmptyState
               icon={ListChecks}

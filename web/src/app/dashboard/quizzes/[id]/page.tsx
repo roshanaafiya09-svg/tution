@@ -30,7 +30,7 @@ export default function QuizDraftPage() {
   const toast = useToast();
   const [draft, setDraft] = useState<QuizDraftDetail | null>(null);
   const [batch, setBatch] = useState<Batch | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState(false);
   const [publishedQuiz, setPublishedQuiz] = useState<PublishedQuiz | null>(null);
@@ -38,16 +38,14 @@ export default function QuizDraftPage() {
   const [attempts, setAttempts] = useState<QuizAttemptSummary[] | null>(null);
 
   const load = useCallback(async () => {
-    setLoadError(false);
+    setLoadError(null);
     try {
       const d = await api.get<QuizDraftDetail>(`/quizzes/${id}`);
+      const batchRow = await api.get<Batch>(`/batches/${d.batch_id}`);
       setDraft(d);
-      api
-        .get<Batch>(`/batches/${d.batch_id}`)
-        .then(setBatch)
-        .catch(() => {});
-    } catch {
-      setLoadError(true);
+      setBatch(batchRow);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, [id]);
 
@@ -85,7 +83,7 @@ export default function QuizDraftPage() {
   }
 
   if (loadError) {
-    return <ErrorState description="Could not load this quiz draft. Check your connection and try again." onRetry={() => void load()} />;
+    return <ErrorState error={loadError} what="this quiz draft" onRetry={() => void load()} />;
   }
 
   if (!draft) {

@@ -19,7 +19,7 @@ export default function TeacherFindAnAcademyPage() {
   const [teachingMode, setTeachingMode] = useState('');
   const [minRating, setMinRating] = useState('');
   const [results, setResults] = useState<AcademySearchResponse | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
@@ -28,7 +28,7 @@ export default function TeacherFindAnAcademyPage() {
   }, []);
 
   useEffect(() => {
-    setLoadError(false);
+    setLoadError(null);
     setResults(null);
     const params = buildAcademySearchParams({
       subjectId,
@@ -40,7 +40,7 @@ export default function TeacherFindAnAcademyPage() {
     void api
       .get<AcademySearchResponse>(`/marketplace/academies?${params.toString()}`)
       .then(setResults)
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [subjectId, curriculumId, grade, teachingMode, minRating, retryCount]);
 
   const filtered =
@@ -148,7 +148,7 @@ export default function TeacherFindAnAcademyPage() {
 
         {loadError ? (
           <ErrorState
-            description="Could not load academies. Check your connection and try again."
+            error={loadError} what="academies"
             onRetry={() => setRetryCount((n) => n + 1)}
           />
         ) : filtered === null ? (

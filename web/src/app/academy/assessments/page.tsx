@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ChevronRight, ClipboardCheck } from 'lucide-react';
 import { api } from '@/lib/api';
-import { describeLoadError, type LoadErrorInfo } from '@/lib/load-error';
 import type { WeeklyComplianceResponse } from '@/lib/types';
 import { CardSkeleton, ErrorState, StatusBadge } from '@/components/ui';
 import { AcademyCard, AcademyPageIntro, AcademySetupBanner } from '@/components/academy';
@@ -22,7 +21,7 @@ const NO_ACADEMY_COMPLIANCE: WeeklyComplianceResponse = {
 export default function AcademyAssessmentsPage() {
   const { hasAcademy } = useAcademyDashboard();
   const [data, setData] = useState<WeeklyComplianceResponse | null>(null);
-  const [loadError, setLoadError] = useState<LoadErrorInfo | null>(null);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
     setLoadError(null);
@@ -33,7 +32,7 @@ export default function AcademyAssessmentsPage() {
     api
       .get<WeeklyComplianceResponse>('/academy/me/assessments/weekly-compliance')
       .then(setData)
-      .catch((err: unknown) => setLoadError(describeLoadError(err, 'weekly assessment compliance')));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [hasAcademy]);
 
   useEffect(() => {
@@ -41,7 +40,7 @@ export default function AcademyAssessmentsPage() {
   }, [load]);
 
   if (loadError) {
-    return <ErrorState title={loadError.title} description={loadError.description} onRetry={load} />;
+    return <ErrorState error={loadError} what="weekly assessment compliance" onRetry={load} />;
   }
 
   if (data === null) {

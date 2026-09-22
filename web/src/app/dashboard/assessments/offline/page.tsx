@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronRight, NotebookPen, Plus } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
-import { describeLoadError, type LoadErrorInfo } from '@/lib/load-error';
 import type { AssessmentRow, Batch, Subject } from '@/lib/types';
 import { Button, CardSkeleton, ErrorState, Field, Input, InlineError, Select, StatusBadge } from '@/components/ui';
 import { AcademicCard, BatchMultiSelect, EmptyPanel } from '@/components/dashboard';
@@ -15,7 +14,7 @@ export default function OfflineAssessmentsPage() {
   const [rows, setRows] = useState<AssessmentRow[] | null>(null);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [loadError, setLoadError] = useState<LoadErrorInfo | null>(null);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [batchesFailed, setBatchesFailed] = useState(false);
   const [creating, setCreating] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -38,13 +37,13 @@ export default function OfflineAssessmentsPage() {
           setBatchesFailed(true);
           return [] as Batch[];
         }),
-        api.get<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
+        api.get<Subject[]>('/catalog/subjects'),
       ]);
       setRows(assessments);
       setBatches(batchRows.filter((b) => b.status === 'active'));
       setSubjects(subjectRows);
     } catch (err) {
-      setLoadError(describeLoadError(err, 'your offline assessments'));
+      setLoadError(err ?? true);
     }
   }, []);
 
@@ -76,7 +75,7 @@ export default function OfflineAssessmentsPage() {
   }
 
   if (loadError) {
-    return <ErrorState title={loadError.title} description={loadError.description} onRetry={() => void load()} />;
+    return <ErrorState error={loadError} what="your offline assessments" onRetry={() => void load()} />;
   }
 
   if (rows === null) {

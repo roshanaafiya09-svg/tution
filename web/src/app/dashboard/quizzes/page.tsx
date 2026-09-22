@@ -18,14 +18,14 @@ const PROCESS_STEPS = [
 
 export default function QuizzesPage() {
   const [drafts, setDrafts] = useState<QuizDraftSummary[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     api
       .get<QuizDraftSummary[]>('/quizzes/me')
       .then(setDrafts)
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, []);
 
   useEffect(() => {
@@ -50,7 +50,7 @@ export default function QuizzesPage() {
       />
 
       {loadError ? (
-        <ErrorState description="Could not load your quiz drafts. Check your connection and try again." onRetry={load} />
+        <ErrorState error={loadError} what="your quiz drafts" onRetry={load} />
       ) : drafts === null ? (
         <div className="space-y-4">
           <CardSkeleton className="h-24 rounded-2xl" />

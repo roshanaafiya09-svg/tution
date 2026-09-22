@@ -21,6 +21,7 @@ import {
 import { AcademyCard, AcademyPageIntro, AcademySetupBanner } from '@/components/academy';
 import { cn } from '@/lib/cn';
 import { useAcademyDashboard } from '@/components/academy-shell';
+import { useApiQuery } from '@/lib/query';
 
 type Tab = 'pending' | 'all';
 
@@ -38,10 +39,9 @@ export default function AcademyLeaveRequestsPage() {
   const [pending, setPending] = useState<AcademyLeaveRequest[] | null>(null);
   const [all, setAll] = useState<AcademyLeaveRequest[] | null>(null);
   const [teachers, setTeachers] = useState<AcademyActiveTeacher[]>([]);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const [detailFor, setDetailFor] = useState<AcademyLeaveRequest | null>(null);
-  const [detailSessions, setDetailSessions] = useState<LeaveAffectedSession[] | null>(null);
 
   const [approveTarget, setApproveTarget] = useState<AcademyLeaveRequest | null>(null);
   const [substituteId, setSubstituteId] = useState('');
@@ -54,18 +54,18 @@ export default function AcademyLeaveRequestsPage() {
       setAll([]);
       return;
     }
-    setLoadError(false);
+    setLoadError(null);
     try {
       const [p, a, t] = await Promise.all([
         api.get<AcademyLeaveRequest[]>('/academy/me/leave-requests/pending'),
         api.get<AcademyLeaveRequest[]>('/academy/me/leave-requests'),
-        api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active').catch(() => [] as AcademyActiveTeacher[]),
+        api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active'),
       ]);
       setPending(p);
       setAll(a);
       setTeachers(t);
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, [hasAcademy]);
 
@@ -73,15 +73,16 @@ export default function AcademyLeaveRequestsPage() {
     void load();
   }, [load]);
 
-  async function openDetail(request: AcademyLeaveRequest) {
+  function openDetail(request: AcademyLeaveRequest) {
     setDetailFor(request);
-    setDetailSessions(null);
-    try {
-      setDetailSessions(await api.get<LeaveAffectedSession[]>(`/academy/me/leave-requests/${request.id}/sessions`));
-    } catch {
-      setDetailSessions([]);
-    }
   }
+
+  const detailQuery = useApiQuery(
+    () => api.get<LeaveAffectedSession[]>(`/academy/me/leave-requests/${detailFor?.id}/sessions`),
+    [detailFor?.id],
+    { enabled: detailFor !== null },
+  );
+  const detailSessions = detailQuery.data ?? [];
 
   function openApprove(request: AcademyLeaveRequest) {
     setSubstituteId('');
@@ -114,7 +115,7 @@ export default function AcademyLeaveRequestsPage() {
 
   if (loadError) {
     return (
-      <ErrorState description="Could not load leave requests. Check your connection and try again." onRetry={() => void load()} />
+      <ErrorState error={loadError} what="leave requests" onRetry={() => void load()} />
     );
   }
 
@@ -213,7 +214,9 @@ export default function AcademyLeaveRequestsPage() {
           title="Affected classes"
           description={detailFor ? `${detailFor.tutor_display_name ?? 'Teacher'} — ${formatDateRange(detailFor.start_date, detailFor.end_date)}` : ''}
         >
-          {detailSessions === null ? (
+          {detailQuery.status === 'error' ? (
+            <ErrorState compact error={detailQuery.error} what="the affected classes" onRetry={() => void detailQuery.reload()} />
+          ) : detailQuery.status === 'loading' ? (
             <CardSkeleton className="h-16 rounded-xl" />
           ) : detailSessions.length === 0 ? (
             <p className="text-sm text-neutral-500 dark:text-neutral-400">No classes matched this leave request.</p>

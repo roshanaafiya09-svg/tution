@@ -99,7 +99,7 @@ function Thead({ columns }: { columns: string[] }) {
 export default function AcademyReportsPage() {
   const { hasAcademy } = useAcademyDashboard();
   const [category, setCategory] = useState<Category>('summary');
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const today = new Date();
   const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -128,9 +128,9 @@ export default function AcademyReportsPage() {
   useEffect(() => {
     if (hasAcademy === false) return;
     Promise.all([
-      api.get<AcademyManagedBatch[]>('/academy/me/batches').catch(() => [] as AcademyManagedBatch[]),
-      api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active').catch(() => [] as AcademyActiveTeacher[]),
-      api.get<AcademyManagedEnrollment[]>('/academy/me/students?status=active').catch(() => [] as AcademyManagedEnrollment[]),
+      api.get<AcademyManagedBatch[]>('/academy/me/batches'),
+      api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active'),
+      api.get<AcademyManagedEnrollment[]>('/academy/me/students?status=active'),
     ]).then(([b, t, s]) => {
       setBatches(b);
       setTeachers(t);
@@ -141,7 +141,7 @@ export default function AcademyReportsPage() {
   const load = useCallback(
     async (filters: { from: string; to: string; batchId: string; teacherId: string; studentId: string; status: string }) => {
       if (hasAcademy === false) return;
-      setLoadError(false);
+      setLoadError(null);
       const params = new URLSearchParams();
       if (filters.from) params.set('from', filters.from);
       if (filters.to) params.set('to', filters.to);
@@ -187,8 +187,8 @@ export default function AcademyReportsPage() {
             );
             break;
         }
-      } catch {
-        setLoadError(true);
+      } catch (err: unknown) {
+        setLoadError(err ?? true);
       }
     },
     [hasAcademy, category],
@@ -299,7 +299,7 @@ export default function AcademyReportsPage() {
       <div className="mt-6">
         {loadError ? (
           <ErrorState
-            description="Could not load this report. Check your connection and try again."
+            error={loadError} what="this report"
             onRetry={() => void load({ from, to, batchId, teacherId, studentId, status })}
           />
         ) : category === 'summary' ? (

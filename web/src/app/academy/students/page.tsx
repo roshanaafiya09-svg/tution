@@ -17,7 +17,7 @@ export default function AcademyStudentsPage() {
   const [students, setStudents] = useState<AcademyManagedEnrollment[] | null>(null);
   const [batches, setBatches] = useState<AcademyManagedBatch[]>([]);
   const [teachers, setTeachers] = useState<AcademyActiveTeacher[]>([]);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [removeTarget, setRemoveTarget] = useState<AcademyManagedEnrollment | null>(null);
 
   const [q, setQ] = useState('');
@@ -32,7 +32,7 @@ export default function AcademyStudentsPage() {
         setStudents([]);
         return;
       }
-      setLoadError(false);
+      setLoadError(null);
       try {
         const params = new URLSearchParams();
         if (filters.q) params.set('q', filters.q);
@@ -40,8 +40,8 @@ export default function AcademyStudentsPage() {
         if (filters.tutorId) params.set('tutorId', filters.tutorId);
         if (filters.status) params.set('status', filters.status);
         setStudents(await api.get<AcademyManagedEnrollment[]>(`/academy/me/students?${params.toString()}`));
-      } catch {
-        setLoadError(true);
+      } catch (err: unknown) {
+        setLoadError(err ?? true);
       }
     },
     [hasAcademy],
@@ -53,8 +53,8 @@ export default function AcademyStudentsPage() {
       return;
     }
     Promise.all([
-      api.get<AcademyManagedBatch[]>('/academy/me/batches').catch(() => [] as AcademyManagedBatch[]),
-      api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active').catch(() => [] as AcademyActiveTeacher[]),
+      api.get<AcademyManagedBatch[]>('/academy/me/batches'),
+      api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active'),
     ]).then(([b, t]) => {
       setBatches(b);
       setTeachers(t);
@@ -114,7 +114,7 @@ export default function AcademyStudentsPage() {
 
       <div className="mt-6">
         {loadError ? (
-          <ErrorState description="Could not load students. Check your connection and try again." onRetry={() => void load({ q, batchId, tutorId, status })} />
+          <ErrorState error={loadError} what="students" onRetry={() => void load({ q, batchId, tutorId, status })} />
         ) : students === null ? (
           <div className="grid gap-4 sm:grid-cols-2">
             <CardSkeleton />

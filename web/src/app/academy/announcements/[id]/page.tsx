@@ -56,7 +56,7 @@ export default function AcademyAnnouncementDetailPage() {
   const [batches, setBatches] = useState<AcademyManagedBatch[]>([]);
   const [teachers, setTeachers] = useState<AcademyActiveTeacher[]>([]);
   const [students, setStudents] = useState<AcademyManagedEnrollment[]>([]);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [notFound, setNotFound] = useState(false);
   const [publishTarget, setPublishTarget] = useState(false);
   const [archiveTarget, setArchiveTarget] = useState(false);
@@ -75,16 +75,15 @@ export default function AcademyAnnouncementDetailPage() {
 
   const load = useCallback(async () => {
     if (hasAcademy === false) return;
-    setLoadError(false);
+    setLoadError(null);
     setNotFound(false);
     try {
       const [a, b, t, s] = await Promise.all([
         api.get<AcademyAnnouncement>(`/academy/me/announcements/${params.id}`),
-        api.get<AcademyManagedBatch[]>('/academy/me/batches').catch(() => [] as AcademyManagedBatch[]),
-        api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active').catch(() => [] as AcademyActiveTeacher[]),
+        api.get<AcademyManagedBatch[]>('/academy/me/batches'),
+        api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active'),
         api
-          .get<AcademyManagedEnrollment[]>('/academy/me/students?status=active')
-          .catch(() => [] as AcademyManagedEnrollment[]),
+          .get<AcademyManagedEnrollment[]>('/academy/me/students?status=active'),
       ]);
       setAnnouncement(a);
       setBatches(b);
@@ -92,7 +91,7 @@ export default function AcademyAnnouncementDetailPage() {
       setStudents(s);
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) setNotFound(true);
-      else setLoadError(true);
+      else setLoadError(err ?? true);
     }
   }, [hasAcademy, params.id]);
 
@@ -165,7 +164,7 @@ export default function AcademyAnnouncementDetailPage() {
   }
 
   if (loadError) {
-    return <ErrorState description="Could not load this announcement. Check your connection and try again." onRetry={() => void load()} />;
+    return <ErrorState error={loadError} what="this announcement" onRetry={() => void load()} />;
   }
 
   return (

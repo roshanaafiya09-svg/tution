@@ -13,15 +13,15 @@ import { academyInitials } from '@/lib/academies';
 export default function AcademyStudentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [student, setStudent] = useState<AcademyStudentDetail | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setStudent(null);
     api
       .get<AcademyStudentDetail>(`/academy/me/students/${id}`)
       .then(setStudent)
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [id]);
 
   useEffect(() => {
@@ -29,7 +29,7 @@ export default function AcademyStudentDetailPage() {
   }, [load]);
 
   if (loadError) {
-    return <ErrorState description="Could not load this student. Check your connection and try again." onRetry={load} />;
+    return <ErrorState error={loadError} what="this student" onRetry={load} />;
   }
 
   if (!student) {

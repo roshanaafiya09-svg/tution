@@ -1,3 +1,4 @@
+import { ErrorCode } from '../../../../common/http/error-codes';
 import {
   BadRequestException,
   Injectable,
@@ -78,9 +79,10 @@ export class EmailOtpProvider implements OtpProvider {
       this.logger.error(
         `Email send failed: could not reach Brevo (${err instanceof Error ? err.message : 'unknown network error'})`,
       );
-      throw new ServiceUnavailableException(
-        'Could not send the code by email — try again shortly.',
-      );
+      throw new ServiceUnavailableException({
+        code: ErrorCode.OTP_DELIVERY_FAILED,
+        message: 'Could not send the code by email — try again shortly.',
+      });
     }
 
     if (response.ok) return;
@@ -92,8 +94,9 @@ export class EmailOtpProvider implements OtpProvider {
     this.logger.error(
       `Email send failed (HTTP ${response.status}): ${body.message ?? 'unknown error'}`,
     );
-    throw new ServiceUnavailableException(
-      'Could not send the code by email — try again shortly.',
-    );
+    throw new ServiceUnavailableException({
+      code: ErrorCode.OTP_DELIVERY_FAILED,
+      message: 'Could not send the code by email — try again shortly.',
+    });
   }
 }

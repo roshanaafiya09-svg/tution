@@ -51,7 +51,7 @@ export default function AcademyCalendarPage() {
   const [holidays, setHolidays] = useState<EffectiveHolidays>({ governmentHolidays: [], academyHolidays: [] });
   const [teachers, setTeachers] = useState<AcademyActiveTeacher[]>([]);
   const [batches, setBatches] = useState<AcademyManagedBatch[]>([]);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const [typeFilter, setTypeFilter] = useState<'all' | 'classes' | 'holidays' | 'cancellations'>('all');
   const [tutorId, setTutorId] = useState('');
@@ -79,7 +79,7 @@ export default function AcademyCalendarPage() {
       setSessions([]);
       return;
     }
-    setLoadError(false);
+    setLoadError(null);
     try {
       const [sessionRows, holidayRows, teacherRows, batchRows] = await Promise.all([
         api.get<AcademyTodaySession[]>(
@@ -87,16 +87,16 @@ export default function AcademyCalendarPage() {
         ),
         api.get<EffectiveHolidays>(
           `/academy/me/holidays?from=${range.from.toISOString().slice(0, 10)}&to=${range.to.toISOString().slice(0, 10)}`,
-        ).catch(() => ({ governmentHolidays: [], academyHolidays: [] }) as EffectiveHolidays),
-        api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active').catch(() => [] as AcademyActiveTeacher[]),
-        api.get<AcademyManagedBatch[]>('/academy/me/batches').catch(() => [] as AcademyManagedBatch[]),
+        ),
+        api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active'),
+        api.get<AcademyManagedBatch[]>('/academy/me/batches'),
       ]);
       setSessions(sessionRows);
       setHolidays(holidayRows);
       setTeachers(teacherRows);
       setBatches(batchRows);
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, [hasAcademy, range]);
 
@@ -234,7 +234,7 @@ export default function AcademyCalendarPage() {
 
       <div className="mt-6">
         {loadError ? (
-          <ErrorState description="Could not load the calendar. Check your connection and try again." onRetry={() => void load()} />
+          <ErrorState error={loadError} what="the calendar" onRetry={() => void load()} />
         ) : sessions === null ? (
           <CardSkeleton />
         ) : items.length === 0 ? (

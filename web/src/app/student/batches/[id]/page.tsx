@@ -52,10 +52,10 @@ export default function BatchOverviewTab() {
   const [assignments, setAssignments] = useState<StudentAssignmentSummary[] | null>(null);
   const [quizzes, setQuizzes] = useState<StudentQuizSummary[] | null>(null);
   const [updates, setUpdates] = useState<RecentUpdate[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setSessions(null);
     setAssignments(null);
     setQuizzes(null);
@@ -63,9 +63,9 @@ export default function BatchOverviewTab() {
     Promise.all([
       api.get<Session[]>('/sessions/upcoming'),
       api.get<StudentAssignmentSummary[]>('/assignments/me'),
-      api.get<StudentQuizSummary[]>(`/quizzes/batch/${batch.id}`).catch(() => [] as StudentQuizSummary[]),
-      api.get<Material[]>(`/materials/batch/${batch.id}`).catch(() => [] as Material[]),
-      api.get<Announcement[]>(`/announcements/batch/${batch.id}`).catch(() => [] as Announcement[]),
+      api.get<StudentQuizSummary[]>(`/quizzes/batch/${batch.id}`),
+      api.get<Material[]>(`/materials/batch/${batch.id}`),
+      api.get<Announcement[]>(`/announcements/batch/${batch.id}`),
     ])
       .then(([allSessions, allAssignments, quizzesRes, materialsRes, announcementsRes]) => {
         setSessions(allSessions.filter((s) => s.batch_id === batch.id));
@@ -88,7 +88,7 @@ export default function BatchOverviewTab() {
         ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         setUpdates(merged.slice(0, 5));
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [batch.id]);
 
   useEffect(() => {
@@ -107,7 +107,7 @@ export default function BatchOverviewTab() {
     );
   }
   if (loadError) {
-    return <ErrorState description="Could not load this batch. Check your connection and try again." onRetry={load} />;
+    return <ErrorState error={loadError} what="this batch" onRetry={load} />;
   }
 
   const now = new Date();

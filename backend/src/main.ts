@@ -1,11 +1,7 @@
 import * as Sentry from '@sentry/nestjs';
 import { NestFactory } from '@nestjs/core';
-import {
-  FastifyAdapter,
-  NestFastifyApplication,
-} from '@nestjs/platform-fastify';
+import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { ConfigService } from '@nestjs/config';
-import { ValidationPipe } from '@nestjs/common';
 import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
@@ -14,6 +10,11 @@ import { AppModule } from './app.module';
 import { KYSELY_CONNECTION } from './database/database.module';
 import type { DB } from './database/types';
 import { scrubSentryEvent } from './sentry-scrub';
+import {
+  CORS_EXPOSED_HEADERS,
+  configureHttpApp,
+  createFastifyAdapter,
+} from './common/http/app-setup';
 
 // Must run before anything else, including NestFactory.create — Sentry's
 // own docs require init() to happen before the app/DI container exists.
@@ -43,7 +44,9 @@ async function bootstrap() {
   // {assessmentId}/{random}.ext, URL-encoded) — Supabase Storage in
   // production never routes through this param at all, so this only
   // affects local dev.
-  const adapter = new FastifyAdapter({ trustProxy: true, maxParamLength: 300 });
+  // (trustProxy, maxParamLength and request-id handling live in
+  // createFastifyAdapter so the e2e suites boot the identical adapter.)
+  const adapter = createFastifyAdapter();
 
   // Raw binary bodies for the dev-only local upload endpoint that stands
   // in for Supabase Storage's presigned PUT (see LocalStorageProvider).
@@ -112,15 +115,13 @@ async function bootstrap() {
     // etc.) was silently unreachable from a real browser despite curl-
     // based smoke tests passing, since curl never enforces CORS at all.
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    // Lets the browser read X-Request-Id off error responses so a failure
+    // shown to a user can be matched to the server log line.
+    exposedHeaders: CORS_EXPOSED_HEADERS,
   });
 
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
+  // Request-id response header + the global ValidationPipe.
+  configureHttpApp(app);
 
   const db = app.get<Kysely<DB>>(KYSELY_CONNECTION);
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {

@@ -22,7 +22,7 @@ export default function ParentFindATeacherPage() {
   const [feeMaxMinor, setFeeMaxMinor] = useState('');
   const [minRating, setMinRating] = useState('');
   const [results, setResults] = useState<DiscoverySearchResponse | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
@@ -31,7 +31,7 @@ export default function ParentFindATeacherPage() {
   }, []);
 
   useEffect(() => {
-    setLoadError(false);
+    setLoadError(null);
     setResults(null);
     const params = buildTutorSearchParams({
       subjectId,
@@ -46,7 +46,7 @@ export default function ParentFindATeacherPage() {
     void api
       .get<DiscoverySearchResponse>(`/marketplace/discovery/tutors?${params.toString()}`)
       .then(setResults)
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [subjectId, curriculumId, grade, language, teachingMode, minExperience, feeMaxMinor, minRating, retryCount]);
 
   const filtered =
@@ -167,7 +167,7 @@ export default function ParentFindATeacherPage() {
 
       {loadError ? (
         <ErrorState
-          description="Could not load teachers. Check your connection and try again."
+          error={loadError} what="teachers"
           onRetry={() => setRetryCount((n) => n + 1)}
         />
       ) : filtered === null ? (

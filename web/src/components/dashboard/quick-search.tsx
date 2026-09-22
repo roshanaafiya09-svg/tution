@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Layers, Search, Users } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { Batch } from '@/lib/types';
 import { cn } from '@/lib/cn';
-import { inputClass } from '@/components/ui';
+import { ErrorState, inputClass } from '@/components/ui';
+import { useApiQuery } from '@/lib/query';
 import { TEACHER_NAV, TEACHER_NAV_FOOTER, type TeacherNavItem } from './teacher-nav';
 
 interface Result {
@@ -27,17 +28,13 @@ export function QuickSearch() {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
-  const [batches, setBatches] = useState<Batch[] | null>(null);
+  // Loaded once, on first focus. A failure is shown in the dropdown with Retry —
+  // it must not silently narrow the results to "pages only".
+  const [wantBatches, setWantBatches] = useState(false);
+  const batchesQuery = useApiQuery(() => api.get<Batch[]>('/batches/me'), [], { enabled: wantBatches });
+  const batches = batchesQuery.data;
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const loadBatches = useCallback(() => {
-    if (batches !== null) return;
-    void api
-      .get<Batch[]>('/batches/me')
-      .then(setBatches)
-      .catch(() => setBatches([]));
-  }, [batches]);
 
   useEffect(() => {
     function onPointerDown(event: MouseEvent) {
@@ -98,7 +95,7 @@ export function QuickSearch() {
         placeholder="Search…"
         onFocus={() => {
           setOpen(true);
-          loadBatches();
+          setWantBatches(true);
         }}
         onChange={(e) => {
           setQuery(e.target.value);
@@ -113,6 +110,9 @@ export function QuickSearch() {
 
       {open && query.trim().length > 0 && (
         <div className="absolute right-0 top-full z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-neutral-200 bg-surface-raised p-1 shadow-lg dark:border-neutral-800">
+          {batchesQuery.status === 'error' && (
+            <ErrorState compact className="mb-1" error={batchesQuery.error} what="your batches for search" onRetry={() => void batchesQuery.reload()} />
+          )}
           {results.map((result) => (
             <button
               key={result.key}

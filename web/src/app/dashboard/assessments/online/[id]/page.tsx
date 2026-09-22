@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Check, Upload, Users2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
-import { describeLoadError, type LoadErrorInfo } from '@/lib/load-error';
 import type {
   AssessmentQuestion,
   AssessmentResult,
@@ -33,7 +32,7 @@ export default function OnlineAssessmentDetailPage() {
   const toast = useToast();
   const [assessment, setAssessment] = useState<OnlineAssessmentDetail | null>(null);
   const [batches, setBatches] = useState<Batch[]>([]);
-  const [loadError, setLoadError] = useState<LoadErrorInfo | null>(null);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -44,19 +43,19 @@ export default function OnlineAssessmentDetailPage() {
     try {
       const [a, batchRows] = await Promise.all([
         api.get<OnlineAssessmentDetail>(`/assessments/online/${id}`),
-        // Batch names are only header decoration here — never fatal.
-        api.get<Batch[]>('/batches/me').catch(() => [] as Batch[]),
+        api.get<Batch[]>('/batches/me'),
       ]);
+      // Results of a published assessment are part of the page: a failure to
+      // load them is an error, never "no results yet".
+      const resultRows =
+        a.status === 'published' || a.status === 'completed'
+          ? await api.get<AssessmentResult[]>(`/assessments/online/${id}/results`)
+          : null;
       setAssessment(a);
       setBatches(batchRows);
-      if (a.status === 'published' || a.status === 'completed') {
-        api
-          .get<AssessmentResult[]>(`/assessments/online/${id}/results`)
-          .then(setResults)
-          .catch(() => setResults([]));
-      }
+      setResults(resultRows);
     } catch (err) {
-      setLoadError(describeLoadError(err, 'this assessment'));
+      setLoadError(err ?? true);
     }
   }, [id]);
 
@@ -114,7 +113,7 @@ export default function OnlineAssessmentDetailPage() {
   }
 
   if (loadError) {
-    return <ErrorState title={loadError.title} description={loadError.description} onRetry={() => void load()} />;
+    return <ErrorState error={loadError} what="this assessment" onRetry={() => void load()} />;
   }
 
   if (!assessment) {

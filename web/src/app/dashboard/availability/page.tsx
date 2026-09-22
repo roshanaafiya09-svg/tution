@@ -41,7 +41,7 @@ export default function AvailabilityPage() {
   const toast = useToast();
   const [rules, setRules] = useState<AvailabilityRule[] | null>(null);
   const [exceptions, setExceptions] = useState<AvailabilityException[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [showRuleForm, setShowRuleForm] = useState(false);
@@ -66,16 +66,16 @@ export default function AvailabilityPage() {
   const [exceptionToDelete, setExceptionToDelete] = useState<AvailabilityException | null>(null);
 
   const load = useCallback(async () => {
-    setLoadError(false);
+    setLoadError(null);
     try {
       const [r, e] = await Promise.all([
         api.get<AvailabilityRule[]>('/availability/me'),
-        api.get<AvailabilityException[]>('/availability/exceptions/me').catch(() => [] as AvailabilityException[]),
+        api.get<AvailabilityException[]>('/availability/exceptions/me'),
       ]);
       setRules(r);
       setExceptions(e);
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, []);
 
@@ -179,7 +179,7 @@ export default function AvailabilityPage() {
 
       {loadError ? (
         <ErrorState
-          description="Could not load your availability. Check your connection and try again."
+          error={loadError} what="your availability"
           onRetry={() => void load()}
         />
       ) : rules === null || exceptions === null ? (

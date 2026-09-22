@@ -17,7 +17,7 @@ export default function AcademyNotificationsPage() {
   const router = useRouter();
   const { hasAcademy } = useAcademyDashboard();
   const [notifications, setNotifications] = useState<AppNotification[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [tab, setTab] = useState<Tab>('all');
 
   const load = useCallback(async () => {
@@ -25,11 +25,11 @@ export default function AcademyNotificationsPage() {
       setNotifications([]);
       return;
     }
-    setLoadError(false);
+    setLoadError(null);
     try {
       setNotifications(await api.get<AppNotification[]>('/notifications'));
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, [hasAcademy]);
 
@@ -63,7 +63,7 @@ export default function AcademyNotificationsPage() {
   }
 
   if (loadError) {
-    return <ErrorState description="Could not load notifications. Check your connection and try again." onRetry={() => void load()} />;
+    return <ErrorState error={loadError} what="notifications" onRetry={() => void load()} />;
   }
 
   return (

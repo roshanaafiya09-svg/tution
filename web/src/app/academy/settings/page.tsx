@@ -19,16 +19,16 @@ export default function AcademySettingsPage() {
   const toast = useToast();
   const { hasAcademy } = useAcademyDashboard();
   const [profile, setProfile] = useState<AcademyOwnerProfile | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [savingHolidaySetting, setSavingHolidaySetting] = useState(false);
 
   const load = useCallback(async () => {
     if (hasAcademy === false) return;
-    setLoadError(false);
+    setLoadError(null);
     try {
       setProfile(await api.get<AcademyOwnerProfile>('/academy/me'));
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, [hasAcademy]);
 
@@ -60,7 +60,7 @@ export default function AcademySettingsPage() {
         {hasAcademy === false ? (
           <AcademySetupRequired pageLabel="Settings" />
         ) : loadError ? (
-          <ErrorState description="Could not load your settings. Check your connection and try again." onRetry={() => void load()} />
+          <ErrorState error={loadError} what="your settings" onRetry={() => void load()} />
         ) : !profile ? (
           <div className="grid gap-4 sm:grid-cols-2">
             <CardSkeleton />

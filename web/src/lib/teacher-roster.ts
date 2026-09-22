@@ -40,14 +40,15 @@ function emptyAttendance(): RosterStudent['attendance'] {
  * Bulk load of the teacher's whole roster: one call for enrollments across
  * every batch, one for attendance across every batch, plus a single
  * fee-period call — replacing what used to be two requests per batch.
- * Failures degrade to an empty roster rather than a broken page.
+ * Any failed call rejects the whole load — a partial roster (students with no
+ * attendance, no fees) would be presented as fact, and an empty one as "no students".
  */
 export async function loadRoster(periodLabel = currentPeriodLabel()): Promise<RosterData> {
   const [batches, enrollments, attendanceRows, feeEntries] = await Promise.all([
     api.get<Batch[]>('/batches/me'),
-    api.get<Enrollment[]>('/batches/me/students').catch(() => [] as Enrollment[]),
-    api.get<AttendanceBatchHistoryEntry[]>('/attendance/batches/mine/history').catch(() => [] as AttendanceBatchHistoryEntry[]),
-    api.get<FeeEntry[]>(`/fees/period?period=${periodLabel}`).catch(() => [] as FeeEntry[]),
+    api.get<Enrollment[]>('/batches/me/students'),
+    api.get<AttendanceBatchHistoryEntry[]>('/attendance/batches/mine/history'),
+    api.get<FeeEntry[]>(`/fees/period?period=${periodLabel}`),
   ]);
 
   const batchById = new Map(batches.map((b) => [b.id, b]));

@@ -35,10 +35,10 @@ export default function StudentBatchesPage() {
   const [history, setHistory] = useState<AttendanceHistoryEntry[] | null>(null);
   const [materialsCount, setMaterialsCount] = useState<Map<string, number> | null>(null);
   const [announcementsCount, setAnnouncementsCount] = useState<Map<string, number> | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setBatches(null);
     setSubjects(null);
     setSessions(null);
@@ -47,9 +47,9 @@ export default function StudentBatchesPage() {
     setAnnouncementsCount(null);
     Promise.all([
       api.get<Batch[]>('/batches/enrolled'),
-      apiGetPublic<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
-      api.get<Session[]>('/sessions/upcoming').catch(() => [] as Session[]),
-      api.get<AttendanceHistoryEntry[]>('/attendance/me/history').catch(() => [] as AttendanceHistoryEntry[]),
+      apiGetPublic<Subject[]>('/catalog/subjects'),
+      api.get<Session[]>('/sessions/upcoming'),
+      api.get<AttendanceHistoryEntry[]>('/attendance/me/history'),
     ])
       .then(async ([b, s, sess, hist]) => {
         setBatches(b);
@@ -60,15 +60,15 @@ export default function StudentBatchesPage() {
         const perBatch = await Promise.all(
           b.map((batch) =>
             Promise.all([
-              api.get<Material[]>(`/materials/batch/${batch.id}`).catch(() => [] as Material[]),
-              api.get<Announcement[]>(`/announcements/batch/${batch.id}`).catch(() => [] as Announcement[]),
+              api.get<Material[]>(`/materials/batch/${batch.id}`),
+              api.get<Announcement[]>(`/announcements/batch/${batch.id}`),
             ]),
           ),
         );
         setMaterialsCount(new Map(b.map((batch, i) => [batch.id, perBatch[i][0].length])));
         setAnnouncementsCount(new Map(b.map((batch, i) => [batch.id, perBatch[i][1].length])));
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, []);
 
   useEffect(() => {
@@ -96,7 +96,7 @@ export default function StudentBatchesPage() {
           <CardSkeleton className="rounded-2xl" />
         </div>
       ) : loadError ? (
-        <ErrorState description="Could not load your batches. Check your connection and try again." onRetry={load} />
+        <ErrorState error={loadError} what="your batches" onRetry={load} />
       ) : batches.length === 0 ? (
         <NoBatchesEmptyState />
       ) : (

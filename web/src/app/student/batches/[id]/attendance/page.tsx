@@ -23,10 +23,10 @@ export default function BatchAttendanceTab() {
   const { batch } = useBatchWorkspace();
   const [summary, setSummary] = useState<AttendanceSummary | null>(null);
   const [history, setHistory] = useState<HistoryRowWithBatch[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setSummary(null);
     setHistory(null);
     Promise.all([
@@ -45,7 +45,7 @@ export default function BatchAttendanceTab() {
           rows.filter((row) => row.batch_id === batch.id).map((row) => ({ ...row, batch_title: batch.title })),
         );
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [batch.id, batch.title]);
 
   useEffect(() => {
@@ -61,7 +61,7 @@ export default function BatchAttendanceTab() {
     );
   }
   if (loadError) {
-    return <ErrorState description="Could not load this batch's attendance. Check your connection and try again." onRetry={load} />;
+    return <ErrorState error={loadError} what="this batch's attendance" onRetry={load} />;
   }
   if (summary.total === 0) {
     return (

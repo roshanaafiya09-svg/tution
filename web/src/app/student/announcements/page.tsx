@@ -9,10 +9,10 @@ import { PageIntro, AnnouncementsList, type AnnouncementWithBatch } from '@/comp
 
 export default function StudentAnnouncementsPage() {
   const [announcements, setAnnouncements] = useState<AnnouncementWithBatch[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setAnnouncements(null);
     api
       .get<Batch[]>('/batches/enrolled')
@@ -27,15 +27,14 @@ export default function StudentAnnouncementsPage() {
                   batch_title: batch.title,
                   tutor_display_name: batch.tutor_display_name ?? null,
                 })),
-              )
-              .catch(() => [] as AnnouncementWithBatch[]),
+              ),
           ),
         );
         setAnnouncements(
           perBatch.flat().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
         );
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, []);
 
   useEffect(() => {
@@ -52,7 +51,7 @@ export default function StudentAnnouncementsPage() {
           <CardSkeleton className="rounded-2xl" />
         </div>
       ) : loadError ? (
-        <ErrorState description="Could not load your announcements. Check your connection and try again." onRetry={load} />
+        <ErrorState error={loadError} what="your announcements" onRetry={load} />
       ) : announcements.length === 0 ? (
         <EmptyState icon={Megaphone} title="No announcements yet" description="Updates from your tutors will appear here." />
       ) : (

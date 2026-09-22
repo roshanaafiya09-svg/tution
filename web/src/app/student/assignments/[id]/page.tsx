@@ -42,7 +42,7 @@ export default function StudentAssignmentDetailPage() {
     const [list, batches, subjects] = await Promise.all([
       api.get<StudentAssignmentSummary[]>('/assignments/me'),
       api.get<Batch[]>('/batches/enrolled'),
-      apiGetPublic<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
+      apiGetPublic<Subject[]>('/catalog/subjects'),
     ]);
     const found = list.find((a) => a.id === assignmentId) ?? null;
     setAssignment(found);

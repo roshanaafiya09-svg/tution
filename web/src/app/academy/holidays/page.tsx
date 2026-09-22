@@ -45,7 +45,7 @@ export default function AcademyHolidaysPage() {
   const { hasAcademy } = useAcademyDashboard();
   const [holidays, setHolidays] = useState<EffectiveHolidays | null>(null);
   const [batches, setBatches] = useState<AcademyManagedBatch[]>([]);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
@@ -65,16 +65,16 @@ export default function AcademyHolidaysPage() {
       setHolidays({ governmentHolidays: [], academyHolidays: [] });
       return;
     }
-    setLoadError(false);
+    setLoadError(null);
     try {
       const [h, b] = await Promise.all([
         api.get<EffectiveHolidays>(`/academy/me/holidays?from=${today()}&to=${nextYear()}`),
-        api.get<AcademyManagedBatch[]>('/academy/me/batches').catch(() => [] as AcademyManagedBatch[]),
+        api.get<AcademyManagedBatch[]>('/academy/me/batches'),
       ]);
       setHolidays(h);
       setBatches(b);
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, [hasAcademy]);
 
@@ -136,7 +136,7 @@ export default function AcademyHolidaysPage() {
   }
 
   if (loadError) {
-    return <ErrorState description="Could not load your holiday calendar. Check your connection and try again." onRetry={() => void load()} />;
+    return <ErrorState error={loadError} what="your holiday calendar" onRetry={() => void load()} />;
   }
 
   const loading = holidays === null;

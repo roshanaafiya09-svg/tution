@@ -57,21 +57,21 @@ function AttendanceMeter({ student }: { student: RosterStudent }) {
 export default function StudentsPage() {
   const [batches, setBatches] = useState<Batch[]>([]);
   const [students, setStudents] = useState<RosterStudent[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [query, setQuery] = useState('');
   const [batchFilter, setBatchFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'left'>('active');
   const periodLabel = currentPeriodLabel();
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setStudents(null);
     loadRoster(periodLabel)
       .then((data) => {
         setBatches(data.batches);
         setStudents(data.students);
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [periodLabel]);
 
   useEffect(() => {
@@ -125,7 +125,7 @@ export default function StudentsPage() {
       />
 
       {loadError ? (
-        <ErrorState description="Could not load your students. Check your connection and try again." onRetry={load} />
+        <ErrorState error={loadError} what="your students" onRetry={load} />
       ) : students === null ? (
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-3">

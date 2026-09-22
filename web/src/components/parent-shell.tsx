@@ -5,7 +5,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import posthog from 'posthog-js';
 import { LogOut, Menu, Settings, UserPlus, CircleUser } from 'lucide-react';
-import { api, apiLogout, ensureSession, ApiError } from '@/lib/api';
+import { api, apiLogout, requireSession } from '@/lib/api';
+import { useApiQuery } from '@/lib/query';
 import type { Me } from '@/lib/types';
 import { impersonationStore } from '@/lib/impersonation';
 import type { ImpersonationTarget } from '@/lib/impersonation';
@@ -55,8 +56,6 @@ function useMediaQuery(query: string): boolean {
 export function ParentShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [me, setMe] = useState<Me | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [impersonating, setImpersonating] = useState<ImpersonationTarget | null>(null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -80,33 +79,19 @@ export function ParentShell({ children }: { children: React.ReactNode }) {
     setDrawerOpen(false);
   }, [pathname]);
 
+  const meQuery = useApiQuery(
+    async () => {
+      await requireSession();
+      return api.get<Me>('/auth/me');
+    },
+    [],
+    { profileScoped: false },
+  );
+  const me = meQuery.data;
+
   useEffect(() => {
-    void (async () => {
-      if (!(await ensureSession())) {
-        router.replace('/login?next=/parent');
-        return;
-      }
-
-      setImpersonating(impersonationStore.target);
-
-      try {
-        setMe(await api.get<Me>('/auth/me'));
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 401) {
-          // See DashboardShell's identical branch: an expired
-          // impersonation token means "session ended," not "signed out."
-          if (impersonationStore.active) {
-            await impersonationStore.stop();
-            router.replace('/admin');
-          } else {
-            router.replace('/login?next=/parent');
-          }
-        } else {
-          setError('Could not load your account.');
-        }
-      }
-    })();
-  }, [router]);
+    if (meQuery.status === 'success') setImpersonating(impersonationStore.target);
+  }, [meQuery.status]);
 
   function signOut() {
     if (posthog.__loaded) posthog.reset();
@@ -117,10 +102,10 @@ export function ParentShell({ children }: { children: React.ReactNode }) {
     void apiLogout();
   }
 
-  if (error) {
+  if (meQuery.status === 'error') {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-6">
-        <ErrorState description={error} onRetry={() => window.location.reload()} />
+        <ErrorState error={meQuery.error} what="your account" onRetry={() => void meQuery.reload()} />
       </div>
     );
   }

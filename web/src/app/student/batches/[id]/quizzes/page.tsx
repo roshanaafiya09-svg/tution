@@ -10,15 +10,15 @@ import { QuizzesList, useBatchWorkspace } from '@/components/student';
 export default function BatchQuizzesTab() {
   const { batch, subjectName } = useBatchWorkspace();
   const [quizzes, setQuizzes] = useState<StudentQuizSummary[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setQuizzes(null);
     api
       .get<StudentQuizSummary[]>(`/quizzes/batch/${batch.id}`)
       .then(setQuizzes)
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [batch.id]);
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export default function BatchQuizzesTab() {
     );
   }
   if (loadError) {
-    return <ErrorState description="Could not load this batch's quizzes." onRetry={load} />;
+    return <ErrorState error={loadError} what="this batch's quizzes" onRetry={load} />;
   }
   if (quizzes.length === 0) {
     return (

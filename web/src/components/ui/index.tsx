@@ -10,7 +10,7 @@ export { Field, inputClass, Input, Textarea, Select } from './input';
 export { StatusBadge, Badge } from './badge';
 export { EmptyState } from './empty-state';
 export { Skeleton, CardSkeleton, Spinner, PageLoading } from './loading';
-export { ErrorState, InlineError } from './error-state';
+export { ErrorState, InlineError, InlineRetry, type ErrorStateProps } from './error-state';
 export { TableContainer, Table, THead, TBody, TR, TH, TD } from './table';
 export { Dialog, DialogTrigger, DialogClose, DialogContent, DialogFooter } from './dialog';
 export { ConfirmDialog } from './confirm-dialog';
@@ -26,3 +26,4 @@ export {
   DropdownMenuLabel,
 } from './dropdown-menu';
 export { Popover, PopoverTrigger, PopoverClose, PopoverContent } from './popover';
+export { QueryBoundary } from './query-boundary';

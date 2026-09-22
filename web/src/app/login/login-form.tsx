@@ -6,7 +6,7 @@ import Script from 'next/script';
 import posthog from 'posthog-js';
 import { api, apiPost, session, ensureSession, ApiError } from '@/lib/api';
 import { safeRedirectPath } from '@/lib/safe-redirect';
-import { Button, Field, Input, InlineError, Card } from '@/components/ui';
+import { Button, Field, Input, InlineError, Card, ErrorState } from '@/components/ui';
 import type { Me } from '@/lib/types';
 
 interface AuthTokens {
@@ -54,6 +54,10 @@ export function LoginForm() {
   const [code, setCode] = useState('');
   const [signupRole, setSignupRole] = useState<'tutor' | 'student' | 'parent' | 'academy'>('tutor');
   const [error, setError] = useState<string | null>(null);
+  // Set when sign-in itself succeeded but the follow-up "who is this account?"
+  // lookup failed — a different problem from a wrong code, so it is shown as
+  // its own error with Retry (the session already exists; only the lookup reruns).
+  const [accountError, setAccountError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
   const googleButtonRef = useRef<HTMLDivElement>(null);
 
@@ -70,26 +74,38 @@ export function LoginForm() {
       router.replace(next);
       return;
     }
+    await routeByRole();
+  }
+
+  async function routeByRole() {
+    setAccountError(null);
     // Fetch the authoritative role set rather than trust the signup-only
     // `signupRole` choice — a returning user never passes that through.
     // Every role now has its own web portal; /get-the-app is the
     // fallback only for an account with none of these roles yet (kept
     // live as a standalone route for the mobile download cards, just no
     // longer the automatic post-login destination for students).
-    const me = await api.get<Me>('/auth/me').catch(() => null);
-    if (me?.roles.includes('superadmin')) {
+    let me: Me;
+    try {
+      me = await api.get<Me>('/auth/me');
+    } catch (err) {
+      // Not "no roles → /get-the-app": we simply don't know yet. Say so.
+      setAccountError(err ?? true);
+      return;
+    }
+    if (me.roles.includes('superadmin')) {
       router.replace('/admin');
-    } else if (me?.roles.includes('academy')) {
+    } else if (me.roles.includes('academy')) {
       // An academy-owner account (self-signed-up here, or created by
       // superadmin via AcademyAdminService.linkOwner) is expected to
       // hold only this role — checked ahead of parent/tutor/student so
       // it always wins.
       router.replace('/academy');
-    } else if (me?.roles.includes('parent')) {
+    } else if (me.roles.includes('parent')) {
       router.replace('/parent');
-    } else if (me?.roles.includes('tutor')) {
+    } else if (me.roles.includes('tutor')) {
       router.replace('/dashboard');
-    } else if (me?.roles.includes('student')) {
+    } else if (me.roles.includes('student')) {
       router.replace('/student');
     } else {
       router.replace('/get-the-app');
@@ -208,6 +224,19 @@ export function LoginForm() {
         ? 'border-brand-600 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-500/15 dark:text-brand-200'
         : 'border-neutral-300 text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800'
     }`;
+
+  if (accountError) {
+    return (
+      <Card className="p-7">
+        <ErrorState
+          error={accountError}
+          what="your account"
+          title="Signed in, but we couldn't load your account"
+          onRetry={() => void routeByRole()}
+        />
+      </Card>
+    );
+  }
 
   return (
     <Card className="p-7">

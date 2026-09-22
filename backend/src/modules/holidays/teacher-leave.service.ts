@@ -1,3 +1,4 @@
+import { ErrorCode } from '../../common/http/error-codes';
 import {
   BadRequestException,
   ConflictException,
@@ -70,9 +71,10 @@ export class TeacherLeaveService {
         tutorId,
       );
     if (!membership) {
-      throw new ForbiddenException(
-        "You aren't an active member of that academy",
-      );
+      throw new ForbiddenException({
+        code: ErrorCode.TEACHING_CONTEXT_FORBIDDEN,
+        message: "You aren't an active member of that academy",
+      });
     }
 
     const endDate = dto.endDate ?? dto.startDate;

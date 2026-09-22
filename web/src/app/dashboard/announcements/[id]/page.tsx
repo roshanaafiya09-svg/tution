@@ -14,7 +14,7 @@ export default function TeacherAnnouncementDetailPage() {
   const router = useRouter();
   const [announcement, setAnnouncement] = useState<AcademyAnnouncementForRecipient | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -26,7 +26,7 @@ export default function TeacherAnnouncementDetailPage() {
       .catch((err: unknown) => {
         if (cancelled) return;
         if (err instanceof ApiError && err.status === 404) setNotFound(true);
-        else setLoadError(true);
+        else setLoadError(err ?? true);
       });
     return () => {
       cancelled = true;
@@ -46,7 +46,7 @@ export default function TeacherAnnouncementDetailPage() {
   if (loadError) {
     return (
       <ErrorState
-        description="Could not load this announcement. Check your connection and try again."
+        error={loadError} what="this announcement"
         onRetry={() => window.location.reload()}
       />
     );

@@ -27,10 +27,10 @@ export default function ParentPremiumPage() {
   const [plans, setPlans] = useState<Record<string, SubscriptionPlan> | null>(null);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(async () => {
-    setLoadError(false);
+    setLoadError(null);
     try {
       const [s, p] = await Promise.all([
         api.get<ParentPremiumStatus>('/parent-premium/me'),
@@ -38,8 +38,8 @@ export default function ParentPremiumPage() {
       ]);
       setStatus(s);
       setPlans(p);
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, []);
 
@@ -83,7 +83,7 @@ export default function ParentPremiumPage() {
 
       {loadError ? (
         <ErrorState
-          description="Could not load your premium status. Check your connection and try again."
+          error={loadError} what="your premium status"
           onRetry={() => void load()}
         />
       ) : status === null ? (

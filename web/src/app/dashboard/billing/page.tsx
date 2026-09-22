@@ -22,24 +22,24 @@ export default function BillingPage() {
   const [recap, setRecap] = useState<SubscriptionRecap | null>(null);
   const [plans, setPlans] = useState<Record<string, SubscriptionPlan> | null>(null);
   const [payouts, setPayouts] = useState<Payout[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [planToConfirm, setPlanToConfirm] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     Promise.all([
       api.get<SubscriptionRecap>('/subscriptions/recap'),
       api.get<Record<string, SubscriptionPlan>>('/subscriptions/plans'),
-      api.get<Payout[]>('/payouts/me').catch(() => [] as Payout[]),
+      api.get<Payout[]>('/payouts/me'),
     ])
       .then(([r, p, po]) => {
         setRecap(r);
         setPlans(p);
         setPayouts(po);
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, []);
 
   useEffect(() => {
@@ -97,7 +97,7 @@ export default function BillingPage() {
 
       <div className="mt-8">
       {loadError ? (
-        <ErrorState description="Could not load your subscription. Check your connection and try again." onRetry={load} />
+        <ErrorState error={loadError} what="your subscription" onRetry={load} />
       ) : recap === null ? (
         <div className="space-y-6">
           <CardSkeleton />

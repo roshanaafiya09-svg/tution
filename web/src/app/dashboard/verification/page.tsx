@@ -89,16 +89,16 @@ function StateStepper({ state }: { state: DocState }) {
 export default function VerificationPage() {
   const toast = useToast();
   const [uploads, setUploads] = useState<VerificationUpload[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [uploading, setUploading] = useState<VerificationDocType | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     return api
       .get<VerificationUpload[]>('/verifications/me')
       .then(setUploads)
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, []);
 
   useEffect(() => {
@@ -166,7 +166,7 @@ export default function VerificationPage() {
 
       {loadError ? (
         <ErrorState
-          description="Could not load your verification status. Check your connection and try again."
+          error={loadError} what="your verification status"
           onRetry={load}
         />
       ) : uploads === null ? (

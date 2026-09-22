@@ -47,27 +47,27 @@ export default function BatchWorkspaceLayout({ children }: { children: React.Rea
 
   const [batches, setBatches] = useState<Batch[] | null>(null);
   const [subjects, setSubjects] = useState<Subject[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   useEffect(() => {
-    setLoadError(false);
+    setLoadError(null);
     setBatches(null);
     setSubjects(null);
     Promise.all([
       api.get<Batch[]>('/batches/enrolled'),
-      apiGetPublic<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
+      apiGetPublic<Subject[]>('/catalog/subjects'),
     ])
       .then(([b, s]) => {
         setBatches(b);
         setSubjects(s);
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [id]);
 
   if (loadError) {
     return (
       <ErrorState
-        description="Could not load this batch. Check your connection and try again."
+        error={loadError} what="this batch"
         onRetry={() => window.location.reload()}
       />
     );

@@ -43,25 +43,25 @@ export default function StudentSchedulePage() {
   const [sessions, setSessions] = useState<Session[] | null>(null);
   const [batches, setBatches] = useState<Batch[] | null>(null);
   const [subjects, setSubjects] = useState<Subject[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setSessions(null);
     setBatches(null);
     setSubjects(null);
     const { from, to } = rangeFor(range);
     Promise.all([
       api.get<Session[]>(`/sessions/upcoming?from=${from.toISOString()}&to=${to.toISOString()}`),
-      api.get<Batch[]>('/batches/enrolled').catch(() => [] as Batch[]),
-      apiGetPublic<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
+      api.get<Batch[]>('/batches/enrolled'),
+      apiGetPublic<Subject[]>('/catalog/subjects'),
     ])
       .then(([s, b, subs]) => {
         setSessions(s);
         setBatches(b);
         setSubjects(subs);
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [range]);
 
   useEffect(() => {
@@ -104,7 +104,7 @@ export default function StudentSchedulePage() {
           <CardSkeleton className="rounded-2xl" />
         </div>
       ) : loadError ? (
-        <ErrorState description="Could not load your schedule. Check your connection and try again." onRetry={load} />
+        <ErrorState error={loadError} what="your schedule" onRetry={load} />
       ) : visibleSessions.length === 0 ? (
         <EmptyState
           icon={CalendarDays}

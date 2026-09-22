@@ -1,3 +1,4 @@
+import { ErrorCode } from '../../../common/http/error-codes';
 import { randomInt, createHash } from 'node:crypto';
 import {
   Inject,
@@ -63,19 +64,24 @@ export class OtpService {
   async checkOtp(identifier: string, code: string): Promise<void> {
     const challenge = await this.otpRepository.findActive(identifier);
     if (!challenge) {
-      throw new UnauthorizedException(
-        'No active OTP for this account. Request a new one.',
-      );
+      throw new UnauthorizedException({
+        code: ErrorCode.INVALID_OTP,
+        message: 'No active OTP for this account. Request a new one.',
+      });
     }
     if (challenge.attempts >= MAX_VERIFY_ATTEMPTS) {
-      throw new UnauthorizedException(
-        'Too many incorrect attempts. Request a new OTP.',
-      );
+      throw new UnauthorizedException({
+        code: ErrorCode.INVALID_OTP,
+        message: 'Too many incorrect attempts. Request a new OTP.',
+      });
     }
 
     if (hashCode(code) !== challenge.codeHash) {
       await this.otpRepository.incrementAttempts(identifier);
-      throw new UnauthorizedException('Incorrect OTP.');
+      throw new UnauthorizedException({
+        code: ErrorCode.INVALID_OTP,
+        message: 'Incorrect OTP.',
+      });
     }
   }
 

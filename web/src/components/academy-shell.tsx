@@ -5,7 +5,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import posthog from 'posthog-js';
 import { LogOut, Menu, Settings, Building2 } from 'lucide-react';
-import { api, apiLogout, ensureSession, ApiError } from '@/lib/api';
+import { api, apiLogout, requireSession, ApiError } from '@/lib/api';
+import { useApiQuery } from '@/lib/query';
 import type { Me } from '@/lib/types';
 import { NotificationsBell } from '@/components/notifications-bell';
 import { cn } from '@/lib/cn';
@@ -74,8 +75,6 @@ export function useAcademyDashboard() {
 export function AcademyShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [me, setMe] = useState<Me | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsedPref, setCollapsedPref] = useState(false);
@@ -87,7 +86,6 @@ export function AcademyShell({ children }: { children: React.ReactNode }) {
   // `academies` row yet (fresh self-serve signup — see login-form.tsx),
   // true = normal case. No page is ever bounced back to /academy for
   // this — see AcademySetupRequired's doc comment for why.
-  const [hasAcademy, setHasAcademy] = useState<boolean | null>(null);
 
   // Shared unread-notifications poll — one interval for this whole shell,
   // consumed by both the sidebar's Notifications badge and the header
@@ -119,39 +117,35 @@ export function AcademyShell({ children }: { children: React.ReactNode }) {
     setDrawerOpen(false);
   }, [pathname]);
 
-  useEffect(() => {
-    void (async () => {
-      if (!(await ensureSession())) {
-        router.replace('/login');
-        return;
-      }
-
+  // Account + "does this owner have an academy yet?" (a 404 from /academy/me is
+  // the ANSWER "no", not a failure; every other error is a failure).
+  const accountQuery = useApiQuery(
+    async () => {
+      await requireSession();
+      const account = await api.get<Me>('/auth/me');
+      if (!account.roles.includes('academy')) return { account, hasAcademy: false };
       try {
-        const account = await api.get<Me>('/auth/me');
-        if (!account.roles.includes('academy')) {
-          router.replace('/get-the-app');
-          return;
-        }
-        setMe(account);
-        try {
-          await api.get('/academy/me');
-          setHasAcademy(true);
-        } catch (err: unknown) {
-          if (err instanceof ApiError && err.status === 404) {
-            setHasAcademy(false);
-          } else {
-            setError('Could not load your academy.');
-          }
-        }
+        await api.get('/academy/me');
+        return { account, hasAcademy: true };
       } catch (err) {
-        if (err instanceof ApiError && err.status === 401) {
-          router.replace('/login');
-        } else {
-          setError('Could not load your account.');
-        }
+        if (err instanceof ApiError && err.status === 404) return { account, hasAcademy: false };
+        throw err;
       }
-    })();
-  }, [router]);
+    },
+    [],
+    { profileScoped: false },
+  );
+  const isAcademyAccount =
+    accountQuery.status === 'success' && accountQuery.data.account.roles.includes('academy');
+  const me = isAcademyAccount ? accountQuery.data.account : null;
+  const [academyCreated, setAcademyCreated] = useState(false);
+  const hasAcademy: boolean | null = isAcademyAccount ? academyCreated || accountQuery.data.hasAcademy : null;
+
+  useEffect(() => {
+    if (accountQuery.status === 'success' && !accountQuery.data.account.roles.includes('academy')) {
+      router.replace('/get-the-app');
+    }
+  }, [accountQuery.status, accountQuery.data, router]);
 
   useEffect(() => {
     if (!me) return;
@@ -166,10 +160,10 @@ export function AcademyShell({ children }: { children: React.ReactNode }) {
     void apiLogout();
   }
 
-  if (error) {
+  if (accountQuery.status === 'error') {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-6">
-        <ErrorState description={error} onRetry={() => window.location.reload()} />
+        <ErrorState error={accountQuery.error} what="your academy" onRetry={() => void accountQuery.reload()} />
       </div>
     );
   }
@@ -186,7 +180,7 @@ export function AcademyShell({ children }: { children: React.ReactNode }) {
   const pageTitle = academyPageTitle(pathname);
 
   return (
-    <AcademyDashboardContext.Provider value={{ hasAcademy, markAcademyCreated: () => setHasAcademy(true) }}>
+    <AcademyDashboardContext.Provider value={{ hasAcademy, markAcademyCreated: () => setAcademyCreated(true) }}>
       <div className="min-h-screen bg-background">
         <AcademySidebar
           collapsed={collapsed}

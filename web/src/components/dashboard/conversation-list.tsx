@@ -20,13 +20,13 @@ export function ConversationList({
   activeStudentId?: string;
 }) {
   const [threads, setThreads] = useState<ThreadSummary[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [query, setQuery] = useState('');
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setThreads(null);
-    api.get<ThreadSummary[]>('/messages/mine').then(setThreads).catch(() => setLoadError(true));
+    api.get<ThreadSummary[]>('/messages/mine').then(setThreads).catch((err: unknown) => setLoadError(err ?? true));
   }, []);
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export function ConversationList({
   }, [load]);
 
   if (loadError) {
-    return <ErrorState description="Could not load your conversations." onRetry={load} />;
+    return <ErrorState error={loadError} what="your conversations" onRetry={load} />;
   }
 
   if (threads === null) {

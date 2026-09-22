@@ -10,10 +10,10 @@ import { AnnouncementsList, useBatchWorkspace, type AnnouncementWithBatch } from
 export default function BatchAnnouncementsTab() {
   const { batch } = useBatchWorkspace();
   const [announcements, setAnnouncements] = useState<AnnouncementWithBatch[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setAnnouncements(null);
     api
       .get<Announcement[]>(`/announcements/batch/${batch.id}`)
@@ -24,7 +24,7 @@ export default function BatchAnnouncementsTab() {
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
         ),
       )
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [batch.id, batch.title, batch.tutor_display_name]);
 
   useEffect(() => {
@@ -40,7 +40,7 @@ export default function BatchAnnouncementsTab() {
     );
   }
   if (loadError) {
-    return <ErrorState description="Could not load this batch's announcements. Check your connection and try again." onRetry={load} />;
+    return <ErrorState error={loadError} what="this batch's announcements" onRetry={load} />;
   }
   if (announcements.length === 0) {
     return <EmptyState icon={Megaphone} title="No announcements yet" description="Updates from your tutor will appear here." />;

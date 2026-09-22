@@ -42,15 +42,15 @@ export default function ChildDetailPage() {
     setError(null);
 
     Promise.all([
-      api.get<ParentLink[]>('/parent-links/me').catch(() => [] as ParentLink[]),
-      api.get<Digest[]>('/digests/me').catch(() => [] as Digest[]),
+      api.get<ParentLink[]>('/parent-links/me'),
+      api.get<Digest[]>('/digests/me'),
       api.get<ProgressSummary>(`/progress/student/${studentId}`).catch(() => {
         setError('Could not load progress — the consent link may not be active yet.');
         return null;
       }),
-      api.get<StudentFeeEntry[]>(`/fees/student/${studentId}`).catch(() => [] as StudentFeeEntry[]),
-      api.get<AppNotification[]>('/notifications').catch(() => [] as AppNotification[]),
-      api.get<ThreadSummary[]>('/messages/mine').catch(() => [] as ThreadSummary[]),
+      api.get<StudentFeeEntry[]>(`/fees/student/${studentId}`),
+      api.get<AppNotification[]>('/notifications'),
+      api.get<ThreadSummary[]>('/messages/mine'),
     ]).then(([links, digestsRes, progressRes, feesRes, notificationsRes, threadsRes]) => {
       const link = links.find((l) => l.student_id === studentId);
       setDisplayName(link?.student_display_name ?? null);

@@ -13,18 +13,18 @@ export default function AcademyParentsPage() {
   const router = useRouter();
   const { hasAcademy } = useAcademyDashboard();
   const [parents, setParents] = useState<AcademyParentSummary[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(async () => {
     if (hasAcademy === false) {
       setParents([]);
       return;
     }
-    setLoadError(false);
+    setLoadError(null);
     try {
       setParents(await api.get<AcademyParentSummary[]>('/academy/me/parents'));
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, [hasAcademy]);
 
@@ -39,7 +39,7 @@ export default function AcademyParentsPage() {
 
       <div className="mt-8">
         {loadError ? (
-          <ErrorState description="Could not load parents. Check your connection and try again." onRetry={() => void load()} />
+          <ErrorState error={loadError} what="parents" onRetry={() => void load()} />
         ) : parents === null ? (
           <div className="grid gap-4 sm:grid-cols-2">
             <CardSkeleton />

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Download, FileWarning, Upload } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
-import { describeLoadError, type LoadErrorInfo } from '@/lib/load-error';
 import type { OfflineAssessmentDetail, ScorecardImportOutcome, ScorecardImportRecord } from '@/lib/types';
 import { Button, CardSkeleton, ErrorState, InlineError, StatusBadge, useToast } from '@/components/ui';
 import { TeacherPageHeader, AcademicCard } from '@/components/dashboard';
@@ -20,7 +19,7 @@ export default function OfflineAssessmentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const toast = useToast();
   const [assessment, setAssessment] = useState<OfflineAssessmentDetail | null>(null);
-  const [loadError, setLoadError] = useState<LoadErrorInfo | null>(null);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploadingPaper, setUploadingPaper] = useState(false);
   const [scheduling, setScheduling] = useState(false);
@@ -32,15 +31,16 @@ export default function OfflineAssessmentDetailPage() {
     setLoadError(null);
     try {
       const a = await api.get<OfflineAssessmentDetail>(`/assessments/offline/${id}`);
+      // A published assessment's import history is part of the page: if it
+      // cannot be loaded that is an error, not "no imports yet".
+      const importRows =
+        a.status !== 'draft'
+          ? await api.get<ScorecardImportRecord[]>(`/assessments/offline/${id}/scorecard-imports`)
+          : null;
       setAssessment(a);
-      if (a.status !== 'draft') {
-        api
-          .get<ScorecardImportRecord[]>(`/assessments/offline/${id}/scorecard-imports`)
-          .then(setImports)
-          .catch(() => setImports([]));
-      }
+      setImports(importRows);
     } catch (err) {
-      setLoadError(describeLoadError(err, 'this assessment'));
+      setLoadError(err ?? true);
     }
   }, [id]);
 
@@ -144,7 +144,7 @@ export default function OfflineAssessmentDetailPage() {
   }
 
   if (loadError) {
-    return <ErrorState title={loadError.title} description={loadError.description} onRetry={() => void load()} />;
+    return <ErrorState error={loadError} what="this assessment" onRetry={() => void load()} />;
   }
 
   if (!assessment) {

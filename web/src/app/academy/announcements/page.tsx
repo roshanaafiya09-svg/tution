@@ -66,7 +66,7 @@ export default function AcademyAnnouncementsPage() {
   const [batches, setBatches] = useState<AcademyManagedBatch[]>([]);
   const [teachers, setTeachers] = useState<AcademyActiveTeacher[]>([]);
   const [students, setStudents] = useState<AcademyManagedEnrollment[]>([]);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -82,22 +82,21 @@ export default function AcademyAnnouncementsPage() {
       setAnnouncements([]);
       return;
     }
-    setLoadError(false);
+    setLoadError(null);
     try {
       const [a, b, t, s] = await Promise.all([
         api.get<AcademyAnnouncement[]>('/academy/me/announcements'),
-        api.get<AcademyManagedBatch[]>('/academy/me/batches').catch(() => [] as AcademyManagedBatch[]),
-        api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active').catch(() => [] as AcademyActiveTeacher[]),
+        api.get<AcademyManagedBatch[]>('/academy/me/batches'),
+        api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active'),
         api
-          .get<AcademyManagedEnrollment[]>('/academy/me/students?status=active')
-          .catch(() => [] as AcademyManagedEnrollment[]),
+          .get<AcademyManagedEnrollment[]>('/academy/me/students?status=active'),
       ]);
       setAnnouncements(a);
       setBatches(b);
       setTeachers(t);
       setStudents(s);
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, [hasAcademy]);
 
@@ -160,7 +159,7 @@ export default function AcademyAnnouncementsPage() {
   }
 
   if (loadError) {
-    return <ErrorState description="Could not load announcements. Check your connection and try again." onRetry={() => void load()} />;
+    return <ErrorState error={loadError} what="announcements" onRetry={() => void load()} />;
   }
 
   return (

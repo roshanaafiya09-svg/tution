@@ -69,7 +69,7 @@ function StatusHeadline({ status }: { status: AcademyKycVerificationStatus['stat
 export default function AcademyVerificationPage() {
   const { hasAcademy } = useAcademyDashboard();
   const [status, setStatus] = useState<AcademyKycVerificationStatus | null | undefined>(undefined);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pan, setPan] = useState('');
@@ -80,12 +80,12 @@ export default function AcademyVerificationPage() {
       setStatus(null);
       return;
     }
-    setLoadError(false);
+    setLoadError(null);
     try {
       const res = await api.get<AcademyKycVerificationStatus>('/academy/verification/me');
       setStatus(res);
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, [hasAcademy]);
 
@@ -125,7 +125,7 @@ export default function AcademyVerificationPage() {
   if (loadError) {
     return (
       <ErrorState
-        description="Could not load your verification status. Check your connection and try again."
+        error={loadError} what="your verification status"
         onRetry={() => void load()}
       />
     );

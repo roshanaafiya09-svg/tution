@@ -1,3 +1,4 @@
+import { ErrorCode } from '../../common/http/error-codes';
 import {
   BadRequestException,
   ForbiddenException,
@@ -68,11 +69,12 @@ export class AssessmentsService {
     }
     const active = currentTeachingContext();
     if (active && academyIdOf(active) !== assessment.academy_id) {
-      throw new ForbiddenException(
-        assessment.academy_id
+      throw new ForbiddenException({
+        code: ErrorCode.TEACHING_CONTEXT_MISMATCH,
+        message: assessment.academy_id
           ? 'This is an Academy assessment. Switch to that academy profile to manage it.'
           : 'This is an Individual assessment. Switch to your Individual profile to manage it.',
-      );
+      });
     }
     return assessment;
   }

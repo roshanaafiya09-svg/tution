@@ -10,15 +10,15 @@ import { ScheduleList, useBatchWorkspace } from '@/components/student';
 export default function BatchScheduleTab() {
   const { batch, subjects } = useBatchWorkspace();
   const [sessions, setSessions] = useState<Session[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setSessions(null);
     api
       .get<Session[]>('/sessions/upcoming')
       .then((all) => setSessions(all.filter((s) => s.batch_id === batch.id)))
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [batch.id]);
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export default function BatchScheduleTab() {
     );
   }
   if (loadError) {
-    return <ErrorState description="Could not load this batch's schedule. Check your connection and try again." onRetry={load} />;
+    return <ErrorState error={loadError} what="this batch's schedule" onRetry={load} />;
   }
   if (sessions.length === 0) {
     return <EmptyState icon={CalendarDays} title="No upcoming classes" description="Your tutor hasn't scheduled a class yet." />;

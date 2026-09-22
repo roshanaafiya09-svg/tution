@@ -22,6 +22,7 @@ import {
   useToast,
 } from '@/components/ui';
 import { TeacherPageHeader, AcademicCard } from '@/components/dashboard';
+import { useApiQuery } from '@/lib/query';
 
 interface Academy {
   id: string;
@@ -50,7 +51,7 @@ export default function TeacherLeavePage() {
   const toast = useToast();
   const [academies, setAcademies] = useState<Academy[] | null>(null);
   const [requests, setRequests] = useState<TeacherLeaveRequest[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
@@ -60,17 +61,15 @@ export default function TeacherLeavePage() {
     leaveType: 'full_day' as 'full_day' | 'specific_classes',
     reason: '',
   });
-  const [candidateSessions, setCandidateSessions] = useState<Session[]>([]);
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const [detailFor, setDetailFor] = useState<TeacherLeaveRequest | null>(null);
-  const [detailSessions, setDetailSessions] = useState<LeaveAffectedSession[] | null>(null);
   const [withdrawTarget, setWithdrawTarget] = useState<TeacherLeaveRequest | null>(null);
 
   const load = useCallback(async () => {
-    setLoadError(false);
+    setLoadError(null);
     try {
       const [a, r] = await Promise.all([
         api.get<Academy[]>('/leave/academies'),
@@ -79,8 +78,8 @@ export default function TeacherLeavePage() {
       setAcademies(a);
       setRequests(r);
       setForm((f) => (f.academyId ? f : { ...f, academyId: a[0]?.id ?? '' }));
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, []);
 
@@ -88,13 +87,14 @@ export default function TeacherLeavePage() {
     void load();
   }, [load]);
 
-  useEffect(() => {
-    if (!showForm || form.leaveType !== 'specific_classes' || !form.startDate) return;
-    api
-      .get<Session[]>(`/sessions/me?from=${form.startDate}&to=${addDays(form.endDate || form.startDate, 1)}`)
-      .then(setCandidateSessions)
-      .catch(() => setCandidateSessions([]));
-  }, [showForm, form.leaveType, form.startDate, form.endDate]);
+  // Classes the leave could cover. A failure here must never read as "no classes
+  // in that range" — that would let someone file a specific-classes leave against nothing.
+  const candidateQuery = useApiQuery(
+    () => api.get<Session[]>(`/sessions/me?from=${form.startDate}&to=${addDays(form.endDate || form.startDate, 1)}`),
+    [form.startDate, form.endDate],
+    { enabled: showForm && form.leaveType === 'specific_classes' && Boolean(form.startDate) },
+  );
+  const candidateSessions = candidateQuery.data ?? [];
 
   function openForm() {
     setFormError(null);
@@ -142,15 +142,16 @@ export default function TeacherLeavePage() {
     }
   }
 
-  async function openDetail(request: TeacherLeaveRequest) {
+  function openDetail(request: TeacherLeaveRequest) {
     setDetailFor(request);
-    setDetailSessions(null);
-    try {
-      setDetailSessions(await api.get<LeaveAffectedSession[]>(`/leave/${request.id}/sessions`));
-    } catch {
-      setDetailSessions([]);
-    }
   }
+
+  const detailQuery = useApiQuery(
+    () => api.get<LeaveAffectedSession[]>(`/leave/${detailFor?.id}/sessions`),
+    [detailFor?.id],
+    { enabled: detailFor !== null },
+  );
+  const detailSessions = detailQuery.data ?? [];
 
   async function withdraw() {
     if (!withdrawTarget) return;
@@ -161,7 +162,7 @@ export default function TeacherLeavePage() {
 
   if (loadError) {
     return (
-      <ErrorState description="Could not load your leave requests. Check your connection and try again." onRetry={() => void load()} />
+      <ErrorState error={loadError} what="your leave requests" onRetry={() => void load()} />
     );
   }
 
@@ -292,7 +293,11 @@ export default function TeacherLeavePage() {
                 <p className="mb-1.5 text-xs font-medium text-neutral-600 dark:text-neutral-400">
                   Select the classes this leave covers
                 </p>
-                {candidateSessions.length === 0 ? (
+                {candidateQuery.status === 'error' ? (
+                  <ErrorState compact error={candidateQuery.error} what="your classes in that range" onRetry={() => void candidateQuery.reload()} />
+                ) : candidateQuery.status === 'loading' ? (
+                  <p className="text-xs text-neutral-400 dark:text-neutral-500">Loading classes…</p>
+                ) : candidateSessions.length === 0 ? (
                   <p className="text-xs text-neutral-400 dark:text-neutral-500">No scheduled classes in that range yet.</p>
                 ) : (
                   <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-lg border border-neutral-200 p-2 dark:border-neutral-800">
@@ -344,7 +349,9 @@ export default function TeacherLeavePage() {
           title="Affected classes"
           description={detailFor ? formatDateRange(detailFor.start_date, detailFor.end_date) : ''}
         >
-          {detailSessions === null ? (
+          {detailQuery.status === 'error' ? (
+            <ErrorState compact error={detailQuery.error} what="the affected classes" onRetry={() => void detailQuery.reload()} />
+          ) : detailQuery.status === 'loading' ? (
             <CardSkeleton className="h-16 rounded-xl" />
           ) : detailSessions.length === 0 ? (
             <p className="text-sm text-neutral-500 dark:text-neutral-400">No classes matched this leave request.</p>

@@ -20,7 +20,7 @@ const STATUS_OPTIONS: { value: ContactRequestStatus; label: string }[] = [
 export default function AcademyContactRequestsPage() {
   const { hasAcademy } = useAcademyDashboard();
   const [requests, setRequests] = useState<ContactRequest[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -28,11 +28,11 @@ export default function AcademyContactRequestsPage() {
       setRequests([]);
       return;
     }
-    setLoadError(false);
+    setLoadError(null);
     try {
       setRequests(await api.get<ContactRequest[]>('/academy/me/contact-requests'));
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, [hasAcademy]);
 
@@ -61,7 +61,7 @@ export default function AcademyContactRequestsPage() {
 
       <div className="mt-8">
         {loadError ? (
-          <ErrorState description="Could not load contact requests. Check your connection and try again." onRetry={() => void load()} />
+          <ErrorState error={loadError} what="contact requests" onRetry={() => void load()} />
         ) : requests === null ? (
           <div className="grid gap-4 sm:grid-cols-2">
             <CardSkeleton />

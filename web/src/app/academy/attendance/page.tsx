@@ -16,6 +16,7 @@ import { cancellationReasonLabel } from '@/lib/session-labels';
 import { CardSkeleton, Dialog, DialogContent, EmptyState, ErrorState, Input, Select, StatCard, StatusBadge } from '@/components/ui';
 import { AcademyPageIntro, AcademySetupBanner } from '@/components/academy';
 import { useAcademyDashboard } from '@/components/academy-shell';
+import { useApiQuery } from '@/lib/query';
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -27,7 +28,7 @@ export default function AcademyAttendancePage() {
   const [rows, setRows] = useState<AcademyAttendanceRow[] | null>(null);
   const [teachers, setTeachers] = useState<AcademyActiveTeacher[]>([]);
   const [batches, setBatches] = useState<AcademyManagedBatch[]>([]);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const today = new Date();
   const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -43,8 +44,7 @@ export default function AcademyAttendancePage() {
   const [studentDetail, setStudentDetail] = useState<AcademyStudentAttendance | null>(null);
 
   const [studentQuery, setStudentQuery] = useState('');
-  const [studentResults, setStudentResults] = useState<AcademyManagedEnrollment[]>([]);
-  const studentSearchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [debouncedStudentQuery, setDebouncedStudentQuery] = useState('');
 
   const loadTable = useCallback(
     async (filters: { from: string; to: string; batchId: string; tutorId: string; status: string }) => {
@@ -52,7 +52,7 @@ export default function AcademyAttendancePage() {
         setRows([]);
         return;
       }
-      setLoadError(false);
+      setLoadError(null);
       try {
         const params = new URLSearchParams();
         if (filters.from) params.set('from', new Date(filters.from).toISOString());
@@ -61,8 +61,8 @@ export default function AcademyAttendancePage() {
         if (filters.tutorId) params.set('tutorId', filters.tutorId);
         if (filters.status) params.set('status', filters.status);
         setRows(await api.get<AcademyAttendanceRow[]>(`/academy/me/attendance?${params.toString()}`));
-      } catch {
-        setLoadError(true);
+      } catch (err: unknown) {
+        setLoadError(err ?? true);
       }
     },
     [hasAcademy],
@@ -82,9 +82,9 @@ export default function AcademyAttendancePage() {
       return;
     }
     Promise.all([
-      api.get<AcademyAttendanceTodaySummary>('/academy/me/attendance/today').catch(() => null),
-      api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active').catch(() => [] as AcademyActiveTeacher[]),
-      api.get<AcademyManagedBatch[]>('/academy/me/batches').catch(() => [] as AcademyManagedBatch[]),
+      api.get<AcademyAttendanceTodaySummary>('/academy/me/attendance/today'),
+      api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active'),
+      api.get<AcademyManagedBatch[]>('/academy/me/batches'),
     ]).then(([s, t, b]) => {
       setSummary(s);
       setTeachers(t);
@@ -104,21 +104,21 @@ export default function AcademyAttendancePage() {
   }, [from, to, batchId, tutorId, status, hasAcademy]);
 
   useEffect(() => {
-    if (studentSearchDebounce.current) clearTimeout(studentSearchDebounce.current);
-    if (!studentQuery.trim()) {
-      setStudentResults([]);
-      return;
-    }
-    studentSearchDebounce.current = setTimeout(() => {
-      void api
-        .get<AcademyManagedEnrollment[]>(`/academy/me/students?q=${encodeURIComponent(studentQuery)}&status=all`)
-        .then(setStudentResults)
-        .catch(() => setStudentResults([]));
-    }, 250);
-    return () => {
-      if (studentSearchDebounce.current) clearTimeout(studentSearchDebounce.current);
-    };
+    const timer = setTimeout(() => setDebouncedStudentQuery(studentQuery.trim()), 250);
+    return () => clearTimeout(timer);
   }, [studentQuery]);
+
+  // A failed search must not look like "no student matches".
+  const studentSearch = useApiQuery(
+    () =>
+      api.get<AcademyManagedEnrollment[]>(
+        `/academy/me/students?q=${encodeURIComponent(debouncedStudentQuery)}&status=all`,
+      ),
+    [debouncedStudentQuery],
+    { enabled: debouncedStudentQuery !== '' },
+  );
+  const studentResults =
+    studentQuery.trim() !== '' && studentSearch.status === 'success' ? studentSearch.data : [];
 
   async function openStudent(studentIdToOpen: string, name: string) {
     setStudentId(studentIdToOpen);
@@ -169,6 +169,11 @@ export default function AcademyAttendancePage() {
           placeholder="Find a student's attendance"
           className="pl-9"
         />
+        {studentQuery.trim() !== '' && studentSearch.status === 'error' && (
+          <div className="absolute z-10 mt-1 w-full">
+            <ErrorState compact error={studentSearch.error} what="that student search" onRetry={() => void studentSearch.reload()} />
+          </div>
+        )}
         {studentResults.length > 0 && (
           <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-md dark:border-neutral-800 dark:bg-surface-raised">
             {studentResults.slice(0, 6).map((s) => (
@@ -178,7 +183,6 @@ export default function AcademyAttendancePage() {
                 onClick={() => {
                   void openStudent(s.studentId, s.displayName ?? s.phoneE164);
                   setStudentQuery('');
-                  setStudentResults([]);
                 }}
                 className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-neutral-50 dark:hover:bg-neutral-900"
               >
@@ -219,7 +223,7 @@ export default function AcademyAttendancePage() {
 
       <div className="mt-4">
         {loadError ? (
-          <ErrorState description="Could not load attendance records. Check your connection and try again." onRetry={() => void loadTable({ from, to, batchId, tutorId, status })} />
+          <ErrorState error={loadError} what="attendance records" onRetry={() => void loadTable({ from, to, batchId, tutorId, status })} />
         ) : rows === null ? (
           <CardSkeleton />
         ) : rows.length === 0 ? (

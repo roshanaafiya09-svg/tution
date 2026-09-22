@@ -36,7 +36,7 @@ export default function MaterialsPage() {
   const toast = useToast();
   const [batches, setBatches] = useState<Batch[]>([]);
   const [materials, setMaterials] = useState<MaterialWithBatch[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [query, setQuery] = useState('');
   const [batchFilter, setBatchFilter] = useState('all');
   const [uploadBatchId, setUploadBatchId] = useState('');
@@ -46,7 +46,7 @@ export default function MaterialsPage() {
   const [toDelete, setToDelete] = useState<MaterialWithBatch | null>(null);
 
   const load = useCallback(async () => {
-    setLoadError(false);
+    setLoadError(null);
     try {
       const batchRows = await api.get<Batch[]>('/batches/me');
       setBatches(batchRows);
@@ -55,8 +55,7 @@ export default function MaterialsPage() {
         batchRows.map((batch) =>
           api
             .get<Material[]>(`/materials/batch/${batch.id}`)
-            .then((rows) => rows.map((row) => ({ ...row, batch_title: batch.title })))
-            .catch(() => [] as MaterialWithBatch[]),
+            .then((rows) => rows.map((row) => ({ ...row, batch_title: batch.title }))),
         ),
       );
       setMaterials(
@@ -64,8 +63,8 @@ export default function MaterialsPage() {
           .flat()
           .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
       );
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, []);
 
@@ -161,7 +160,7 @@ export default function MaterialsPage() {
       {error && <InlineError>{error}</InlineError>}
 
       {loadError ? (
-        <ErrorState description="Could not load your materials. Check your connection and try again." onRetry={() => void load()} />
+        <ErrorState error={loadError} what="your materials" onRetry={() => void load()} />
       ) : materials === null ? (
         <div className="space-y-4">
           <CardSkeleton className="h-24 rounded-2xl" />

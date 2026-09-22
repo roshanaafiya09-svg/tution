@@ -46,6 +46,7 @@ import {
   StatusBadge,
   Textarea,
   useToast,
+  InlineRetry,
 } from '@/components/ui';
 import {
   TeacherPageHeader,
@@ -56,6 +57,7 @@ import {
   TeacherEmptyState,
   type CompletenessItem,
 } from '@/components/dashboard';
+import { useApiQuery } from '@/lib/query';
 
 const ALLOWED_AVATAR_MIMES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_AVATAR_MB = 5;
@@ -172,16 +174,7 @@ function LongText({ label, value }: { label: string; value: string }) {
 export default function TeacherProfilePage() {
   const toast = useToast();
   const [profile, setProfile] = useState<TutorProfile | null | undefined>(undefined);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [tutorSubjects, setTutorSubjects] = useState<TutorSubject[]>([]);
-  const [location, setLocation] = useState<TutorLocation | null>(null);
-  const [availabilityCount, setAvailabilityCount] = useState<number | null>(null);
-  const [openBatches, setOpenBatches] = useState<OpenBatch[]>([]);
-  const [proofOfTeaching, setProofOfTeaching] = useState<ProofOfTeaching | null>(null);
-  const [rating, setRating] = useState<ReviewSummary | null>(null);
-  const [academies, setAcademies] = useState<TutorAcademyAffiliation[]>([]);
-  const [joinRequests, setJoinRequests] = useState<TutorJoinRequestSummary[]>([]);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const [editing, setEditing] = useState(false);
   const [academyChoiceOpen, setAcademyChoiceOpen] = useState(false);
@@ -197,55 +190,75 @@ export default function TeacherProfilePage() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [localPreview, setLocalPreview] = useState<string | null>(null);
 
-  /** Only the profile itself is required to render this page — every
-   *  other call feeds a secondary tile and falls back to an empty value
-   *  on failure, so one slow or failed endpoint can no longer blank the
-   *  whole page. Everything fires in a single wave: the rating lookup
-   *  chains off /auth/me alone instead of waiting for all nine calls. */
+  // Only the profile itself is required to render this page — everything
+  // else feeds one tile or section and is its own query, so a single slow or
+  // failed endpoint marks only ITS tile as failed (with Retry) instead of
+  // silently reading as "no subjects" / "no rating" / "not verified".
   const load = useCallback(async () => {
-    setLoadError(false);
+    setLoadError(null);
     try {
-      const [prof, subj, tutorSubj, loc, avail, batches, memberships, requests, pot, reviewSummary] =
-        await Promise.all([
-          api.get<TutorProfile | null>('/profiles/tutor/me'),
-          api.get<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
-          api.get<TutorSubject[]>('/tutor-subjects/me').catch(() => [] as TutorSubject[]),
-          api.get<TutorLocation | null>('/marketplace/locations/me').catch(() => null),
-          api.get<unknown[]>('/availability/me').catch(() => null),
-          api.get<OpenBatch[]>('/batches/me/open').catch(() => [] as OpenBatch[]),
-          api
-            .get<TutorAcademyAffiliation[]>('/marketplace/academies/me/memberships')
-            .catch(() => [] as TutorAcademyAffiliation[]),
-          api
-            .get<TutorJoinRequestSummary[]>('/marketplace/academies/me/join-requests')
-            .catch(() => [] as TutorJoinRequestSummary[]),
-          api.get<ProofOfTeaching>('/marketplace/proof-of-teaching/me').catch(() => null),
-          api
-            .get<Me>('/auth/me')
-            .then((me) =>
-              api.get<{ reviews: unknown[]; summary: ReviewSummary }>(`/marketplace/reviews/tutor/${me.id}`),
-            )
-            .then((r) => r.summary)
-            .catch(() => null),
-        ]);
-      setProfile(prof);
-      setSubjects(subj);
-      setTutorSubjects(tutorSubj);
-      setLocation(loc);
-      setAvailabilityCount(avail ? avail.length : null);
-      setOpenBatches(batches);
-      setAcademies(memberships);
-      setJoinRequests(requests);
-      setProofOfTeaching(pot);
-      setRating(reviewSummary);
-    } catch {
-      setLoadError(true);
+      setProfile(await api.get<TutorProfile | null>('/profiles/tutor/me'));
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const subjectsQuery = useApiQuery(() => api.get<Subject[]>('/catalog/subjects'), []);
+  const tutorSubjectsQuery = useApiQuery(() => api.get<TutorSubject[]>('/tutor-subjects/me'), []);
+  const locationQuery = useApiQuery(() => api.get<TutorLocation | null>('/marketplace/locations/me'), []);
+  const availabilityQuery = useApiQuery(() => api.get<unknown[]>('/availability/me'), []);
+  const openBatchesQuery = useApiQuery(() => api.get<OpenBatch[]>('/batches/me/open'), []);
+  const membershipsQuery = useApiQuery(
+    () => api.get<TutorAcademyAffiliation[]>('/marketplace/academies/me/memberships'),
+    [],
+  );
+  const joinRequestsQuery = useApiQuery(
+    () => api.get<TutorJoinRequestSummary[]>('/marketplace/academies/me/join-requests'),
+    [],
+  );
+  const proofOfTeachingQuery = useApiQuery(
+    () => api.get<ProofOfTeaching | null>('/marketplace/proof-of-teaching/me'),
+    [],
+  );
+  const ratingQuery = useApiQuery(
+    () =>
+      api
+        .get<Me>('/auth/me')
+        .then((me) => api.get<{ reviews: unknown[]; summary: ReviewSummary }>(`/marketplace/reviews/tutor/${me.id}`))
+        .then((r) => r.summary),
+    [],
+  );
+
+  const subjects = subjectsQuery.data ?? [];
+  const tutorSubjects = tutorSubjectsQuery.data ?? [];
+  const location = locationQuery.data ?? null;
+  const availabilityCount = availabilityQuery.status === 'success' ? availabilityQuery.data.length : null;
+  const openBatches = openBatchesQuery.data ?? [];
+  const academies = membershipsQuery.data ?? [];
+  const joinRequests = joinRequestsQuery.data ?? [];
+  const proofOfTeaching = proofOfTeachingQuery.data ?? null;
+  const rating = ratingQuery.data ?? null;
+
+  function reloadAll() {
+    void load();
+    for (const query of [
+      subjectsQuery,
+      tutorSubjectsQuery,
+      locationQuery,
+      availabilityQuery,
+      openBatchesQuery,
+      membershipsQuery,
+      joinRequestsQuery,
+      proofOfTeachingQuery,
+      ratingQuery,
+    ]) {
+      void query.reload();
+    }
+  }
 
   /** Candidate pool for the inline "Search Academy by name" field in
    *  profile setup — same GET /marketplace/academies the standalone
@@ -368,14 +381,24 @@ export default function TeacherProfilePage() {
     { key: 'basic', label: 'Basic information', done: !!profile?.display_name && !!profile?.headline },
     { key: 'photo', label: 'Profile photo', done: !!profile?.avatarUrl },
     { key: 'bio', label: 'Teaching bio', done: !!profile?.bio },
-    { key: 'subjects', label: 'Subjects & rates', done: tutorSubjects.length > 0, href: '/dashboard/subjects' },
+    {
+      key: 'subjects',
+      label: 'Subjects & rates',
+      done: tutorSubjectsQuery.status === 'success' && tutorSubjects.length > 0,
+      href: '/dashboard/subjects',
+    },
     {
       key: 'availability',
       label: 'Availability',
       done: (availabilityCount ?? 0) > 0,
       href: '/dashboard/availability',
     },
-    { key: 'location', label: 'Location', done: !!location, href: '/dashboard/marketplace' },
+    {
+      key: 'location',
+      label: 'Location',
+      done: locationQuery.status === 'success' && !!location,
+      href: '/dashboard/marketplace',
+    },
     { key: 'qualifications', label: 'Qualifications', done: !!profile?.qualifications },
     {
       key: 'verification',
@@ -418,8 +441,8 @@ export default function TeacherProfilePage() {
 
       {loadError ? (
         <ErrorState
-          description="Could not load your teacher profile. Check your connection and try again."
-          onRetry={() => void load()}
+          error={loadError} what="your teacher profile"
+          onRetry={reloadAll}
         />
       ) : profile === undefined ? (
         <div className="space-y-4">
@@ -945,7 +968,13 @@ export default function TeacherProfilePage() {
               <MetricCard
                 icon={Award}
                 label="Proof-of-Teaching"
-                value={proofOfTeaching?.score ?? '—'}
+                value={
+                  proofOfTeachingQuery.status === 'error' ? (
+                    <InlineRetry error={proofOfTeachingQuery.error} what="your Proof-of-Teaching score" onRetry={() => void proofOfTeachingQuery.reload()} />
+                  ) : (
+                    (proofOfTeaching?.score ?? '—')
+                  )
+                }
                 hint="System-calculated"
                 href="/dashboard/marketplace"
               />
@@ -953,14 +982,24 @@ export default function TeacherProfilePage() {
                 icon={Star}
                 label="Rating"
                 value={
-                  rating?.average ?? <span className="text-neutral-400 dark:text-neutral-500">—</span>
+                  ratingQuery.status === 'error' ? (
+                    <InlineRetry error={ratingQuery.error} what="your rating" onRetry={() => void ratingQuery.reload()} />
+                  ) : (
+                    (rating?.average ?? <span className="text-neutral-400 dark:text-neutral-500">—</span>)
+                  )
                 }
                 hint={rating ? `${rating.count} student review${rating.count === 1 ? '' : 's'}` : 'From student reviews'}
               />
               <MetricCard
                 icon={Users}
                 label="Students taught"
-                value={proofOfTeaching?.studentsTaught ?? '—'}
+                value={
+                  proofOfTeachingQuery.status === 'error' ? (
+                    <InlineRetry error={proofOfTeachingQuery.error} what="students taught" onRetry={() => void proofOfTeachingQuery.reload()} />
+                  ) : (
+                    (proofOfTeaching?.studentsTaught ?? '—')
+                  )
+                }
                 hint="System-calculated"
                 href="/dashboard/students"
               />
@@ -981,7 +1020,9 @@ export default function TeacherProfilePage() {
                 <DetailRow
                   label="Hourly rate"
                   value={
-                    tutorSubjects.length === 0 ? (
+                    tutorSubjectsQuery.status === 'error' ? (
+                      <InlineRetry error={tutorSubjectsQuery.error} what="your subjects" onRetry={() => void tutorSubjectsQuery.reload()} />
+                    ) : tutorSubjects.length === 0 ? (
                       <span className="text-neutral-400 dark:text-neutral-500">No subjects yet</span>
                     ) : (
                       `From ${formatMinor(
@@ -994,7 +1035,9 @@ export default function TeacherProfilePage() {
                 <DetailRow
                   label="Availability"
                   value={
-                    availabilityCount === null ? (
+                    availabilityQuery.status === 'error' ? (
+                      <InlineRetry error={availabilityQuery.error} what="your availability" onRetry={() => void availabilityQuery.reload()} />
+                    ) : availabilityCount === null ? (
                       '—'
                     ) : availabilityCount === 0 ? (
                       <span className="text-neutral-400 dark:text-neutral-500">Not set</span>
@@ -1018,7 +1061,9 @@ export default function TeacherProfilePage() {
                     Manage
                   </Link>
                 </div>
-                {tutorSubjects.length === 0 ? (
+                {tutorSubjectsQuery.status === 'error' ? (
+                  <ErrorState compact error={tutorSubjectsQuery.error} what="your subjects" onRetry={() => void tutorSubjectsQuery.reload()} />
+                ) : tutorSubjects.length === 0 ? (
                   <TeacherEmptyState
                     icon={BookMarked}
                     title="No subjects added yet"
@@ -1087,7 +1132,17 @@ export default function TeacherProfilePage() {
             </ProfileSection>
 
             <ProfileSection eyebrow="How you operate" title="Teaching arrangement">
-              {academies.length > 0 ? (
+              {membershipsQuery.status === 'error' || joinRequestsQuery.status === 'error' ? (
+                <ErrorState
+                  compact
+                  error={membershipsQuery.status === 'error' ? membershipsQuery.error : joinRequestsQuery.error}
+                  what="your teaching arrangement"
+                  onRetry={() => {
+                    void membershipsQuery.reload();
+                    void joinRequestsQuery.reload();
+                  }}
+                />
+              ) : academies.length > 0 ? (
                 <>
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">
                     Teaching under
@@ -1179,7 +1234,9 @@ export default function TeacherProfilePage() {
                 action={{ href: '/dashboard/batches', label: 'Manage' }}
                 className="mb-3"
               />
-              {openBatches.length === 0 ? (
+              {openBatchesQuery.status === 'error' ? (
+                <ErrorState compact error={openBatchesQuery.error} what="your open batches" onRetry={() => void openBatchesQuery.reload()} />
+              ) : openBatches.length === 0 ? (
                 <TeacherEmptyState
                   icon={CalendarClock}
                   title="No open batches"

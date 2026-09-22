@@ -10,15 +10,15 @@ import { AssignmentsList, useBatchWorkspace } from '@/components/student';
 export default function BatchAssignmentsTab() {
   const { batch, subjects } = useBatchWorkspace();
   const [assignments, setAssignments] = useState<StudentAssignmentSummary[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setAssignments(null);
     api
       .get<StudentAssignmentSummary[]>('/assignments/me')
       .then((all) => setAssignments(all.filter((a) => a.batch_id === batch.id)))
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [batch.id]);
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export default function BatchAssignmentsTab() {
     );
   }
   if (loadError) {
-    return <ErrorState description="Could not load this batch's assignments. Check your connection and try again." onRetry={load} />;
+    return <ErrorState error={loadError} what="this batch's assignments" onRetry={load} />;
   }
   if (assignments.length === 0) {
     return <EmptyState icon={CheckCircle2} title="You're all caught up 🎉" description="New assignments from your tutor will appear here." />;

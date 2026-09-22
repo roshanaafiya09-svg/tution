@@ -57,17 +57,17 @@ export default function StudentDetailPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [materials, setMaterials] = useState<Material[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [tab, setTab] = useState<Tab>('overview');
   const [recordingId, setRecordingId] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setStudent(undefined);
     Promise.all([
       loadRoster(),
-      api.get<Session[]>('/sessions/me').catch(() => [] as Session[]),
-      api.get<ThreadSummary[]>('/messages/mine').catch(() => [] as ThreadSummary[]),
+      api.get<Session[]>('/sessions/me'),
+      api.get<ThreadSummary[]>('/messages/mine'),
     ])
       .then(async ([roster, sessionRows, threadRows]) => {
         const match = roster.students.find((s) => s.studentId === studentId) ?? null;
@@ -77,7 +77,7 @@ export default function StudentDetailPage() {
         if (match) {
           const perBatch = await Promise.all(
             match.batches.map((batch) =>
-              api.get<Material[]>(`/materials/batch/${batch.id}`).catch(() => [] as Material[]),
+              api.get<Material[]>(`/materials/batch/${batch.id}`),
             ),
           );
           setMaterials(perBatch.flat());
@@ -85,7 +85,7 @@ export default function StudentDetailPage() {
           setMaterials([]);
         }
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [studentId]);
 
   useEffect(() => {
@@ -111,7 +111,7 @@ export default function StudentDetailPage() {
 
   if (loadError) {
     return (
-      <ErrorState description="Could not load this student. Check your connection and try again." onRetry={load} />
+      <ErrorState error={loadError} what="this student" onRetry={load} />
     );
   }
 

@@ -46,6 +46,7 @@ import {
   Skeleton,
   StatusBadge,
   useToast,
+  InlineRetry,
 } from '@/components/ui';
 import {
   TeacherHero,
@@ -58,6 +59,7 @@ import {
   type ActivityItem,
 } from '@/components/dashboard';
 import { OnboardingChecklist } from '@/components/dashboard/onboarding-checklist';
+import { useApiQuery } from '@/lib/query';
 
 function sessionTime(session: Session): string {
   return new Date(session.scheduled_start_utc).toLocaleTimeString('en-IN', {
@@ -131,23 +133,19 @@ export default function TodayPage() {
 
   const periodLabel = currentPeriodLabel();
 
+  // The core the page cannot render without: today's classes and the batches.
+  // Everything else is its own widget query below, so one failing request can
+  // only ever mark ITS widget as failed — never blank or zero another.
   const fetchMainBundle = useCallback(async () => {
     // The default /sessions/me window starts "now", which would hide the
     // classes that already ran but never had attendance marked — exactly
     // the thing Needs your attention exists to surface.
-    const [sessionRows, batchRows, subjectRows, notificationRows, totals, drafts, profileRow, verificationRows] =
-      await Promise.all([
-        api.get<Session[]>(sessionsWindowPath()),
-        api.get<Batch[]>('/batches/me'),
-        api.get<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
-        api.get<AppNotification[]>('/notifications').catch(() => [] as AppNotification[]),
-        api.get<FeeTotals | null>(`/fees/period/totals?period=${periodLabel}`).catch(() => null),
-        api.get<QuizDraftSummary[]>('/quizzes/me').catch(() => [] as QuizDraftSummary[]),
-        api.get<TutorProfile | null>('/profiles/tutor/me').catch(() => null),
-        api.get<VerificationUpload[]>('/verifications/me').catch(() => [] as VerificationUpload[]),
-      ]);
-    return { sessionRows, batchRows, subjectRows, notificationRows, totals, drafts, profileRow, verificationRows };
-  }, [periodLabel]);
+    const [sessionRows, batchRows] = await Promise.all([
+      api.get<Session[]>(sessionsWindowPath()),
+      api.get<Batch[]>('/batches/me'),
+    ]);
+    return { sessionRows, batchRows };
+  }, []);
 
   const { data: mainBundle, error: loadError, reload: reloadMain } = useCachedFetch(
     `teacher-dashboard:${teachingProfile.value}`,
@@ -158,23 +156,51 @@ export default function TodayPage() {
   // fills the two tiles that need it after the page has already painted
   // rather than holding the whole dashboard back.
   const fetchRoster = useCallback(() => loadRoster(periodLabel), [periodLabel]);
-  const { data: roster, reload: reloadRoster } = useCachedFetch(
+  const { data: roster, error: rosterError, reload: reloadRoster } = useCachedFetch(
     `teacher-dashboard-roster:${teachingProfile.value}`,
     fetchRoster,
   );
 
+  // Independent widgets — each with its own honest loading / error / success state.
+  const subjectsQuery = useApiQuery(() => api.get<Subject[]>('/catalog/subjects'), []);
+  const notificationsQuery = useApiQuery(() => api.get<AppNotification[]>('/notifications'), []);
+  const feeTotalsQuery = useApiQuery(
+    () => api.get<FeeTotals | null>(`/fees/period/totals?period=${periodLabel}`),
+    [periodLabel],
+  );
+  const quizDraftsQuery = useApiQuery(() => api.get<QuizDraftSummary[]>('/quizzes/me'), []);
+  const profileQuery = useApiQuery(() => api.get<TutorProfile | null>('/profiles/tutor/me'), []);
+  const verificationsQuery = useApiQuery(() => api.get<VerificationUpload[]>('/verifications/me'), []);
+
   const sessions = mainBundle?.sessionRows ?? null;
   const batches = mainBundle?.batchRows ?? null;
-  const subjects = mainBundle?.subjectRows ?? [];
-  const notifications = mainBundle?.notificationRows ?? [];
-  const feeTotals = mainBundle?.totals ?? null;
-  const quizDrafts = mainBundle?.drafts ?? [];
-  const profile = mainBundle?.profileRow ?? null;
-  const verifications = mainBundle?.verificationRows ?? [];
+  // These defaults only apply while a widget is loading or failed; every place
+  // that turns them into a claim ("0 pending", "profile incomplete") first
+  // checks the query succeeded.
+  const subjects = subjectsQuery.data ?? [];
+  const notifications = notificationsQuery.data ?? [];
+  const feeTotals = feeTotalsQuery.data ?? null;
+  const quizDrafts = quizDraftsQuery.data ?? [];
+  const profile = profileQuery.data ?? null;
+  const verifications = verificationsQuery.data ?? [];
+
+  // Sources feeding "Needs your attention" that failed: their items cannot be
+  // computed, and saying nothing would read as "nothing needs you".
+  const attentionSources = [
+    { what: 'notifications', query: notificationsQuery },
+    { what: 'fee totals', query: feeTotalsQuery },
+    { what: 'quiz drafts', query: quizDraftsQuery },
+    { what: 'your teaching profile', query: profileQuery },
+    { what: 'verification status', query: verificationsQuery },
+  ];
+  const failedAttention = attentionSources.filter((source) => source.query.status === 'error');
 
   function load() {
     reloadMain();
     reloadRoster();
+    for (const query of [subjectsQuery, notificationsQuery, feeTotalsQuery, quizDraftsQuery, profileQuery, verificationsQuery]) {
+      void query.reload();
+    }
   }
 
   async function markComplete(sessionId: string) {
@@ -243,7 +269,9 @@ export default function TodayPage() {
   const verificationApproved =
     verifications.some((v) => v.type === 'id_proof' && v.status === 'approved') &&
     verifications.some((v) => v.type === 'qualification' && v.status === 'approved');
-  const profileIncomplete = !profile || !profile.bio || !profile.headline;
+  // Only a claim once the data actually loaded.
+  const profileIncomplete = profileQuery.status === 'success' && (!profile || !profile.bio || !profile.headline);
+  const verificationPending = verificationsQuery.status === 'success' && !verificationApproved;
   const soonSession =
     nextSession && new Date(nextSession.scheduled_start_utc).getTime() - now.getTime() < 24 * 3600 * 1000
       ? nextSession
@@ -302,7 +330,7 @@ export default function TodayPage() {
       tone: 'brand',
     });
   }
-  if (individualProfile && !verificationApproved) {
+  if (individualProfile && verificationPending) {
     attention.push({
       key: 'verification',
       href: '/dashboard/verification',
@@ -328,7 +356,7 @@ export default function TodayPage() {
   if (loadError) {
     return (
       <ErrorState
-        description="Could not load your dashboard. Check your connection and try again."
+        error={loadError} what="your dashboard"
         onRetry={load}
       />
     );
@@ -414,7 +442,15 @@ export default function TodayPage() {
           <MetricCard
             icon={Users}
             label="Active students"
-            value={activeStudents === null ? <Skeleton className="h-6 w-10" /> : activeStudents}
+            value={
+              rosterError ? (
+                <InlineRetry error={rosterError} what="your students" onRetry={reloadRoster} />
+              ) : activeStudents === null ? (
+                <Skeleton className="h-6 w-10" />
+              ) : (
+                activeStudents
+              )
+            }
             hint={`${activeBatches.length} active batch${activeBatches.length === 1 ? '' : 'es'}`}
             href="/dashboard/students"
           />
@@ -435,20 +471,34 @@ export default function TodayPage() {
           <MetricCard
             icon={Wallet}
             label="Pending fees"
-            value={formatMinor(feeTotals?.outstandingMinor ?? 0, feeTotals?.currency ?? 'INR')}
-            hint={
-              feeTotals && feeTotals.entries > 0
-                ? `${feeTotals.paidCount}/${feeTotals.entries} paid · ${periodLabel}`
-                : `Nothing generated for ${periodLabel}`
+            value={
+              feeTotalsQuery.status === 'error' ? (
+                <InlineRetry error={feeTotalsQuery.error} what="your fee totals" onRetry={() => void feeTotalsQuery.reload()} />
+              ) : feeTotalsQuery.status === 'loading' ? (
+                <Skeleton className="h-6 w-16" />
+              ) : (
+                formatMinor(feeTotals?.outstandingMinor ?? 0, feeTotals?.currency ?? 'INR')
+              )
             }
-            tone={(feeTotals?.outstandingMinor ?? 0) > 0 ? 'warning' : 'success'}
+            hint={
+              feeTotalsQuery.status !== 'success'
+                ? feeTotalsQuery.status === 'error'
+                  ? 'Could not be checked'
+                  : 'Loading…'
+                : feeTotals && feeTotals.entries > 0
+                  ? `${feeTotals.paidCount}/${feeTotals.entries} paid · ${periodLabel}`
+                  : `Nothing generated for ${periodLabel}`
+            }
+            tone={feeTotalsQuery.status === 'success' ? ((feeTotals?.outstandingMinor ?? 0) > 0 ? 'warning' : 'success') : 'brand'}
             href="/dashboard/fees"
           />
           <MetricCard
             icon={ClipboardCheck}
             label="Attendance"
             value={
-              averageAttendance === null ? (
+              rosterError ? (
+                <InlineRetry error={rosterError} what="attendance" onRetry={reloadRoster} />
+              ) : averageAttendance === null ? (
                 <Skeleton className="h-6 w-12" />
               ) : ratedStudents.length === 0 ? (
                 '—'
@@ -457,7 +507,9 @@ export default function TodayPage() {
               )
             }
             hint={
-              roster === null
+              rosterError
+                ? 'Could not be checked'
+                : roster === null
                 ? 'Loading…'
                 : ratedStudents.length === 0
                   ? 'No attendance marked yet'
@@ -573,7 +625,19 @@ export default function TodayPage() {
 
       <section className="animate-fade-up" style={{ animationDelay: '160ms' }}>
         <SectionHeader eyebrow="What needs me" title="Needs your attention" />
-        {attention.length === 0 ? (
+        {failedAttention.length > 0 && (
+          <ErrorState
+            compact
+            className="mb-3"
+            error={failedAttention[0].query.error}
+            title="Some items couldn't be checked"
+            message={`We couldn't load ${failedAttention.map((s) => s.what).join(', ')}, so this list may be incomplete.`}
+            onRetry={() => {
+              for (const source of failedAttention) void source.query.reload();
+            }}
+          />
+        )}
+        {attention.length === 0 && failedAttention.length === 0 ? (
           <p className="flex items-center gap-2 rounded-xl border border-neutral-200/70 bg-white px-4 py-3 text-sm text-neutral-500 dark:border-neutral-800/80 dark:bg-surface dark:text-neutral-400">
             <CheckCircle2 className="h-4 w-4 text-success dark:text-success-dark" aria-hidden />
             You&apos;re all caught up — nothing needs you right now.
@@ -624,7 +688,9 @@ export default function TodayPage() {
 
       <section className="animate-fade-up" style={{ animationDelay: '240ms' }}>
         <SectionHeader eyebrow="What's been happening" title="Recent activity" />
-        {notifications.length > 0 ? (
+        {notificationsQuery.status === 'error' ? (
+          <ErrorState compact error={notificationsQuery.error} what="your recent activity" onRetry={() => void notificationsQuery.reload()} />
+        ) : notifications.length > 0 ? (
           <ActivityFeed
             items={notifications.slice(0, 6).map((n) => ({
               id: n.id,

@@ -104,7 +104,7 @@ export default function AcademyProfilePage() {
   const { hasAcademy, markAcademyCreated } = useAcademyDashboard();
   const [profile, setProfile] = useState<AcademyOwnerProfile | null | undefined>(undefined);
   const [academicInfo, setAcademicInfo] = useState<AcademyAcademicInfo | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -114,16 +114,16 @@ export default function AcademyProfilePage() {
 
   const load = useCallback(async () => {
     if (hasAcademy === false) return;
-    setLoadError(false);
+    setLoadError(null);
     try {
       const [res, academicRes] = await Promise.all([
         api.get<AcademyOwnerProfile>('/academy/me'),
-        api.get<AcademyAcademicInfo>('/academy/me/academic-info').catch(() => null),
+        api.get<AcademyAcademicInfo>('/academy/me/academic-info'),
       ]);
       setProfile(res);
       setAcademicInfo(academicRes);
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, [hasAcademy]);
 
@@ -209,7 +209,7 @@ export default function AcademyProfilePage() {
   if (loadError) {
     return (
       <ErrorState
-        description="Could not load your academy profile. Check your connection and try again."
+        error={loadError} what="your academy profile"
         onRetry={() => void load()}
       />
     );

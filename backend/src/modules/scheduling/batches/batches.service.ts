@@ -1,3 +1,4 @@
+import { ErrorCode } from '../../../common/http/error-codes';
 import {
   BadRequestException,
   ForbiddenException,
@@ -77,11 +78,12 @@ export class BatchesService {
     }
     const active = currentTeachingContext();
     if (active && academyIdOf(active) !== batch.academy_id) {
-      throw new ForbiddenException(
-        batch.academy_id
+      throw new ForbiddenException({
+        code: ErrorCode.TEACHING_CONTEXT_MISMATCH,
+        message: batch.academy_id
           ? 'This is an Academy batch. Switch to that academy profile to manage it.'
           : 'This is an Individual batch. Switch to your Individual profile to manage it.',
-      );
+      });
     }
     return batch;
   }

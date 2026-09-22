@@ -5,14 +5,13 @@ import Link from 'next/link';
 import { CalendarCheck2, CheckCircle2, ClipboardCheck, Clock, Laptop, NotebookPen } from 'lucide-react';
 import { api } from '@/lib/api';
 import { currentAcademicWeekStart } from '@/lib/academic-week';
-import { describeLoadError, type LoadErrorInfo } from '@/lib/load-error';
 import type { AssessmentRow } from '@/lib/types';
 import { buttonVariants, CardSkeleton, ErrorState, StatusBadge } from '@/components/ui';
 import { TeacherPageHeader, AcademicCard, EmptyPanel, MetricCard } from '@/components/dashboard';
 
 export default function AssessmentsOverviewPage() {
   const [rows, setRows] = useState<(AssessmentRow & { mode: 'online' | 'offline' })[] | null>(null);
-  const [loadError, setLoadError] = useState<LoadErrorInfo | null>(null);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
     setLoadError(null);
@@ -27,7 +26,7 @@ export default function AssessmentsOverviewPage() {
         ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         setRows(combined);
       })
-      .catch((err: unknown) => setLoadError(describeLoadError(err, 'your assessments')));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, []);
 
   useEffect(() => {
@@ -35,7 +34,7 @@ export default function AssessmentsOverviewPage() {
   }, [load]);
 
   if (loadError) {
-    return <ErrorState title={loadError.title} description={loadError.description} onRetry={load} />;
+    return <ErrorState error={loadError} what="your assessments" onRetry={load} />;
   }
 
   if (rows === null) {

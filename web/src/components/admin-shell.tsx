@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import posthog from 'posthog-js';
 import { ShieldCheck, Users, GraduationCap, Heart, LogOut, LayoutDashboard } from 'lucide-react';
-import { api, apiLogout, ensureSession, ApiError } from '@/lib/api';
+import { api, apiLogout, requireSession } from '@/lib/api';
+import { useApiQuery } from '@/lib/query';
 import type { Me } from '@/lib/types';
 import {
   PageLoading,
@@ -33,32 +34,23 @@ const NAV = [
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [me, setMe] = useState<Me | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
+  const meQuery = useApiQuery(
+    async () => {
+      await requireSession();
+      return api.get<Me>('/auth/me');
+    },
+    [],
+    { profileScoped: false },
+  );
+  const me = meQuery.status === 'success' && meQuery.data.roles.includes('superadmin') ? meQuery.data : null;
+
+  // Defence in depth only — the API enforces the role on every admin endpoint.
   useEffect(() => {
-    void (async () => {
-      if (!(await ensureSession())) {
-        router.replace('/login');
-        return;
-      }
-
-      try {
-        const account = await api.get<Me>('/auth/me');
-        if (!account.roles.includes('superadmin')) {
-          router.replace('/get-the-app');
-          return;
-        }
-        setMe(account);
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 401) {
-          router.replace('/login');
-        } else {
-          setError('Could not load your account.');
-        }
-      }
-    })();
-  }, [router]);
+    if (meQuery.status === 'success' && !meQuery.data.roles.includes('superadmin')) {
+      router.replace('/get-the-app');
+    }
+  }, [meQuery.status, meQuery.data, router]);
 
   function signOut() {
     if (posthog.__loaded) posthog.reset();
@@ -66,10 +58,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     void apiLogout();
   }
 
-  if (error) {
+  if (meQuery.status === 'error') {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-6">
-        <ErrorState description={error} onRetry={() => window.location.reload()} />
+        <ErrorState error={meQuery.error} what="your account" onRetry={() => void meQuery.reload()} />
       </div>
     );
   }

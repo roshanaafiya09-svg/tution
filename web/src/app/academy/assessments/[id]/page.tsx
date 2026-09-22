@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { FileText } from 'lucide-react';
 import { api } from '@/lib/api';
-import { describeLoadError, type LoadErrorInfo } from '@/lib/load-error';
 import type { AcademyAssessmentDetail } from '@/lib/types';
 import { Button, CardSkeleton, ErrorState, StatusBadge, useToast } from '@/components/ui';
 import { AcademyCard, AcademyPageIntro } from '@/components/academy';
@@ -13,14 +12,14 @@ export default function AcademyAssessmentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const toast = useToast();
   const [detail, setDetail] = useState<AcademyAssessmentDetail | null>(null);
-  const [loadError, setLoadError] = useState<LoadErrorInfo | null>(null);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
     setLoadError(null);
     api
       .get<AcademyAssessmentDetail>(`/academy/me/assessments/${id}`)
       .then(setDetail)
-      .catch((err: unknown) => setLoadError(describeLoadError(err, 'this assessment')));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [id]);
 
   useEffect(() => {
@@ -37,7 +36,7 @@ export default function AcademyAssessmentDetailPage() {
   }
 
   if (loadError) {
-    return <ErrorState title={loadError.title} description={loadError.description} onRetry={load} />;
+    return <ErrorState error={loadError} what="this assessment" onRetry={load} />;
   }
 
   if (!detail) {

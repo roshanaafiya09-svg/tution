@@ -15,7 +15,7 @@ export default function AcademyPhotosPage() {
   const toast = useToast();
   const { hasAcademy } = useAcademyDashboard();
   const [photos, setPhotos] = useState<AcademyPhoto[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [uploading, setUploading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<AcademyPhoto | null>(null);
 
@@ -24,11 +24,11 @@ export default function AcademyPhotosPage() {
       setPhotos([]);
       return;
     }
-    setLoadError(false);
+    setLoadError(null);
     try {
       setPhotos(await api.get<AcademyPhoto[]>('/academy/me/photos'));
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, [hasAcademy]);
 
@@ -114,7 +114,7 @@ export default function AcademyPhotosPage() {
 
       <div className="mt-8">
         {loadError ? (
-          <ErrorState description="Could not load photos. Check your connection and try again." onRetry={() => void load()} />
+          <ErrorState error={loadError} what="photos" onRetry={() => void load()} />
         ) : photos === null ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <CardSkeleton />

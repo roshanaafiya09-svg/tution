@@ -9,6 +9,7 @@ import {
   parseTeachingContext,
   type TeachingContext,
 } from './teaching-context';
+import { ErrorCode } from '../../common/http/error-codes';
 
 @Injectable()
 export class TeachingContextService {
@@ -25,7 +26,10 @@ export class TeachingContextService {
   ): Promise<TeachingContext> {
     const ctx = parseTeachingContext(rawHeader);
     if (!ctx) {
-      throw new BadRequestException('Invalid teaching context');
+      throw new BadRequestException({
+        code: ErrorCode.TEACHING_CONTEXT_INVALID,
+        message: 'Invalid teaching context',
+      });
     }
     if (ctx.kind === 'academy') {
       await this.assertActiveMember(ctx.academyId, tutorId);
@@ -39,9 +43,10 @@ export class TeachingContextService {
       tutorId,
     );
     if (!membership) {
-      throw new ForbiddenException(
-        "You aren't an active member of that academy",
-      );
+      throw new ForbiddenException({
+        code: ErrorCode.TEACHING_CONTEXT_FORBIDDEN,
+        message: "You aren't an active member of that academy",
+      });
     }
   }
 

@@ -18,6 +18,7 @@ import {
   Select,
   Textarea,
   useToast,
+  ErrorState,
 } from '@/components/ui';
 import { AcademicCard, PageIntro } from '@/components/student';
 
@@ -25,6 +26,7 @@ export default function StudentAccountPage() {
   const router = useRouter();
   const toast = useToast();
   const [profile, setProfile] = useState<StudentProfile | null | undefined>(undefined);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [curricula, setCurricula] = useState<Curriculum[]>([]);
   const [displayName, setDisplayName] = useState('');
   const [gradeLevel, setGradeLevel] = useState('');
@@ -45,11 +47,17 @@ export default function StudentAccountPage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  useEffect(() => {
-    void apiGetPublic<Curriculum[]>('/catalog/curricula').then(setCurricula);
-    api
-      .get<StudentProfile | undefined>('/profiles/student/me')
-      .then((p) => {
+  const load = useCallback(() => {
+    setLoadError(null);
+    setProfile(undefined);
+    Promise.all([
+      apiGetPublic<Curriculum[]>('/catalog/curricula'),
+      api.get<StudentProfile | undefined>('/profiles/student/me'),
+      api.get<Me>('/auth/me'),
+    ])
+      .then(([curriculaRows, p, meRow]) => {
+        setCurricula(curriculaRows);
+        setMe(meRow);
         setProfile(p ?? null);
         if (p) {
           setDisplayName(p.display_name);
@@ -63,9 +71,12 @@ export default function StudentAccountPage() {
           setLearningGoals(p.learning_goals ?? '');
         }
       })
-      .catch(() => setProfile(null));
-    void api.get<Me>('/auth/me').then(setMe);
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   async function save() {
     if (!displayName.trim()) {
@@ -134,7 +145,9 @@ export default function StudentAccountPage() {
     <div className="space-y-8">
       <PageIntro eyebrow="Your account" title="Account" description="How your tutors and academies see you." />
 
-      {profile === undefined ? (
+      {loadError ? (
+        <ErrorState error={loadError} what="your account" onRetry={load} />
+      ) : profile === undefined ? (
         <PageLoading />
       ) : (
         <>

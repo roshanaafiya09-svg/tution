@@ -4,14 +4,13 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ClipboardCheck } from 'lucide-react';
 import { api } from '@/lib/api';
-import { describeLoadError, type LoadErrorInfo } from '@/lib/load-error';
 import type { StudentOnlineAssessmentSummary } from '@/lib/types';
 import { Card, CardSkeleton, EmptyState, ErrorState } from '@/components/ui';
 import { PageIntro } from '@/components/student';
 
 export default function StudentAssessmentsPage() {
   const [assessments, setAssessments] = useState<StudentOnlineAssessmentSummary[] | null>(null);
-  const [loadError, setLoadError] = useState<LoadErrorInfo | null>(null);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
     setLoadError(null);
@@ -19,7 +18,7 @@ export default function StudentAssessmentsPage() {
     api
       .get<StudentOnlineAssessmentSummary[]>('/assessments/online/student/me')
       .then(setAssessments)
-      .catch((err: unknown) => setLoadError(describeLoadError(err, 'your assessments')));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, []);
 
   useEffect(() => {
@@ -38,7 +37,7 @@ export default function StudentAssessmentsPage() {
           `assessments` stays null, so testing it first left the skeleton
           on screen forever and the error card unreachable. */}
       {loadError ? (
-        <ErrorState title={loadError.title} description={loadError.description} onRetry={load} />
+        <ErrorState error={loadError} what="your assessments" onRetry={load} />
       ) : assessments === null ? (
         <div className="space-y-3">
           <CardSkeleton className="rounded-2xl" />

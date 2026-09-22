@@ -5,7 +5,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import posthog from 'posthog-js';
 import { LogOut, Menu, Settings, User } from 'lucide-react';
-import { api, apiLogout, ensureSession, ApiError } from '@/lib/api';
+import { api, apiLogout, requireSession } from '@/lib/api';
+import { useApiQuery } from '@/lib/query';
 import type { Me, StudentProfile } from '@/lib/types';
 import { NotificationsBell } from '@/components/notifications-bell';
 import { cn } from '@/lib/cn';
@@ -60,9 +61,6 @@ function initials(name: string): string {
 export function StudentShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [me, setMe] = useState<Me | null>(null);
-  const [profile, setProfile] = useState<StudentProfile | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsedPref, setCollapsedPref] = useState(false);
@@ -85,29 +83,23 @@ export function StudentShell({ children }: { children: React.ReactNode }) {
     setDrawerOpen(false);
   }, [pathname]);
 
-  useEffect(() => {
-    void (async () => {
-      if (!(await ensureSession())) {
-        router.replace('/login');
-        return;
-      }
+  const meQuery = useApiQuery(
+    async () => {
+      await requireSession();
+      return api.get<Me>('/auth/me');
+    },
+    [],
+    { profileScoped: false },
+  );
+  const me = meQuery.data;
 
-      try {
-        setMe(await api.get<Me>('/auth/me'));
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 401) {
-          router.replace('/login');
-        } else {
-          setError('Could not load your account.');
-        }
-      }
-
-      api
-        .get<StudentProfile | undefined>('/profiles/student/me')
-        .then((p) => setProfile(p ?? null))
-        .catch(() => setProfile(null));
-    })();
-  }, [router]);
+  // Header avatar/name only. If this request fails the header simply falls back
+  // to the phone-number initials — it never claims anything about the account.
+  const profileQuery = useApiQuery(() => api.get<StudentProfile | undefined>('/profiles/student/me'), [], {
+    enabled: meQuery.status === 'success',
+    profileScoped: false,
+  });
+  const profile = profileQuery.status === 'success' ? (profileQuery.data ?? null) : null;
 
   function signOut() {
     if (posthog.__loaded) posthog.reset();
@@ -118,10 +110,10 @@ export function StudentShell({ children }: { children: React.ReactNode }) {
     void apiLogout();
   }
 
-  if (error) {
+  if (meQuery.status === 'error') {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-6">
-        <ErrorState description={error} onRetry={() => window.location.reload()} />
+        <ErrorState error={meQuery.error} what="your account" onRetry={() => void meQuery.reload()} />
       </div>
     );
   }

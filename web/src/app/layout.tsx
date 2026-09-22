@@ -3,6 +3,7 @@ import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
 import { PHProvider } from "@/components/posthog-provider";
 import { ApiWarmup } from "@/components/api-warmup";
+import { ApiEventsBridge } from "@/components/api-events-bridge";
 import { ToastProvider, TooltipProvider } from "@/components/ui";
 
 const fraunces = Fraunces({
@@ -35,6 +36,7 @@ export default function RootLayout({
       <body className={`${fraunces.variable} ${inter.variable} font-sans antialiased`}>
         <PHProvider>
           <ApiWarmup />
+          <ApiEventsBridge />
           <TooltipProvider delayDuration={200}>
             <ToastProvider>{children}</ToastProvider>
           </TooltipProvider>

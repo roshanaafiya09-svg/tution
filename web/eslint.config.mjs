@@ -21,6 +21,38 @@ const eslintConfig = defineConfig([
       'react-hooks/purity': 'warn',
     },
   },
+  // A failed API request must NEVER be turned into "no data". Converting a
+  // rejection into [] / 0 / null / {} is precisely how a broken backend used to
+  // render as "No students", "0 classes" or an empty calendar. Load data with
+  // useApiQuery + QueryBoundary (see src/lib/query, components/ui/query-boundary)
+  // so a failure has its own state, and let the error propagate.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/**/*.test.{ts,tsx}', 'src/test/**'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "CallExpression[callee.property.name='catch'] > ArrowFunctionExpression[params.length=0] > :matches(ArrayExpression, ObjectExpression, Literal, UnaryExpression, TemplateLiteral, TSAsExpression, TSSatisfiesExpression)",
+          message:
+            'Do not turn a failed request into fake data (.catch(() => [] / 0 / null / {})). Let the error propagate and render it with useApiQuery + QueryBoundary/ErrorState.',
+        },
+        {
+          selector:
+            "CallExpression[callee.property.name='catch'] > ArrowFunctionExpression CallExpression[callee.name=/^set[A-Z]/] > :matches(ArrayExpression, Literal[value=null], Literal[value=0])",
+          message:
+            'Do not reset state to []/0/null inside a .catch — that hides the failure as an empty result. Use useApiQuery so the error is its own state.',
+        },
+        {
+          selector:
+            'CatchClause CallExpression[callee.name=/^set[A-Z]/] > :matches(ArrayExpression, Literal[value=0])',
+          message:
+            'Do not reset state to []/0 inside a catch — that hides the failure as an empty result. Use useApiQuery so the error is its own state.',
+        },
+      ],
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores(['.next/**', 'out/**', 'build/**', 'next-env.d.ts']),
 ]);

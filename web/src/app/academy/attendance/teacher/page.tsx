@@ -24,7 +24,7 @@ export default function AcademyTeacherAttendancePage() {
   const [rows, setRows] = useState<AcademyTeacherAttendanceRow[] | null>(null);
   const [teachers, setTeachers] = useState<AcademyActiveTeacher[]>([]);
   const [batches, setBatches] = useState<AcademyManagedBatch[]>([]);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const today = new Date();
   const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -45,7 +45,7 @@ export default function AcademyTeacherAttendancePage() {
         setRows([]);
         return;
       }
-      setLoadError(false);
+      setLoadError(null);
       try {
         const params = new URLSearchParams();
         if (filters.from) params.set('from', new Date(filters.from).toISOString());
@@ -54,8 +54,8 @@ export default function AcademyTeacherAttendancePage() {
         if (filters.batchId) params.set('batchId', filters.batchId);
         if (filters.status) params.set('status', filters.status);
         setRows(await api.get<AcademyTeacherAttendanceRow[]>(`/academy/me/attendance/teachers?${params.toString()}`));
-      } catch {
-        setLoadError(true);
+      } catch (err: unknown) {
+        setLoadError(err ?? true);
       }
     },
     [hasAcademy],
@@ -74,9 +74,9 @@ export default function AcademyTeacherAttendancePage() {
       return;
     }
     Promise.all([
-      api.get<AcademyTeacherAttendanceTodaySummary>('/academy/me/attendance/teachers/today').catch(() => null),
-      api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active').catch(() => [] as AcademyActiveTeacher[]),
-      api.get<AcademyManagedBatch[]>('/academy/me/batches').catch(() => [] as AcademyManagedBatch[]),
+      api.get<AcademyTeacherAttendanceTodaySummary>('/academy/me/attendance/teachers/today'),
+      api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active'),
+      api.get<AcademyManagedBatch[]>('/academy/me/batches'),
     ]).then(([s, t, b]) => {
       setSummary(s);
       setTeachers(t);
@@ -183,7 +183,7 @@ export default function AcademyTeacherAttendancePage() {
       <div className="mt-4">
         {loadError ? (
           <ErrorState
-            description="Could not load teacher attendance records. Check your connection and try again."
+            error={loadError} what="teacher attendance records"
             onRetry={() => void loadTable({ from, to, teacherId, batchId, status })}
           />
         ) : rows === null ? (

@@ -11,10 +11,10 @@ import { cn } from '@/lib/cn';
 export default function StudentDoubtsPage() {
   const [batches, setBatches] = useState<Batch[] | null>(null);
   const [batchId, setBatchId] = useState<string | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setBatches(null);
     api
       .get<Batch[]>('/batches/enrolled')
@@ -22,7 +22,7 @@ export default function StudentDoubtsPage() {
         setBatches(list);
         if (list.length > 0) setBatchId((current) => current ?? list[0].id);
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, []);
 
   useEffect(() => {
@@ -39,7 +39,7 @@ export default function StudentDoubtsPage() {
           <CardSkeleton className="rounded-2xl" />
         </div>
       ) : loadError ? (
-        <ErrorState description="Could not load your batches. Check your connection and try again." onRetry={load} />
+        <ErrorState error={loadError} what="your batches" onRetry={load} />
       ) : batches.length === 0 ? (
         <NoBatchesEmptyState icon={HelpCircle} description="Ask your tutor for an invite link, or find a teacher to start asking questions." />
       ) : (

@@ -11,24 +11,24 @@ export default function StudentAssignmentsPage() {
   const [assignments, setAssignments] = useState<StudentAssignmentSummary[] | null>(null);
   const [batches, setBatches] = useState<Batch[] | null>(null);
   const [subjects, setSubjects] = useState<Subject[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setAssignments(null);
     setBatches(null);
     setSubjects(null);
     Promise.all([
       api.get<StudentAssignmentSummary[]>('/assignments/me'),
-      api.get<Batch[]>('/batches/enrolled').catch(() => [] as Batch[]),
-      apiGetPublic<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
+      api.get<Batch[]>('/batches/enrolled'),
+      apiGetPublic<Subject[]>('/catalog/subjects'),
     ])
       .then(([a, b, s]) => {
         setAssignments(a);
         setBatches(b);
         setSubjects(s);
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, []);
 
   useEffect(() => {
@@ -52,7 +52,7 @@ export default function StudentAssignmentsPage() {
           <CardSkeleton className="rounded-2xl" />
         </div>
       ) : loadError ? (
-        <ErrorState description="Could not load your assignments. Check your connection and try again." onRetry={load} />
+        <ErrorState error={loadError} what="your assignments" onRetry={load} />
       ) : assignments.length === 0 ? (
         <EmptyState
           icon={CheckCircle2}

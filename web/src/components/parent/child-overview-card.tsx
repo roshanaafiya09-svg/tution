@@ -14,6 +14,7 @@ export function ChildOverviewCard({
   attendanceRate,
   assignmentRate,
   quizRate,
+  unavailable = [],
   consentPending = false,
   onGrantConsent,
   consenting = false,
@@ -24,6 +25,9 @@ export function ChildOverviewCard({
   attendanceRate?: number | null;
   assignmentRate?: number | null;
   quizRate?: number | null;
+  /** Parts of this card whose request FAILED ('progress', 'digest'). They are
+   *  reported as unavailable — never as "no data yet". */
+  unavailable?: Array<'progress' | 'digest'>;
   consentPending?: boolean;
   onGrantConsent?: () => void;
   consenting?: boolean;
@@ -87,8 +91,13 @@ export function ChildOverviewCard({
           </div>
         )}
 
+        {unavailable.includes('progress') && (
+          <p className="text-xs text-error dark:text-error-dark">Couldn&apos;t load {name}&apos;s progress.</p>
+        )}
         <p className="line-clamp-2 text-sm text-neutral-600 dark:text-neutral-400">
-          {digestNarrative ?? 'No weekly digest yet.'}
+          {unavailable.includes('digest')
+            ? "Couldn't load the weekly digest."
+            : (digestNarrative ?? 'No weekly digest yet.')}
         </p>
       </ParentCard>
     </Link>

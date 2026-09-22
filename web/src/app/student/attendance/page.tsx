@@ -10,16 +10,16 @@ import { PageIntro, AttendanceDetail, type HistoryRowWithBatch } from '@/compone
 export default function StudentAttendancePage() {
   const [summary, setSummary] = useState<AttendanceSummary | null>(null);
   const [history, setHistory] = useState<HistoryRowWithBatch[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setSummary(null);
     setHistory(null);
     Promise.all([
       api.get<AttendanceSummary>('/attendance/me/summary'),
       api.get<AttendanceHistoryEntry[]>('/attendance/me/history'),
-      api.get<Batch[]>('/batches/enrolled').catch(() => [] as Batch[]),
+      api.get<Batch[]>('/batches/enrolled'),
     ])
       .then(([summaryRes, rows, batches]) => {
         setSummary(summaryRes);
@@ -31,7 +31,7 @@ export default function StudentAttendancePage() {
           })),
         );
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, []);
 
   useEffect(() => {
@@ -50,7 +50,7 @@ export default function StudentAttendancePage() {
           <CardSkeleton className="rounded-2xl" />
         </div>
       ) : loadError ? (
-        <ErrorState description="Could not load your attendance. Check your connection and try again." onRetry={load} />
+        <ErrorState error={loadError} what="your attendance" onRetry={load} />
       ) : summary.total === 0 ? (
         <EmptyState
           icon={CalendarCheck}

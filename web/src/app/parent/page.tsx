@@ -43,6 +43,7 @@ import {
   type SnapshotStat,
   type ActivityItem,
 } from '@/components/parent';
+import { useApiQuery, settle } from '@/lib/query';
 
 /** Real, data-driven context line for the Parent hero — never a fake stat.
  *  Uses the already-assembled attention signals rather than fetching a
@@ -111,51 +112,49 @@ export default function ParentTodayPage() {
   const [consentingId, setConsentingId] = useState<string | null>(null);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
 
+  // The linked children are what the page is built on: without them there is
+  // nothing to show, so a failure here is a page-level error. Everything a
+  // child's card is filled from (progress, fees, today's classes) is loaded
+  // per child and per kind and kept as a Settled result, so ONE failing request
+  // marks only that piece as unavailable — it never becomes "0%" or "no classes".
   const fetchBundle = useCallback(async () => {
-    const [linksRes, digestsRes, notificationsRes, threadsRes] = await Promise.all([
-      api.get<ParentLink[]>('/parent-links/me'),
-      api.get<Digest[]>('/digests/me').catch(() => [] as Digest[]),
-      api.get<AppNotification[]>('/notifications').catch(() => [] as AppNotification[]),
-      api.get<ThreadSummary[]>('/messages/mine').catch(() => [] as ThreadSummary[]),
-    ]);
+    const linksRes = await api.get<ParentLink[]>('/parent-links/me');
 
     const active = linksRes.filter((l) => l.status === 'active');
     const perChild = await Promise.all(
-      active.map((link) =>
-        Promise.all([
-          api.get<ProgressSummary>(`/progress/student/${link.student_id}`).catch(() => null),
-          api.get<StudentFeeEntry[]>(`/fees/student/${link.student_id}`).catch(() => [] as StudentFeeEntry[]),
-          api.get<Session[]>(childSessionsPath(link.student_id)).catch(() => [] as Session[]),
-        ]).then(([progress, fees, sessions]) => [link.student_id, progress, fees, sessions] as const),
-      ),
+      active.map(async (link) => {
+        const [progress, fees, sessions] = await Promise.all([
+          settle(api.get<ProgressSummary | null>(`/progress/student/${link.student_id}`)),
+          settle(api.get<StudentFeeEntry[]>(`/fees/student/${link.student_id}`)),
+          settle(api.get<Session[]>(childSessionsPath(link.student_id))),
+        ]);
+        return [link.student_id, { progress, fees, sessions }] as const;
+      }),
     );
 
-    return {
-      links: linksRes,
-      digests: digestsRes,
-      notifications: notificationsRes,
-      threads: threadsRes,
-      progressByChild: Object.fromEntries(perChild.map(([id, progress]) => [id, progress])) as Record<
-        string,
-        ProgressSummary | null
-      >,
-      feesByChild: Object.fromEntries(perChild.map(([id, , fees]) => [id, fees])) as Record<string, StudentFeeEntry[]>,
-      sessionsByChild: Object.fromEntries(perChild.map(([id, , , sessions]) => [id, sessions])) as Record<
-        string,
-        Session[]
-      >,
-    };
+    return { links: linksRes, byChild: Object.fromEntries(perChild) };
   }, []);
 
-  const { data: bundle, error: loadError, reload: load } = useCachedFetch('parent-dashboard', fetchBundle);
+  const { data: bundle, error: loadError, reload: reloadBundle } = useCachedFetch('parent-dashboard', fetchBundle);
+
+  // Independent feeds — each its own query and its own failure.
+  const digestsQuery = useApiQuery(() => api.get<Digest[]>('/digests/me'), []);
+  const notificationsQuery = useApiQuery(() => api.get<AppNotification[]>('/notifications'), []);
+  const threadsQuery = useApiQuery(() => api.get<ThreadSummary[]>('/messages/mine'), []);
+
+  function load() {
+    reloadBundle();
+    void digestsQuery.reload();
+    void notificationsQuery.reload();
+    void threadsQuery.reload();
+  }
 
   const links = bundle?.links ?? null;
-  const digests = bundle?.digests ?? [];
-  const notifications = bundle?.notifications ?? [];
-  const threads = bundle?.threads ?? [];
-  const progressByChild = bundle?.progressByChild ?? {};
-  const feesByChild = bundle?.feesByChild ?? {};
-  const sessionsByChild = bundle?.sessionsByChild ?? {};
+  // Defaults apply only while loading/failed; failures are reported via `failures` below.
+  const digests = digestsQuery.data ?? [];
+  const notifications = notificationsQuery.data ?? [];
+  const threads = threadsQuery.data ?? [];
+  const byChild = bundle?.byChild ?? {};
 
   async function grantConsent(linkId: string) {
     setConsentingId(linkId);
@@ -222,7 +221,10 @@ export default function ParentTodayPage() {
   }
 
   for (const link of active) {
-    const due = (feesByChild[link.student_id] ?? []).filter((f) => f.status === 'due' || f.status === 'partial');
+    const feesResult = byChild[link.student_id]?.fees;
+    // A failed fees request is reported in `failures`; it is NOT "no fees due".
+    if (feesResult?.status !== 'success') continue;
+    const due = feesResult.data.filter((f) => f.status === 'due' || f.status === 'partial');
     if (due.length === 0) continue;
     attentionItems.push({
       key: `fees-${link.student_id}`,
@@ -290,8 +292,10 @@ export default function ParentTodayPage() {
   const now = new Date();
 
   const selectedLink = active.find((l) => l.student_id === selectedStudentId) ?? active[0] ?? null;
-  const selectedProgress = selectedLink ? progressByChild[selectedLink.student_id] : undefined;
-  const todaySessions = (selectedLink ? sessionsByChild[selectedLink.student_id] ?? [] : [])
+  const selectedProgressResult = selectedLink ? byChild[selectedLink.student_id]?.progress : undefined;
+  const selectedProgress = selectedProgressResult?.status === 'success' ? selectedProgressResult.data : undefined;
+  const selectedSessionsResult = selectedLink ? byChild[selectedLink.student_id]?.sessions : undefined;
+  const todaySessions = (selectedSessionsResult?.status === 'success' ? selectedSessionsResult.data : [])
     .filter((s) => isSessionToday(s, now))
     .sort((a, b) => new Date(a.scheduled_start_utc).getTime() - new Date(b.scheduled_start_utc).getTime());
 
@@ -326,6 +330,21 @@ export default function ParentTodayPage() {
   const loading = links === null;
   const period = dayPeriod(now);
 
+  // Every piece of this page whose request failed. Shown as a banner so the
+  // absence of, say, a "Fee due" alert is never mistaken for "nothing is due".
+  const failures: Array<{ what: string; error: unknown }> = [];
+  if (notificationsQuery.status === 'error') failures.push({ what: 'notifications and unread alerts', error: notificationsQuery.error });
+  if (digestsQuery.status === 'error') failures.push({ what: 'weekly digests', error: digestsQuery.error });
+  if (threadsQuery.status === 'error') failures.push({ what: 'recent messages', error: threadsQuery.error });
+  for (const link of active) {
+    const entry = byChild[link.student_id];
+    if (!entry) continue;
+    const who = nameFor(link.student_id);
+    if (entry.progress.status === 'error') failures.push({ what: `${who}'s progress`, error: entry.progress.error });
+    if (entry.fees.status === 'error') failures.push({ what: `${who}'s fees`, error: entry.fees.error });
+    if (entry.sessions.status === 'error') failures.push({ what: `${who}'s schedule`, error: entry.sessions.error });
+  }
+
   return (
     <div className="space-y-8">
       {loading ? (
@@ -338,7 +357,7 @@ export default function ParentTodayPage() {
           <CardSkeleton className="rounded-2xl" />
         </div>
       ) : loadError ? (
-        <ErrorState description="Could not load your dashboard. Check your connection and try again." onRetry={load} />
+        <ErrorState error={loadError} what="your dashboard" onRetry={load} />
       ) : active.length === 0 && pending.length === 0 ? (
         <>
           <ParentHero
@@ -382,17 +401,32 @@ export default function ParentTodayPage() {
             </ParentHero>
           </div>
 
+          {failures.length > 0 && (
+            <ErrorState
+              compact
+              error={failures[0].error}
+              title="Some information couldn't be loaded"
+              message={`We couldn't load ${failures.map((f) => f.what).join(', ')}. What's shown may be incomplete.`}
+              onRetry={load}
+            />
+          )}
+
           {active.length > 0 && (
             <section className="animate-fade-up" style={{ animationDelay: '80ms' }}>
               <ParentSectionHeader eyebrow="Your children" title="Child overview" />
               <div className="grid gap-4 sm:grid-cols-2">
                 {active.map((link) => {
-                  const progress = progressByChild[link.student_id];
+                  const progressResult = byChild[link.student_id]?.progress;
+                  const progress = progressResult?.status === 'success' ? progressResult.data : null;
+                  const unavailable: Array<'progress' | 'digest'> = [];
+                  if (progressResult?.status === 'error') unavailable.push('progress');
+                  if (digestsQuery.status === 'error') unavailable.push('digest');
                   return (
                     <ChildOverviewCard
                       key={link.id}
                       name={nameFor(link.student_id)}
                       href={`/parent/child/${link.student_id}`}
+                      unavailable={unavailable}
                       digestNarrative={latestDigestFor(link.student_id)?.narrative}
                       attendanceRate={progress?.summary.overallAttendanceRate}
                       assignmentRate={progress?.summary.overallAssignmentCompletionRate}
@@ -446,7 +480,9 @@ export default function ParentTodayPage() {
                 eyebrow={active.length > 1 ? nameFor(selectedLink.student_id) : "Today's schedule"}
                 title="What's next"
               />
-              {todaySessions.length === 0 ? (
+              {selectedSessionsResult?.status === 'error' ? (
+                <ErrorState compact error={selectedSessionsResult.error} what="today's schedule" onRetry={load} />
+              ) : todaySessions.length === 0 ? (
                 <ParentEmptyState
                   icon={CalendarCheck}
                   title="No classes scheduled for today."
@@ -520,7 +556,9 @@ export default function ParentTodayPage() {
 
           <section className="animate-fade-up" style={{ animationDelay: '280ms' }}>
             <ParentSectionHeader eyebrow="What's been happening" title="Recent activity" />
-            {activityItems.length === 0 ? (
+            {notificationsQuery.status === 'error' ? (
+              <ErrorState compact error={notificationsQuery.error} what="recent activity" onRetry={() => void notificationsQuery.reload()} />
+            ) : activityItems.length === 0 ? (
               <ParentEmptyState
                 icon={Megaphone}
                 title="No recent activity"
@@ -533,7 +571,9 @@ export default function ParentTodayPage() {
 
           <section className="animate-fade-up" style={{ animationDelay: '320ms' }}>
             <ParentSectionHeader eyebrow="Updates" title="Announcements" />
-            {announcementItems.length === 0 ? (
+            {notificationsQuery.status === 'error' ? (
+              <ErrorState compact error={notificationsQuery.error} what="announcements" onRetry={() => void notificationsQuery.reload()} />
+            ) : announcementItems.length === 0 ? (
               <ParentEmptyState
                 icon={Megaphone}
                 title="No announcements yet"
@@ -546,7 +586,9 @@ export default function ParentTodayPage() {
 
           <section className="animate-fade-up" style={{ animationDelay: '360ms' }}>
             <ParentSectionHeader eyebrow="Conversations" title="Messages" action={{ href: '/parent/messages', label: 'All messages' }} />
-            {recentThreads.length === 0 ? (
+            {threadsQuery.status === 'error' ? (
+              <ErrorState compact error={threadsQuery.error} what="your conversations" onRetry={() => void threadsQuery.reload()} />
+            ) : recentThreads.length === 0 ? (
               <ParentEmptyState
                 icon={MessagesSquare}
                 title="No conversations yet"

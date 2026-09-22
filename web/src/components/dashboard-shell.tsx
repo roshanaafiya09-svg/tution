@@ -5,7 +5,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import posthog from 'posthog-js';
 import { LogOut, Menu, Search, Settings, User } from 'lucide-react';
-import { api, apiLogout, ensureSession, ApiError } from '@/lib/api';
+import { api, apiLogout, requireSession } from '@/lib/api';
+import { useApiQuery } from '@/lib/query';
 import type { Me } from '@/lib/types';
 import { impersonationStore } from '@/lib/impersonation';
 import type { ImpersonationTarget } from '@/lib/impersonation';
@@ -97,10 +98,8 @@ function WrongProfileNotice({ required }: { required: 'individual' | 'academy' }
 
 function DashboardShellInner({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { current: profile, ready: profilesReady } = useTeachingContext();
+  const { current: profile, ready: profilesReady, error: profilesError, reload: reloadProfiles } = useTeachingContext();
   const pathname = usePathname();
-  const [me, setMe] = useState<Me | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [impersonating, setImpersonating] = useState<ImpersonationTarget | null>(null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -130,35 +129,25 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
     setMobileSearchOpen(false);
   }, [pathname]);
 
+  // The signed-in user's own record. Loaded through the central client, which
+  // owns session refresh, the redirect to /login on a lost session (or back to
+  // /admin when a "view as user" token expires — see ApiEventsBridge) and
+  // retry of transient failures; the shell only decides what to render.
+  // Identity is the same in every teaching profile, so a profile switch must
+  // not reload it.
+  const meQuery = useApiQuery(
+    async () => {
+      await requireSession();
+      return api.get<Me>('/auth/me');
+    },
+    [],
+    { profileScoped: false },
+  );
+  const me = meQuery.data;
+
   useEffect(() => {
-    void (async () => {
-      if (!(await ensureSession())) {
-        router.replace('/login');
-        return;
-      }
-
-      setImpersonating(impersonationStore.target);
-
-      try {
-        setMe(await api.get<Me>('/auth/me'));
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 401) {
-          // A 401 while viewing as another user means the (deliberately
-          // short-lived, non-refreshable) impersonation token expired —
-          // that's "session ended", not "signed out", so send the admin
-          // back to /admin rather than bouncing them to /login.
-          if (impersonationStore.active) {
-            await impersonationStore.stop();
-            router.replace('/admin');
-          } else {
-            router.replace('/login');
-          }
-        } else {
-          setError('Could not load your account.');
-        }
-      }
-    })();
-  }, [router]);
+    if (meQuery.status === 'success') setImpersonating(impersonationStore.target);
+  }, [meQuery.status]);
 
   function signOut() {
     if (posthog.__loaded) posthog.reset();
@@ -169,10 +158,10 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
     void apiLogout();
   }
 
-  if (error) {
+  if (meQuery.status === 'error') {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-6">
-        <ErrorState description={error} onRetry={() => window.location.reload()} />
+        <ErrorState error={meQuery.error} what="your account" onRetry={() => void meQuery.reload()} />
       </div>
     );
   }
@@ -309,7 +298,9 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
             allowed profiles are known so a stale academy profile can't fire
             requests the server would reject. */}
         <main key={profile.value} className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-          {!profilesReady ? (
+          {profilesError ? (
+            <ErrorState error={profilesError} what="your teaching profiles" onRetry={reloadProfiles} />
+          ) : !profilesReady ? (
             <PageLoading />
           ) : requiredContextFor(pathname) && requiredContextFor(pathname) !== profile.kind ? (
             <WrongProfileNotice required={requiredContextFor(pathname)!} />

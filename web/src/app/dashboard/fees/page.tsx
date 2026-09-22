@@ -37,6 +37,7 @@ import {
   useToast,
 } from '@/components/ui';
 import { TeacherPageHeader, AcademicCard, EmptyPanel, MetricCard, SectionHeader } from '@/components/dashboard';
+import { useApiQuery } from '@/lib/query';
 
 function currentPeriod(): string {
   const now = new Date();
@@ -48,8 +49,14 @@ export default function FeesPage() {
   const [period, setPeriod] = useState(currentPeriod());
   const [entries, setEntries] = useState<FeeEntry[] | null>(null);
   const [totals, setTotals] = useState<FeeTotals | null>(null);
-  const [loadError, setLoadError] = useState(false);
-  const [batches, setBatches] = useState<Batch[]>([]);
+  const [loadError, setLoadError] = useState<unknown>(null);
+  // Active batches for the filter + "Generate fees" picker. Its own query: if it
+  // fails the picker says so (with Retry) rather than claiming there are no batches.
+  const batchesQuery = useApiQuery(
+    () => api.get<Batch[]>('/batches/me').then((rows) => rows.filter((b) => b.status === 'active')),
+    [],
+  );
+  const batches = batchesQuery.data ?? [];
 
   const [generateOpen, setGenerateOpen] = useState(false);
   const [generatePeriod, setGeneratePeriod] = useState(currentPeriod());
@@ -63,7 +70,7 @@ export default function FeesPage() {
   const [batchFilter, setBatchFilter] = useState('all');
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setEntries(null);
     setTotals(null);
     Promise.all([
@@ -74,19 +81,12 @@ export default function FeesPage() {
         setEntries(e);
         setTotals(t);
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [period]);
 
   useEffect(() => {
     load();
   }, [load]);
-
-  useEffect(() => {
-    void api
-      .get<Batch[]>('/batches/me')
-      .then((rows) => setBatches(rows.filter((b) => b.status === 'active')))
-      .catch(() => setBatches([]));
-  }, []);
 
   async function generate() {
     if (!selectedBatch) return;
@@ -150,7 +150,7 @@ export default function FeesPage() {
     totals && totals.expectedMinor > 0 ? Math.round((totals.collectedMinor / totals.expectedMinor) * 100) : null;
 
   const generateAction = (
-    <Button size="sm" onClick={() => setGenerateOpen(true)} disabled={batches.length === 0}>
+    <Button size="sm" onClick={() => setGenerateOpen(true)} disabled={batchesQuery.status !== 'success' || batches.length === 0}>
       <Sparkles className="h-3.5 w-3.5" aria-hidden />
       Generate monthly fees
     </Button>
@@ -167,7 +167,7 @@ export default function FeesPage() {
 
       {loadError ? (
         <ErrorState
-          description="Could not load fees for this period. Check your connection and try again."
+          error={loadError} what="fees for this period"
           onRetry={load}
         />
       ) : entries === null ? (
@@ -259,7 +259,9 @@ export default function FeesPage() {
               description="Generate this month's fees for a batch and every enrolled student gets a fee record you can mark paid as money comes in."
               steps={['Pick a batch', 'Generate fees', 'Record payments', 'Watch collection rate']}
               action={
-                batches.length === 0 ? (
+                batchesQuery.status === 'error' ? (
+                  <ErrorState compact error={batchesQuery.error} what="your batches" onRetry={() => void batchesQuery.reload()} />
+                ) : batches.length === 0 ? (
                   <Link href="/dashboard/batches" className={buttonVariants({ size: 'sm' })}>
                     Create a batch first
                   </Link>
@@ -446,6 +448,9 @@ export default function FeesPage() {
                   </option>
                 ))}
               </Select>
+              {batchesQuery.status === 'error' && (
+                <ErrorState compact className="mt-2" error={batchesQuery.error} what="your batches" onRetry={() => void batchesQuery.reload()} />
+              )}
             </Field>
           </div>
           {generateError && (

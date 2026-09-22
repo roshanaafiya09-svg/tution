@@ -12,7 +12,7 @@ export default function AcademyReviewsPage() {
   const { hasAcademy } = useAcademyDashboard();
   const [reviews, setReviews] = useState<Review[] | null>(null);
   const [summary, setSummary] = useState<ReviewSummary | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(async () => {
     if (hasAcademy === false) {
@@ -20,7 +20,7 @@ export default function AcademyReviewsPage() {
       setSummary({ count: 0, average: null });
       return;
     }
-    setLoadError(false);
+    setLoadError(null);
     try {
       const profile = await api.get<AcademyOwnerProfile>('/academy/me');
       const res = await api.get<{ reviews: Review[]; summary: ReviewSummary }>(
@@ -28,8 +28,8 @@ export default function AcademyReviewsPage() {
       );
       setReviews(res.reviews);
       setSummary(res.summary);
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, [hasAcademy]);
 
@@ -50,7 +50,7 @@ export default function AcademyReviewsPage() {
 
       <div className="mt-8">
         {loadError ? (
-          <ErrorState description="Could not load reviews. Check your connection and try again." onRetry={() => void load()} />
+          <ErrorState error={loadError} what="reviews" onRetry={() => void load()} />
         ) : reviews === null || summary === null ? (
           <div className="grid gap-4 sm:grid-cols-2">
             <CardSkeleton />

@@ -10,10 +10,10 @@ import { MaterialsList, useBatchWorkspace, type MaterialWithBatch } from '@/comp
 export default function BatchMaterialsTab() {
   const { batch } = useBatchWorkspace();
   const [materials, setMaterials] = useState<MaterialWithBatch[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setMaterials(null);
     api
       .get<Material[]>(`/materials/batch/${batch.id}`)
@@ -24,7 +24,7 @@ export default function BatchMaterialsTab() {
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
         ),
       )
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [batch.id, batch.title]);
 
   useEffect(() => {
@@ -41,7 +41,7 @@ export default function BatchMaterialsTab() {
     );
   }
   if (loadError) {
-    return <ErrorState description="Could not load this batch's materials. Check your connection and try again." onRetry={load} />;
+    return <ErrorState error={loadError} what="this batch's materials" onRetry={load} />;
   }
   if (materials.length === 0) {
     return <EmptyState icon={FileText} title="No materials yet" description="Your tutor hasn't shared any study materials for this batch yet." />;

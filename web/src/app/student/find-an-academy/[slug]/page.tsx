@@ -26,21 +26,21 @@ export default function StudentAcademyProfilePage() {
   const { slug } = useParams<{ slug: string }>();
   const toast = useToast();
   const [page, setPage] = useState<PublicAcademyPage | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [notFound, setNotFound] = useState(false);
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setNotFound(false);
     api
       .get<PublicAcademyPage>(`/marketplace/academies/${slug}`)
       .then(setPage)
       .catch((err: unknown) => {
         if (err instanceof ApiError && err.status === 404) setNotFound(true);
-        else setLoadError(true);
+        else setLoadError(err ?? true);
       });
   }, [slug]);
 
@@ -64,7 +64,7 @@ export default function StudentAcademyProfilePage() {
 
   if (loadError) {
     return (
-      <ErrorState description="Could not load this academy's profile. Check your connection and try again." onRetry={load} />
+      <ErrorState error={loadError} what="this academy's profile" onRetry={load} />
     );
   }
 

@@ -53,7 +53,7 @@ export default function SubjectsPage() {
   const [profile, setProfile] = useState<TutorProfile | null>(null);
   const [location, setLocation] = useState<TutorLocation | null>(null);
   const [availabilityRules, setAvailabilityRules] = useState<AvailabilityRule[]>([]);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -70,14 +70,14 @@ export default function SubjectsPage() {
   });
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     Promise.all([
       api.get<TutorSubject[]>('/tutor-subjects/me'),
       api.get<Subject[]>('/catalog/subjects'),
       api.get<Curriculum[]>('/catalog/curricula'),
-      api.get<TutorProfile | null>('/profiles/tutor/me').catch(() => null),
-      api.get<TutorLocation | null>('/marketplace/locations/me').catch(() => null),
-      api.get<AvailabilityRule[]>('/availability/me').catch(() => [] as AvailabilityRule[]),
+      api.get<TutorProfile | null>('/profiles/tutor/me'),
+      api.get<TutorLocation | null>('/marketplace/locations/me'),
+      api.get<AvailabilityRule[]>('/availability/me'),
     ])
       .then(([o, subs, curr, prof, loc, rules]) => {
         setOfferings(o);
@@ -87,7 +87,7 @@ export default function SubjectsPage() {
         setLocation(loc);
         setAvailabilityRules(rules);
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, []);
 
   useEffect(() => {
@@ -174,7 +174,7 @@ export default function SubjectsPage() {
       />
 
       {loadError ? (
-        <ErrorState description="Could not load your subjects. Check your connection and try again." onRetry={load} />
+        <ErrorState error={loadError} what="your subjects" onRetry={load} />
       ) : offerings === null ? (
         <div className="space-y-4">
           <CardSkeleton className="h-16 rounded-2xl" />

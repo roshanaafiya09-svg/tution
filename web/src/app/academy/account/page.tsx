@@ -27,7 +27,7 @@ export default function AcademyAccountPage() {
   const router = useRouter();
   const { hasAcademy } = useAcademyDashboard();
   const [me, setMe] = useState<Me | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -36,11 +36,11 @@ export default function AcademyAccountPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setLoadError(false);
+    setLoadError(null);
     try {
       setMe(await api.get<Me>('/auth/me'));
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, []);
 
@@ -92,7 +92,7 @@ export default function AcademyAccountPage() {
         {hasAcademy === false ? (
           <AcademySetupRequired pageLabel="Account" />
         ) : loadError ? (
-          <ErrorState description="Could not load your account. Check your connection and try again." onRetry={() => void load()} />
+          <ErrorState error={loadError} what="your account" onRetry={() => void load()} />
         ) : !me ? (
           <div className="max-w-2xl">
             <CardSkeleton />

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, CheckCircle2, XCircle } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
-import { describeLoadError, type LoadErrorInfo } from '@/lib/load-error';
 import type { AssessmentTakeResponse } from '@/lib/types';
 import { Card, PageHeader, PageLoading, Button, InlineError, Badge, ErrorState } from '@/components/ui';
 
@@ -14,7 +13,7 @@ export default function StudentAssessmentTakePage() {
   const assessmentId = params.id;
 
   const [data, setData] = useState<AssessmentTakeResponse | null>(null);
-  const [loadError, setLoadError] = useState<LoadErrorInfo | null>(null);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +24,7 @@ export default function StudentAssessmentTakePage() {
     api
       .get<AssessmentTakeResponse>(`/assessments/online/${assessmentId}/take`)
       .then(setData)
-      .catch((err: unknown) => setLoadError(describeLoadError(err, 'this assessment')));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [assessmentId]);
 
   useEffect(() => {
@@ -69,7 +68,7 @@ export default function StudentAssessmentTakePage() {
             Back to assessments
           </button>
           {loadError ? (
-            <ErrorState title={loadError.title} description={loadError.description} onRetry={load} />
+            <ErrorState error={loadError} what="this assessment" onRetry={load} />
           ) : (
             <PageLoading />
           )}

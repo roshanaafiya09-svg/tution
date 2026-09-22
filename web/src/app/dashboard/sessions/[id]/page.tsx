@@ -14,11 +14,11 @@ export default function SessionAttendancePage() {
   const { id } = useParams<{ id: string }>();
   const toast = useToast();
   const [rows, setRows] = useState<AttendanceRow[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
-    return api.get<AttendanceRow[]>(`/attendance/session/${id}`).then(setRows).catch(() => setLoadError(true));
+    setLoadError(null);
+    return api.get<AttendanceRow[]>(`/attendance/session/${id}`).then(setRows).catch((err: unknown) => setLoadError(err ?? true));
   }, [id]);
 
   useEffect(() => {
@@ -45,7 +45,7 @@ export default function SessionAttendancePage() {
 
       <div className="mt-8">
         {loadError ? (
-          <ErrorState description="Could not load attendance for this session. Check your connection and try again." onRetry={load} />
+          <ErrorState error={loadError} what="attendance for this session" onRetry={load} />
         ) : rows === null ? (
           <CardSkeleton />
         ) : rows.length === 0 ? (

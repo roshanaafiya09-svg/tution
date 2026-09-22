@@ -10,12 +10,12 @@ import { PageIntro, MaterialsList, type MaterialWithBatch } from '@/components/s
 export default function StudentMaterialsPage() {
   const [batches, setBatches] = useState<Batch[] | null>(null);
   const [materials, setMaterials] = useState<MaterialWithBatch[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [query, setQuery] = useState('');
   const [batchFilter, setBatchFilter] = useState('');
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setBatches(null);
     setMaterials(null);
     api
@@ -26,13 +26,12 @@ export default function StudentMaterialsPage() {
           batches.map((batch) =>
             api
               .get<Material[]>(`/materials/batch/${batch.id}`)
-              .then((list) => list.map((m) => ({ ...m, batch_title: batch.title })))
-              .catch(() => [] as MaterialWithBatch[]),
+              .then((list) => list.map((m) => ({ ...m, batch_title: batch.title }))),
           ),
         );
         setMaterials(perBatch.flat().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, []);
 
   useEffect(() => {
@@ -93,7 +92,7 @@ export default function StudentMaterialsPage() {
           <CardSkeleton className="rounded-2xl" />
         </div>
       ) : loadError ? (
-        <ErrorState description="Could not load your materials. Check your connection and try again." onRetry={load} />
+        <ErrorState error={loadError} what="your materials" onRetry={load} />
       ) : materials.length === 0 ? (
         <EmptyState
           icon={FileText}

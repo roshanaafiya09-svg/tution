@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { toApiError, type ApiError } from './api/errors';
 
 /**
  * Module-level, single-consumer-per-key cache: each dashboard mounts a
@@ -28,14 +29,14 @@ export function useCachedFetch<T>(key: string, fetcher: () => Promise<T>) {
   const cached = cache.has(key) ? (cache.get(key) as T) : null;
   const [data, setData] = useState<T | null>(cached);
   const [loading, setLoading] = useState(cached === null);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<ApiError | null>(null);
   const fetcherRef = useRef(fetcher);
   useEffect(() => {
     fetcherRef.current = fetcher;
   });
 
   const load = useCallback(() => {
-    setError(false);
+    setError(null);
     if (!cache.has(key)) setLoading(true);
     return fetcherRef
       .current()
@@ -44,8 +45,10 @@ export function useCachedFetch<T>(key: string, fetcher: () => Promise<T>) {
         setData(result);
         setLoading(false);
       })
-      .catch(() => {
-        setError(true);
+      .catch((thrown: unknown) => {
+        // The real failure — kind, code, request id — reaches the page so it can
+        // render an honest error state (never stale/empty data in its place).
+        setError(toApiError(thrown));
         setLoading(false);
       });
   }, [key]);

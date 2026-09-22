@@ -31,6 +31,7 @@ import type {
 } from '@/lib/types';
 import { EmptyState, CardSkeleton, ErrorState, buttonVariants } from '@/components/ui';
 import { HeroPanel, StatBand, StatBandItem, SectionHeader, ActionCard, AcademicCard } from '@/components/student';
+import { useApiQuery } from '@/lib/query';
 
 function formatSessionTime(session: Session): string {
   return new Date(session.scheduled_start_utc).toLocaleString('en-IN', {
@@ -97,88 +98,78 @@ interface RecentUpdate {
 }
 
 export default function StudentTodayPage() {
+  // The core: what the page cannot render without. Everything else is its own
+  // widget query below, so one failing request marks only ITS widget as failed —
+  // never a "0 quizzes available" or "No updates yet" for a request that failed.
   const fetchBundle = useCallback(async () => {
-    const [profileRes, sessionsRes, assignmentsRes, batchesRes, subjectsRes, attendanceRes] = await Promise.all([
-      api.get<StudentProfile | undefined>('/profiles/student/me').catch(() => undefined),
+    const [sessionsRes, assignmentsRes, batchesRes, attendanceRes] = await Promise.all([
       api.get<Session[]>('/sessions/upcoming'),
       api.get<StudentAssignmentSummary[]>('/assignments/me'),
       api.get<Batch[]>('/batches/enrolled'),
-      apiGetPublic<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
       api.get<AttendanceSummary>('/attendance/me/summary'),
     ]);
-
-    const batchById = new Map(batchesRes.map((b) => [b.id, b]));
-    const [announcementRows, quizRows, materialRows] = await Promise.all([
-      api.get<Announcement[]>('/announcements/mine').catch(() => [] as Announcement[]),
-      api.get<StudentQuizSummary[]>('/quizzes/batches/mine').catch(() => [] as StudentQuizSummary[]),
-      api.get<Material[]>('/materials/mine').catch(() => [] as Material[]),
-    ]);
-
-    const allAnnouncements: AnnouncementWithBatch[] = announcementRows
-      .filter((a) => a.batch_id && batchById.has(a.batch_id))
-      .map((a) => ({ ...a, batch_title: batchById.get(a.batch_id!)!.title }));
-    const allMaterials = materialRows
-      .filter((m) => batchById.has(m.batch_id))
-      .map((m) => ({ ...m, batch_title: batchById.get(m.batch_id)!.title }));
-    const allQuizzes: QuizWithBatch[] = quizRows
-      .filter((q) => q.batchId && batchById.has(q.batchId))
-      .map((q) => ({ ...q, batch_title: batchById.get(q.batchId!)!.title }));
-
-    const announcements = allAnnouncements
-      .slice()
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-    const merged: RecentUpdate[] = [
-      ...allAnnouncements.map((a) => ({
-        key: `announcement-${a.id}`,
-        icon: Megaphone,
-        batch_title: a.batch_title,
-        text: a.body,
-        created_at: a.created_at,
-      })),
-      ...allMaterials.map((m) => ({
-        key: `material-${m.id}`,
-        icon: FileText,
-        batch_title: m.batch_title,
-        text: `${m.title} uploaded`,
-        created_at: m.created_at,
-      })),
-    ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-    return {
-      profile: profileRes ?? null,
-      sessions: sessionsRes,
-      assignments: assignmentsRes,
-      batches: batchesRes,
-      subjects: subjectsRes,
-      attendance: attendanceRes,
-      announcements,
-      quizzes: allQuizzes,
-      updates: merged.slice(0, 5),
-    };
+    return { sessions: sessionsRes, assignments: assignmentsRes, batches: batchesRes, attendance: attendanceRes };
   }, []);
 
-  const { data: bundle, error: loadError, reload: load } = useCachedFetch('student-dashboard', fetchBundle);
+  const { data: bundle, error: loadError, reload: reloadBundle } = useCachedFetch('student-dashboard', fetchBundle);
 
-  const profile = bundle?.profile ?? null;
+  const profileQuery = useApiQuery(() => api.get<StudentProfile | undefined>('/profiles/student/me'), []);
+  const subjectsQuery = useApiQuery(() => apiGetPublic<Subject[]>('/catalog/subjects'), []);
+  const announcementsQuery = useApiQuery(() => api.get<Announcement[]>('/announcements/mine'), []);
+  const quizzesQuery = useApiQuery(() => api.get<StudentQuizSummary[]>('/quizzes/batches/mine'), []);
+  const materialsQuery = useApiQuery(() => api.get<Material[]>('/materials/mine'), []);
+
+  function load() {
+    reloadBundle();
+    for (const query of [profileQuery, subjectsQuery, announcementsQuery, quizzesQuery, materialsQuery]) {
+      void query.reload();
+    }
+  }
+
+  const profile = profileQuery.data ?? null; // greeting only — falls back to a plain "Good morning"
   const sessions = bundle?.sessions ?? null;
   const assignments = bundle?.assignments ?? null;
   const batches = bundle?.batches ?? null;
-  const subjects = bundle?.subjects ?? null;
+  const subjects = subjectsQuery.data ?? null;
   const attendance = bundle?.attendance ?? null;
-  const announcements = bundle?.announcements ?? null;
-  const quizzes = bundle?.quizzes ?? null;
-  const updates = bundle?.updates ?? null;
 
-  const loading =
-    sessions === null ||
-    assignments === null ||
-    batches === null ||
-    subjects === null ||
-    attendance === null ||
-    announcements === null ||
-    quizzes === null ||
-    updates === null;
+  const batchById = new Map((batches ?? []).map((b) => [b.id, b]));
+  const allAnnouncements: AnnouncementWithBatch[] = (announcementsQuery.data ?? [])
+    .filter((a) => a.batch_id && batchById.has(a.batch_id))
+    .map((a) => ({ ...a, batch_title: batchById.get(a.batch_id!)!.title }));
+  const allMaterials = (materialsQuery.data ?? [])
+    .filter((m) => batchById.has(m.batch_id))
+    .map((m) => ({ ...m, batch_title: batchById.get(m.batch_id)!.title }));
+  const quizzes: QuizWithBatch[] = (quizzesQuery.data ?? [])
+    .filter((q) => q.batchId && batchById.has(q.batchId))
+    .map((q) => ({ ...q, batch_title: batchById.get(q.batchId!)!.title }));
+  const updates: RecentUpdate[] = [
+    ...allAnnouncements.map((a) => ({
+      key: `announcement-${a.id}`,
+      icon: Megaphone,
+      batch_title: a.batch_title,
+      text: a.body,
+      created_at: a.created_at,
+    })),
+    ...allMaterials.map((m) => ({
+      key: `material-${m.id}`,
+      icon: FileText,
+      batch_title: m.batch_title,
+      text: `${m.title} uploaded`,
+      created_at: m.created_at,
+    })),
+  ]
+    .sort((x, y) => new Date(y.created_at).getTime() - new Date(x.created_at).getTime())
+    .slice(0, 5);
+  // The "updates" list is built from two requests; if either failed it is incomplete.
+  const updatesError =
+    announcementsQuery.status === 'error'
+      ? announcementsQuery
+      : materialsQuery.status === 'error'
+        ? materialsQuery
+        : null;
+
+  const loading = sessions === null || assignments === null || batches === null || attendance === null;
 
   const now = new Date();
   const nextSession =
@@ -194,7 +185,7 @@ export default function StudentTodayPage() {
   const pendingAssignments = (assignments ?? [])
     .filter((a) => !a.submission_id)
     .sort((a, b) => new Date(a.due_at_utc).getTime() - new Date(b.due_at_utc).getTime());
-  const availableQuizzes = (quizzes ?? []).filter((q) => !q.attempted);
+  const availableQuizzes = quizzes.filter((q) => !q.attempted);
 
   const tasks: Task[] = [
     ...pendingAssignments.map((a) => ({
@@ -242,7 +233,7 @@ export default function StudentTodayPage() {
           <CardSkeleton className="rounded-2xl" />
         </div>
       ) : loadError ? (
-        <ErrorState description="Could not load your dashboard. Check your connection and try again." onRetry={load} />
+        <ErrorState error={loadError} what="your dashboard" onRetry={load} />
       ) : (
         <>
           <div className="animate-fade-up" style={{ animationDelay: '0ms' }}>
@@ -337,8 +328,16 @@ export default function StudentTodayPage() {
               <StatBandItem
                 icon={ListChecks}
                 label="Quizzes"
-                value={`${availableQuizzes.length} available`}
-                detail={availableQuizzes.length === 0 ? "You're all caught up" : 'Not attempted yet'}
+                value={quizzesQuery.status === 'success' ? `${availableQuizzes.length} available` : quizzesQuery.status === 'error' ? "Couldn't load" : '…'}
+                detail={
+                  quizzesQuery.status === 'error'
+                    ? 'Tap to retry from the Quizzes page'
+                    : quizzesQuery.status === 'loading'
+                      ? 'Loading…'
+                      : availableQuizzes.length === 0
+                        ? "You're all caught up"
+                        : 'Not attempted yet'
+                }
                 href="/student/quizzes"
               />
             </StatBand>
@@ -346,7 +345,17 @@ export default function StudentTodayPage() {
 
           <section className="animate-fade-up" style={{ animationDelay: '160ms' }}>
             <SectionHeader eyebrow="What do I need to do" title="What needs your attention" />
-            {tasks.length === 0 ? (
+            {quizzesQuery.status === 'error' && (
+              <ErrorState
+                compact
+                className="mb-3"
+                error={quizzesQuery.error}
+                title="Some tasks couldn't be checked"
+                message="We couldn't load your quizzes, so this list may be missing some."
+                onRetry={() => void quizzesQuery.reload()}
+              />
+            )}
+            {tasks.length === 0 && quizzesQuery.status !== 'error' ? (
               <EmptyState
                 icon={CheckCircle2}
                 title="You're all caught up 🎉"
@@ -370,7 +379,16 @@ export default function StudentTodayPage() {
 
           <section className="animate-fade-up" style={{ animationDelay: '240ms' }}>
             <SectionHeader eyebrow="Recent updates" title="From your tutors" action={{ href: '/student/announcements', label: 'All announcements' }} />
-            {(updates?.length ?? 0) === 0 ? (
+            {updatesError && (
+              <ErrorState
+                compact
+                className="mb-3"
+                error={updatesError.error}
+                what={updatesError === announcementsQuery ? 'your announcements' : 'your study materials'}
+                onRetry={() => void updatesError.reload()}
+              />
+            )}
+            {updates.length === 0 && !updatesError ? (
               <EmptyState
                 icon={Megaphone}
                 title="No updates yet"
@@ -378,7 +396,7 @@ export default function StudentTodayPage() {
               />
             ) : (
               <AcademicCard className="divide-y divide-neutral-100 p-0 dark:divide-neutral-800">
-                {updates!.map((u) => (
+                {updates.map((u) => (
                   <div key={u.key} className="flex items-start gap-3 px-6 py-4">
                     <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
                       <u.icon className="h-4 w-4" aria-hidden />

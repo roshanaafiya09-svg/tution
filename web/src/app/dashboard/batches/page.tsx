@@ -22,6 +22,7 @@ import {
   useToast,
 } from '@/components/ui';
 import { TeacherPageHeader, AcademicCard, EmptyPanel } from '@/components/dashboard';
+import { useApiQuery } from '@/lib/query';
 
 function currentPeriod(): string {
   const now = new Date();
@@ -44,11 +45,10 @@ export default function BatchesPage() {
   const [batches, setBatches] = useState<Batch[] | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [curricula, setCurricula] = useState<Curriculum[]>([]);
-  const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [feeEntries, setFeeEntries] = useState<FeeEntry[]>([]);
   const [studentCounts, setStudentCounts] = useState<Record<string, number>>({});
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,56 +68,44 @@ export default function BatchesPage() {
   });
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setBatches(null);
     Promise.all([
       api.get<Batch[]>('/batches/me'),
-      api.get<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
-      api.get<Curriculum[]>('/catalog/curricula').catch(() => [] as Curriculum[]),
-      api.get<Session[]>('/sessions/me').catch(() => [] as Session[]),
-      api.get<FeeEntry[]>(`/fees/period?period=${currentPeriod()}`).catch(() => [] as FeeEntry[]),
+      api.get<Subject[]>('/catalog/subjects'),
+      api.get<Curriculum[]>('/catalog/curricula'),
+      api.get<Session[]>('/sessions/me'),
+      api.get<FeeEntry[]>(`/fees/period?period=${currentPeriod()}`),
+      // One request for every enrollment in every batch (instead of one per batch).
+      api.get<Enrollment[]>('/batches/me/students'),
     ])
-      .then(([b, subs, curr, sess, fees]) => {
+      .then(([b, subs, curr, sess, fees, enrollments]) => {
+        const counts: Record<string, number> = {};
+        for (const row of enrollments) {
+          if (row.status === 'active' && row.batch_id) counts[row.batch_id] = (counts[row.batch_id] ?? 0) + 1;
+        }
+        setStudentCounts(counts);
         setBatches(b);
         setSubjects(subs);
         setCurricula(curr);
         setSessions(sess);
         setFeeEntries(fees);
       })
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  useEffect(() => {
-    if (!batches || batches.length === 0) return;
-    let cancelled = false;
-    Promise.all(
-      batches.map((b) =>
-        api
-          .get<Enrollment[]>(`/batches/${b.id}/students`)
-          .then((rows) => [b.id, rows.filter((r) => r.status === 'active').length] as const)
-          .catch(() => [b.id, 0] as const),
-      ),
-    ).then((pairs) => {
-      if (!cancelled) setStudentCounts(Object.fromEntries(pairs));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [batches]);
-
-  useEffect(() => {
-    if (!form.curriculumId) {
-      setGradeLevels([]);
-      return;
-    }
-    void api
-      .get<GradeLevel[]>(`/catalog/curricula/${form.curriculumId}/grade-levels`)
-      .then(setGradeLevels);
-  }, [form.curriculumId]);
+  // Grades for the chosen curriculum. A failure shows under the field instead of
+  // leaving a silently empty (disabled) dropdown.
+  const gradeQuery = useApiQuery(
+    () => api.get<GradeLevel[]>(`/catalog/curricula/${form.curriculumId}/grade-levels`),
+    [form.curriculumId],
+    { enabled: Boolean(form.curriculumId) },
+  );
+  const gradeLevels = gradeQuery.status === 'success' ? gradeQuery.data : [];
 
   async function createBatch() {
     setError(null);
@@ -247,6 +235,9 @@ export default function BatchesPage() {
                   </option>
                 ))}
               </Select>
+              {gradeQuery.status === 'error' && (
+                <ErrorState compact className="mt-2" error={gradeQuery.error} what="the grades for that curriculum" onRetry={() => void gradeQuery.reload()} />
+              )}
             </Field>
             <Field label="Capacity">
               <Input
@@ -281,7 +272,7 @@ export default function BatchesPage() {
       <div className={showForm ? '' : 'mt-8'}>
       {batches === null ? (
         loadError ? (
-          <ErrorState description="Could not load your batches. Check your connection and try again." onRetry={load} />
+          <ErrorState error={loadError} what="your batches" onRetry={load} />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
             <CardSkeleton />

@@ -15,7 +15,7 @@ export default function DiscoverPage() {
   const [curriculumId, setCurriculumId] = useState('');
   const [grade, setGrade] = useState('');
   const [results, setResults] = useState<DiscoverySearchResponse | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
@@ -24,12 +24,12 @@ export default function DiscoverPage() {
   }, []);
 
   useEffect(() => {
-    setLoadError(false);
+    setLoadError(null);
     const params = buildTutorSearchParams({ subjectId, curriculumId, grade });
     void api
       .get<DiscoverySearchResponse>(`/marketplace/discovery/tutors?${params.toString()}`)
       .then(setResults)
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [subjectId, curriculumId, grade, retryCount]);
 
   return (
@@ -110,7 +110,7 @@ export default function DiscoverPage() {
 
         {loadError ? (
           <ErrorState
-            description="Could not load tutors. Check your connection and try again."
+            error={loadError} what="tutors"
             onRetry={() => setRetryCount((n) => n + 1)}
           />
         ) : results === null ? (

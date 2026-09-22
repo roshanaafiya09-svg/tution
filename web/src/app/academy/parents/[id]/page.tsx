@@ -12,15 +12,15 @@ import { AcademyCard, AcademyPageIntro, AcademySectionHeader } from '@/component
 export default function AcademyParentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [parent, setParent] = useState<AcademyParentDetail | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
-    setLoadError(false);
+    setLoadError(null);
     setParent(null);
     api
       .get<AcademyParentDetail>(`/academy/me/parents/${id}`)
       .then(setParent)
-      .catch(() => setLoadError(true));
+      .catch((err: unknown) => setLoadError(err ?? true));
   }, [id]);
 
   useEffect(() => {
@@ -28,7 +28,7 @@ export default function AcademyParentDetailPage() {
   }, [load]);
 
   if (loadError) {
-    return <ErrorState description="Could not load this parent. Check your connection and try again." onRetry={load} />;
+    return <ErrorState error={loadError} what="this parent" onRetry={load} />;
   }
 
   if (!parent) {

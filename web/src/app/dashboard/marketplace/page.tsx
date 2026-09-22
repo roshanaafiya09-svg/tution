@@ -72,7 +72,7 @@ export default function MarketplacePage() {
   const [tutorSubjects, setTutorSubjects] = useState<TutorSubject[]>([]);
   const [availabilityRules, setAvailabilityRules] = useState<AvailabilityRule[]>([]);
   const [profile, setProfile] = useState<TutorProfile | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -84,17 +84,17 @@ export default function MarketplacePage() {
   const [savingLocation, setSavingLocation] = useState(false);
 
   const load = useCallback(async () => {
-    setLoadError(false);
+    setLoadError(null);
     try {
       const [loc, pot, own, subj, tutorSubj, rules, prof, requests] = await Promise.all([
         api.get<TutorLocation | null>('/marketplace/locations/me'),
-        api.get<ProofOfTeaching>('/marketplace/proof-of-teaching/me').catch(() => null),
+        api.get<ProofOfTeaching>('/marketplace/proof-of-teaching/me'),
         api.get<Booking[]>('/marketplace/bookings/tutor'),
-        api.get<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
+        api.get<Subject[]>('/catalog/subjects'),
         api.get<TutorSubject[]>('/tutor-subjects/me'),
-        api.get<AvailabilityRule[]>('/availability/me').catch(() => [] as AvailabilityRule[]),
+        api.get<AvailabilityRule[]>('/availability/me'),
         api.get<TutorProfile | null>('/profiles/tutor/me'),
-        api.get<ContactRequest[]>('/marketplace/discovery/contact-requests/me').catch(() => [] as ContactRequest[]),
+        api.get<ContactRequest[]>('/marketplace/discovery/contact-requests/me'),
       ]);
       setLocation(loc);
       setProofOfTeaching(pot);
@@ -114,8 +114,8 @@ export default function MarketplacePage() {
       } else {
         setShowLocationForm(true);
       }
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, []);
 
@@ -286,7 +286,7 @@ export default function MarketplacePage() {
 
       {loadError ? (
         <ErrorState
-          description="Could not load your marketplace profile. Check your connection and try again."
+          error={loadError} what="your marketplace profile"
           onRetry={() => void load()}
         />
       ) : !dataLoaded ? (

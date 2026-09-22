@@ -32,6 +32,7 @@ import {
 } from '@/components/ui';
 import { AcademyCard, AcademyPageIntro, AcademySetupBanner } from '@/components/academy';
 import { useAcademyDashboard } from '@/components/academy-shell';
+import { useApiQuery } from '@/lib/query';
 
 const EMPTY_FORM = {
   tutorId: '',
@@ -51,8 +52,7 @@ export default function AcademyBatchesPage() {
   const [nextClassByBatch, setNextClassByBatch] = useState<Map<string, AcademyTodaySession>>(new Map());
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [curricula, setCurricula] = useState<Curriculum[]>([]);
-  const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>([]);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -65,16 +65,16 @@ export default function AcademyBatchesPage() {
       setBatches([]);
       return;
     }
-    setLoadError(false);
+    setLoadError(null);
     try {
       const [batchRows, teacherRows, subjectRows, curriculumRows, sessionRows] = await Promise.all([
         api.get<AcademyManagedBatch[]>('/academy/me/batches'),
         api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active'),
-        api.get<Subject[]>('/catalog/subjects').catch(() => [] as Subject[]),
-        api.get<Curriculum[]>('/catalog/curricula').catch(() => [] as Curriculum[]),
+        api.get<Subject[]>('/catalog/subjects'),
+        api.get<Curriculum[]>('/catalog/curricula'),
         // Same 14-day-ahead window /academy/me/sessions defaults to — reused
         // here (and by Today/Timetable) rather than each page picking its own.
-        api.get<AcademyTodaySession[]>('/academy/me/sessions').catch(() => [] as AcademyTodaySession[]),
+        api.get<AcademyTodaySession[]>('/academy/me/sessions'),
       ]);
       setBatches(batchRows);
       setTeachers(teacherRows);
@@ -88,8 +88,8 @@ export default function AcademyBatchesPage() {
         if (!nextByBatch.has(s.batchId)) nextByBatch.set(s.batchId, s);
       }
       setNextClassByBatch(nextByBatch);
-    } catch {
-      setLoadError(true);
+    } catch (err: unknown) {
+      setLoadError(err ?? true);
     }
   }, [hasAcademy]);
 
@@ -97,13 +97,14 @@ export default function AcademyBatchesPage() {
     void load();
   }, [load]);
 
-  useEffect(() => {
-    if (!form.curriculumId) {
-      setGradeLevels([]);
-      return;
-    }
-    void api.get<GradeLevel[]>(`/catalog/curricula/${form.curriculumId}/grade-levels`).then(setGradeLevels);
-  }, [form.curriculumId]);
+  // Grades for the chosen curriculum. A failure shows under the field instead of
+  // leaving a silently empty (disabled) dropdown.
+  const gradeQuery = useApiQuery(
+    () => api.get<GradeLevel[]>(`/catalog/curricula/${form.curriculumId}/grade-levels`),
+    [form.curriculumId],
+    { enabled: Boolean(form.curriculumId) },
+  );
+  const gradeLevels = gradeQuery.status === 'success' ? gradeQuery.data : [];
 
   async function createBatch() {
     setError(null);
@@ -212,6 +213,9 @@ export default function AcademyBatchesPage() {
                   </option>
                 ))}
               </Select>
+              {gradeQuery.status === 'error' && (
+                <ErrorState compact className="mt-2" error={gradeQuery.error} what="the grades for that curriculum" onRetry={() => void gradeQuery.reload()} />
+              )}
             </Field>
             <Field label="Capacity">
               <Input type="number" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} />
@@ -237,7 +241,7 @@ export default function AcademyBatchesPage() {
 
       <div className={showForm ? '' : 'mt-8'}>
         {loadError ? (
-          <ErrorState description="Could not load your batches. Check your connection and try again." onRetry={() => void load()} />
+          <ErrorState error={loadError} what="your batches" onRetry={() => void load()} />
         ) : batches === null ? (
           <div className="grid gap-4 sm:grid-cols-2">
             <CardSkeleton />
