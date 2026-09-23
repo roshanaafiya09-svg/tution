@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {
   AlertCircle,
   BookMarked,
+  Ban,
   CalendarCheck,
   CalendarClock,
   CalendarDays,
@@ -22,7 +23,7 @@ import {
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
-import { api, formatMinor } from '@/lib/api';
+import { api, errorMessage, formatMinor } from '@/lib/api';
 import { safeHref } from '@/lib/safe-url';
 import { currentPeriodLabel, loadRoster } from '@/lib/teacher-roster';
 import { GREETING, dayPeriod, todayLabel } from '@/lib/greeting';
@@ -209,8 +210,34 @@ export default function TodayPage() {
       await api.post(`/sessions/${sessionId}/complete`);
       await reloadMain();
       toast({ title: 'Marked as done', variant: 'success' });
-    } catch {
-      toast({ title: 'Could not update the class', variant: 'error' });
+    } catch (err) {
+      toast({
+        title: 'Could not update the class',
+        description: errorMessage(err),
+        variant: 'error',
+      });
+      // The class's real state may have moved under us (someone else
+      // cancelled it, or it was already marked done) — refresh so the
+      // buttons reflect what's actually true rather than staying stale.
+      await reloadMain();
+    } finally {
+      setCompletingId(null);
+    }
+  }
+
+  async function cancelSession(sessionId: string) {
+    setCompletingId(sessionId);
+    try {
+      await api.post(`/sessions/${sessionId}/cancel`);
+      await reloadMain();
+      toast({ title: 'Class cancelled', variant: 'success' });
+    } catch (err) {
+      toast({
+        title: 'Could not cancel the class',
+        description: errorMessage(err),
+        variant: 'error',
+      });
+      await reloadMain();
     } finally {
       setCompletingId(null);
     }
@@ -602,18 +629,30 @@ export default function TodayPage() {
                       >
                         View class
                       </Link>
-                      {session.status === 'scheduled' && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => void markComplete(session.id)}
-                          disabled={completingId === session.id}
-                          loading={completingId === session.id}
-                        >
-                          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
-                          Done
-                        </Button>
-                      )}
+                      {session.status === 'scheduled' &&
+                        (new Date(session.scheduled_start_utc) <= now ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void markComplete(session.id)}
+                            disabled={completingId === session.id}
+                            loading={completingId === session.id}
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+                            Done
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void cancelSession(session.id)}
+                            disabled={completingId === session.id}
+                            loading={completingId === session.id}
+                          >
+                            <Ban className="h-3.5 w-3.5" aria-hidden />
+                            Cancel
+                          </Button>
+                        ))}
                     </span>
                   </li>
                 );

@@ -347,13 +347,35 @@ export class SessionsRepository {
     return Number(row.count) > 0;
   }
 
-  updateStatus(id: string, status: 'scheduled' | 'completed' | 'cancelled') {
+  /** Atomic claim-and-complete: only succeeds while the row is still
+   *  'scheduled'. Returns undefined (never throws) if it lost the race —
+   *  someone else already completed, cancelled, or is mid-transaction on
+   *  this same row — so the caller can tell a genuine state conflict from
+   *  a normal write. The `WHERE status = 'scheduled'` guard is what makes
+   *  two concurrent requests on the same session resolve to exactly one
+   *  winner: Postgres serializes the two UPDATEs via the row lock, and
+   *  the loser's WHERE simply no longer matches once the winner commits. */
+  completeIfScheduled(id: string) {
     return this.db
       .updateTable('class_sessions')
-      .set({ status })
+      .set({ status: 'completed' })
       .where('id', '=', id)
+      .where('status', '=', 'scheduled')
       .returningAll()
-      .executeTakeFirstOrThrow();
+      .executeTakeFirst();
+  }
+
+  /** Sibling of completeIfScheduled for the cancel path — same atomic
+   *  claim-or-lose-the-race guarantee, tagged with *why* like
+   *  setHolidayOrLeaveCancellation. */
+  cancelIfScheduled(id: string, reason: 'manual') {
+    return this.db
+      .updateTable('class_sessions')
+      .set({ status: 'cancelled', cancellation_reason: reason })
+      .where('id', '=', id)
+      .where('status', '=', 'scheduled')
+      .returningAll()
+      .executeTakeFirst();
   }
 
   findByIds(ids: string[]) {
@@ -572,9 +594,14 @@ export class SessionsRepository {
     );
   }
 
-  /** Cancels the whole series (the parent and everything pointing at it) —
-   *  same 'manual' reason-tagging as setHolidayOrLeaveCancellation above,
-   *  for the same cancelled-class-reminder reason. */
+  /** Cancels the still-scheduled members of a series (the parent and
+   *  everything pointing at it) — same 'manual' reason-tagging as
+   *  setHolidayOrLeaveCancellation above, for the same cancelled-class-
+   *  reminder reason. The `status = 'scheduled'` guard means a sibling
+   *  that already completed, or that a previous cancelSeries call already
+   *  cancelled, is left untouched — a series cancel can never turn a
+   *  COMPLETED occurrence back into CANCELLED, and repeating the call is
+   *  a safe no-op on anything it already reached. */
   cancelSeries(parentId: string) {
     return this.db
       .updateTable('class_sessions')
@@ -585,6 +612,7 @@ export class SessionsRepository {
           eb('recurrence_parent_id', '=', parentId),
         ]),
       )
+      .where('status', '=', 'scheduled')
       .execute();
   }
 }

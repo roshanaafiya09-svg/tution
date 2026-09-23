@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { Calendar, CalendarClock, Check, Copy, Link2, Pencil, Users } from 'lucide-react';
-import { api, formatMinor } from '@/lib/api';
+import { Ban, Calendar, CalendarClock, Check, Copy, Link2, Pencil, Users } from 'lucide-react';
+import { api, errorMessage, formatMinor } from '@/lib/api';
 import type {
   AcademyBatchAttendance,
   AcademyManagedBatch,
@@ -26,6 +26,7 @@ import {
   Select,
   StatCard,
   StatusBadge,
+  useToast,
 } from '@/components/ui';
 import { AcademyCard, AcademyPageIntro, AcademySectionHeader } from '@/components/academy';
 import { academyInitials } from '@/lib/academies';
@@ -469,11 +470,13 @@ function StudentsTab({ batchId, attendance }: { batchId: string; attendance: Aca
 }
 
 function SessionsTab({ batchId }: { batchId: string }) {
+  const toast = useToast();
   const [sessions, setSessions] = useState<AcademyManagedSession[] | null>(null);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [form, setForm] = useState({ startLocal: '', durationMin: '60', meetingUrl: '', repeat: 'none', count: '8' });
 
   const load = useCallback(async () => {
@@ -507,6 +510,20 @@ function SessionsTab({ batchId }: { batchId: string }) {
       setError(err instanceof Error ? err.message : 'Could not schedule the session.');
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function cancelSession(sessionId: string) {
+    setCancellingId(sessionId);
+    try {
+      await api.post(`/academy/me/batches/${batchId}/sessions/${sessionId}/cancel`);
+      await load();
+      toast({ title: 'Class cancelled', variant: 'success' });
+    } catch (err) {
+      toast({ title: 'Could not cancel the class', description: errorMessage(err), variant: 'error' });
+      await load();
+    } finally {
+      setCancellingId(null);
     }
   }
 
@@ -594,7 +611,21 @@ function SessionsTab({ batchId }: { batchId: string }) {
                 </p>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400">{session.duration_min} minutes</p>
               </div>
-              <StatusBadge status={session.status} />
+              <div className="flex items-center gap-3">
+                <StatusBadge status={session.status} />
+                {session.status === 'scheduled' && new Date(session.scheduled_start_utc) > new Date() && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => void cancelSession(session.id)}
+                    disabled={cancellingId === session.id}
+                    loading={cancellingId === session.id}
+                  >
+                    <Ban className="h-3.5 w-3.5" aria-hidden />
+                    Cancel
+                  </Button>
+                )}
+              </div>
             </div>
           ))}
         </AcademyCard>

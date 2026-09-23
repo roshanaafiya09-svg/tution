@@ -38,6 +38,19 @@ export const ErrorCode = {
   /** A wrong/expired/exhausted sign-in code — a 401 that is NOT an expired
    *  session, so clients must not try to refresh or redirect on it. */
   INVALID_OTP: 'INVALID_OTP',
+
+  // Class session lifecycle guards (H2) — see SessionsService.cancel/complete.
+  /** Cancel requested on a session that is already 'cancelled'. */
+  SESSION_ALREADY_CANCELLED: 'SESSION_ALREADY_CANCELLED',
+  /** Complete requested on a session that is already 'completed'. */
+  SESSION_ALREADY_COMPLETED: 'SESSION_ALREADY_COMPLETED',
+  /** Any other state change a session's current status forbids
+   *  (completing a cancelled session, cancelling a completed one). */
+  INVALID_SESSION_TRANSITION: 'INVALID_SESSION_TRANSITION',
+  /** Cancel requested after the session's scheduled start time. */
+  SESSION_ALREADY_STARTED: 'SESSION_ALREADY_STARTED',
+  /** Complete requested before the session's scheduled start time. */
+  SESSION_NOT_STARTED: 'SESSION_NOT_STARTED',
 } as const;
 
 export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -90,9 +103,7 @@ const SAFE_MESSAGE_BY_STATUS: Record<number, string> = {
 export function safeMessageForStatus(status: number): string {
   return (
     SAFE_MESSAGE_BY_STATUS[status] ??
-    (status >= 500
-      ? SAFE_MESSAGE_BY_STATUS[500]
-      : SAFE_MESSAGE_BY_STATUS[400])
+    (status >= 500 ? SAFE_MESSAGE_BY_STATUS[500] : SAFE_MESSAGE_BY_STATUS[400])
   );
 }
 

@@ -5,7 +5,9 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   Users,
+  Ban,
   CalendarDays,
+  CheckCircle2,
   FileText,
   ClipboardList,
   Megaphone,
@@ -19,7 +21,7 @@ import {
   MousePointerClick,
   PenLine,
 } from 'lucide-react';
-import { api, formatMinor } from '@/lib/api';
+import { api, errorMessage, formatMinor } from '@/lib/api';
 import type {
   Announcement,
   AttendanceBatchHistoryEntry,
@@ -245,6 +247,7 @@ function SessionsTab({ batchId }: { batchId: string }) {
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [actingId, setActingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     startLocal: '',
     durationMin: '60',
@@ -289,6 +292,34 @@ function SessionsTab({ batchId }: { batchId: string }) {
       setError(err instanceof Error ? err.message : 'Could not schedule the session.');
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function completeSession(sessionId: string) {
+    setActingId(sessionId);
+    try {
+      await api.post(`/sessions/${sessionId}/complete`);
+      await load();
+      toast({ title: 'Marked as done', variant: 'success' });
+    } catch (err) {
+      toast({ title: 'Could not update the class', description: errorMessage(err), variant: 'error' });
+      await load();
+    } finally {
+      setActingId(null);
+    }
+  }
+
+  async function cancelSession(sessionId: string) {
+    setActingId(sessionId);
+    try {
+      await api.post(`/sessions/${sessionId}/cancel`);
+      await load();
+      toast({ title: 'Class cancelled', variant: 'success' });
+    } catch (err) {
+      toast({ title: 'Could not cancel the class', description: errorMessage(err), variant: 'error' });
+      await load();
+    } finally {
+      setActingId(null);
     }
   }
 
@@ -398,6 +429,30 @@ function SessionsTab({ batchId }: { batchId: string }) {
                 </div>
                 <div className="flex items-center gap-3">
                   <StatusBadge status={session.status} />
+                  {session.status === 'scheduled' &&
+                    (new Date(session.scheduled_start_utc) <= new Date() ? (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => void completeSession(session.id)}
+                        disabled={actingId === session.id}
+                        loading={actingId === session.id}
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+                        Done
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => void cancelSession(session.id)}
+                        disabled={actingId === session.id}
+                        loading={actingId === session.id}
+                      >
+                        <Ban className="h-3.5 w-3.5" aria-hidden />
+                        Cancel
+                      </Button>
+                    ))}
                   <Link href={`/dashboard/sessions/${session.id}`}>
                     <Button variant="secondary" size="sm">
                       Attendance
