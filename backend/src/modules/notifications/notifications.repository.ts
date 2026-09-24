@@ -8,6 +8,12 @@ export interface NewNotification {
   userId: string;
   type: string;
   payload: Record<string, unknown>;
+  /** H7: opt-in DB-backed dedupe (see migration 0043's doc comment).
+   *  Omitted by most callers, who rely on the app-level checks they
+   *  already use before calling notify(); RemindersService sets it so a
+   *  duplicate insert is a safe no-op via ON CONFLICT rather than only
+   *  a read-then-write race window. */
+  dedupeKey?: string;
 }
 
 @Injectable()
@@ -25,7 +31,17 @@ export class NotificationsRepository {
           user_id: n.userId,
           type: n.type,
           payload: JSON.stringify(n.payload),
+          dedupe_key: n.dedupeKey ?? null,
         })),
+      )
+      .onConflict((oc) =>
+        // Must match the partial unique index's predicate exactly
+        // (migration 0043) — an insert with no dedupe_key never
+        // conflicts, same as before this change.
+        oc
+          .columns(['user_id', 'type', 'dedupe_key'])
+          .where('dedupe_key', 'is not', null)
+          .doNothing(),
       )
       .execute()
       .then(() => undefined);

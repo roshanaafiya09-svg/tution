@@ -85,13 +85,51 @@ export class BatchesRepository {
       .executeTakeFirstOrThrow();
   }
 
+  /**
+   * H11: archiving used to be a bare status flip with no cascade —
+   * future sessions stayed 'scheduled' forever (still reminded,
+   * still visible as upcoming), and nothing stopped a NEW session being
+   * scheduled on an archived batch (that guard lives in
+   * SessionsService.create/createForAcademy/createSeries). Now, in the
+   * same transaction: flip the batch to 'archived', then atomically
+   * cancel every still-`scheduled` future session with reason
+   * `batch_archived` — reusing exactly the conditional
+   * `UPDATE ... WHERE status = 'scheduled'` pattern
+   * SessionsRepository.cancelIfScheduled established for H2, so a
+   * session mid-cancel/complete elsewhere resolves the same safe way.
+   * The `WHERE status = 'active'` guard on the batch update makes
+   * re-archiving an already-archived batch a clean no-op — it returns
+   * the current row without re-running the cascade over sessions
+   * that are already handled (and cancelling an already-cancelled
+   * session is itself a no-op, so this is a belt-and-braces skip, not
+   * a correctness requirement).
+   */
   archive(id: string) {
-    return this.db
-      .updateTable('batches')
-      .set({ status: 'archived' })
-      .where('id', '=', id)
-      .returningAll()
-      .executeTakeFirstOrThrow();
+    return this.db.transaction().execute(async (trx) => {
+      const flipped = await trx
+        .updateTable('batches')
+        .set({ status: 'archived' })
+        .where('id', '=', id)
+        .where('status', '=', 'active')
+        .returningAll()
+        .executeTakeFirst();
+
+      if (flipped) {
+        await trx
+          .updateTable('class_sessions')
+          .set({ status: 'cancelled', cancellation_reason: 'batch_archived' })
+          .where('batch_id', '=', id)
+          .where('status', '=', 'scheduled')
+          .execute();
+        return flipped;
+      }
+
+      return trx
+        .selectFrom('batches')
+        .selectAll()
+        .where('id', '=', id)
+        .executeTakeFirstOrThrow();
+    });
   }
 
   update(id: string, dto: UpdateBatchDto) {

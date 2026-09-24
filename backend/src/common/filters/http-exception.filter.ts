@@ -105,7 +105,10 @@ function isDependencyOutage(exception: unknown): boolean {
   const code = (exception as { code?: unknown }).code;
   if (typeof code === 'string') {
     if (NETWORK_ERROR_CODES.has(code)) return true;
-    if (code.startsWith('08') || ['57P01', '57P02', '57P03', '53300'].includes(code)) {
+    if (
+      code.startsWith('08') ||
+      ['57P01', '57P02', '57P03', '53300'].includes(code)
+    ) {
       return true;
     }
   }
@@ -124,6 +127,43 @@ function clientErrorStatus(exception: unknown): number | null {
   return typeof status === 'number' && status >= 400 && status < 500
     ? status
     : null;
+}
+
+/**
+ * Postgres constraint/trigger SQLSTATEs the app expects to hit in normal
+ * operation (H10) — a violation of one of these is the caller's request
+ * conflicting with current data, not a bug, so it becomes a clean typed
+ * response instead of falling through to a generic 500. This notably
+ * covers the Academy-ownership immutability triggers (migration 0040),
+ * which all raise with `check_violation` (23514): app-level checks
+ * normally pre-empt these, so reaching the trigger at all means a race
+ * or a bug slipped a cross-context write through — it must still come
+ * back as a safe 409, not an opaque crash.
+ *   23505 unique_violation       — a record that must be unique already exists.
+ *   23503 foreign_key_violation  — referenced a row that doesn't exist (or still has dependents).
+ *   23514 check_violation        — a CHECK constraint or trigger (incl. context-ownership) rejected the write.
+ *   23502 not_null_violation     — a required column was left out.
+ *   P0001 raise_exception        — a plain `RAISE EXCEPTION` with no explicit SQLSTATE.
+ */
+const CONSTRAINT_VIOLATION_STATUS: Record<
+  string,
+  { status: number; code: ErrorCodeValue }
+> = {
+  '23505': { status: HttpStatus.CONFLICT, code: ErrorCode.CONFLICT },
+  '23503': { status: HttpStatus.CONFLICT, code: ErrorCode.CONFLICT },
+  '23514': { status: HttpStatus.CONFLICT, code: ErrorCode.CONFLICT },
+  '23502': { status: HttpStatus.BAD_REQUEST, code: ErrorCode.BAD_REQUEST },
+  P0001: {
+    status: HttpStatus.UNPROCESSABLE_ENTITY,
+    code: ErrorCode.UNPROCESSABLE,
+  },
+};
+
+function constraintViolationStatus(
+  exception: unknown,
+): { status: number; code: ErrorCodeValue } | null {
+  const code = pgCode(exception);
+  return code ? (CONSTRAINT_VIOLATION_STATUS[code] ?? null) : null;
 }
 
 interface Resolved {
@@ -161,7 +201,9 @@ function resolveHttpException(exception: HttpException): Resolved {
     : (rawMessage ?? exception.message);
 
   // class-validator failures arrive as an array of messages.
-  const details = Array.isArray(rawMessage) ? rawMessage.map(String) : undefined;
+  const details = Array.isArray(rawMessage)
+    ? rawMessage.map(String)
+    : undefined;
   if (details && !code) code = ErrorCode.VALIDATION_FAILED;
 
   const resolvedCode = code ?? defaultCodeForStatus(status);
@@ -172,9 +214,7 @@ function resolveHttpException(exception: HttpException): Resolved {
     // var, a provider name). It only reaches the user if the thrower
     // vouched for it by giving the error an explicit code.
     message =
-      code && internalMessage
-        ? internalMessage
-        : safeMessageForStatus(status);
+      code && internalMessage ? internalMessage : safeMessageForStatus(status);
   } else if (details) {
     message = details.join(', ');
   } else if (!internalMessage || isFrameworkDefaultMessage(internalMessage)) {
@@ -220,6 +260,19 @@ export class HttpExceptionFilter implements ExceptionFilter {
         status: HttpStatus.SERVICE_UNAVAILABLE,
         code: ErrorCode.DEPENDENCY_UNAVAILABLE,
         message: safeMessageForStatus(HttpStatus.SERVICE_UNAVAILABLE),
+        extra: {},
+        internalMessage:
+          exception instanceof Error ? exception.message : String(exception),
+      };
+    } else if (constraintViolationStatus(exception)) {
+      const { status, code } = constraintViolationStatus(exception)!;
+      resolved = {
+        status,
+        code,
+        // Never the raw driver message here: it can name tables, columns
+        // or constraints. safeMessageForStatus's generic copy for the
+        // status is all the client gets; the real detail is in the log.
+        message: safeMessageForStatus(status),
         extra: {},
         internalMessage:
           exception instanceof Error ? exception.message : String(exception),

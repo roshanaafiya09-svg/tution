@@ -99,13 +99,32 @@ export class AccountService {
 
   /**
    * Tombstones the account and revokes every session (see
-   * UsersRepository.softDelete for why this isn't a hard delete). The
-   * caller's *current* access token stays valid for up to its remaining
-   * 15-minute lifetime — short-lived by design, and refreshing it is now
-   * impossible since every refresh session was just revoked.
+   * UsersRepository.softDelete for why this isn't a hard delete). H8:
+   * revokeAccessTokens also kills the caller's *current* access token
+   * immediately, rather than leaving it valid for its remaining
+   * ≤15-minute lifetime — refreshing it was already impossible once
+   * every refresh session is revoked, but the access token itself used
+   * to keep working until it naturally expired.
+   *
+   * A tutor's public Find-a-Teacher listing is hidden as soon as this
+   * runs too (ProfilesRepository.findTutorBySlug / DiscoveryRepository.
+   * searchOfferings now exclude a deleted user) — batches, sessions,
+   * attendance, fee history and any Academy membership record are
+   * deliberately left untouched, same as exportData's scoping: those
+   * are historical records other parties (students, Academies) still
+   * legitimately need, not just this account's own data.
    */
-  async deleteAccount(userId: string): Promise<void> {
+  async deleteAccount(userId: string, roles: string[]): Promise<void> {
     await this.usersRepository.softDelete(userId);
     await this.tokensService.revokeAllSessions(userId);
+    await this.tokensService.revokeAccessTokens(userId);
+    // Best-effort, mirrors ProfilesService.removeAvatar's own existing
+    // pattern — only tutors have a profile photo to clean up, and a
+    // deleted account's avatar is no longer reachable through any live
+    // query anyway (the profile itself is now hidden), so this is
+    // storage hygiene, not a privacy fix in its own right.
+    if (roles.includes('tutor')) {
+      await this.profilesService.removeAvatar(userId);
+    }
   }
 }

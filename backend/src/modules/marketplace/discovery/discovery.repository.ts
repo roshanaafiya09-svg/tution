@@ -23,7 +23,9 @@ export class DiscoveryRepository {
 
   /** Candidate pool for search — only verified tutors are discoverable
    *  (blueprint §9's verified badge is the trust gate for public
-   *  listing, not just a profile decoration). */
+   *  listing, not just a profile decoration), and a deleted account's
+   *  listing is excluded (H8) the moment it's deleted, not once
+   *  whatever cached it separately expires. */
   searchOfferings(filters: OfferingSearchFilters) {
     let query = this.db
       .selectFrom('tutor_subjects')
@@ -32,7 +34,9 @@ export class DiscoveryRepository {
         'profiles_tutor.user_id',
         'tutor_subjects.tutor_id',
       )
+      .innerJoin('users', 'users.id', 'profiles_tutor.user_id')
       .innerJoin('subjects', 'subjects.id', 'tutor_subjects.subject_id')
+      .where('users.deleted_at', 'is', null)
       .select([
         'tutor_subjects.id as tutor_subject_id',
         'tutor_subjects.tutor_id',

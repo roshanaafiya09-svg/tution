@@ -43,6 +43,7 @@ import {
   InlineError,
   CardSkeleton,
   ErrorState,
+  ConfirmDialog,
   useToast,
 } from '@/components/ui';
 import {
@@ -138,6 +139,7 @@ function StudentsTab({ batchId }: { batchId: string }) {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [copied, setCopied] = useState(false);
   const [loadError, setLoadError] = useState<unknown>(null);
+  const [removing, setRemoving] = useState<Enrollment | null>(null);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -165,6 +167,12 @@ function StudentsTab({ batchId }: { batchId: string }) {
     } catch {
       toast({ title: 'Could not create an invite link', variant: 'error' });
     }
+  }
+
+  async function removeStudent(studentId: string) {
+    await api.delete(`/batches/${batchId}/students/${studentId}`);
+    await load();
+    toast({ title: 'Student removed from batch', variant: 'success' });
   }
 
   if (loadError) {
@@ -225,17 +233,37 @@ function StudentsTab({ batchId }: { batchId: string }) {
               meta={student.phone_e164}
               badge={<StatusBadge status={student.status} />}
               action={
-                <Link
-                  href={`/dashboard/messages/${batchId}/${student.student_id}`}
-                  className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
-                >
-                  Message
-                </Link>
+                <div className="flex items-center gap-4">
+                  <Link
+                    href={`/dashboard/messages/${batchId}/${student.student_id}`}
+                    className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
+                  >
+                    Message
+                  </Link>
+                  {student.status === 'active' && (
+                    <button
+                      type="button"
+                      onClick={() => setRemoving(student)}
+                      className="text-sm font-medium text-red-600 hover:underline dark:text-red-400"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
               }
             />
           ))}
         </AcademicCard>
       )}
+
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(open) => !open && setRemoving(null)}
+        onConfirm={() => removeStudent(removing!.student_id)}
+        title="Remove this student?"
+        description={`${removing?.display_name ?? removing?.phone_e164 ?? 'This student'} will be removed from the batch. Their attendance and other history is kept — this only ends their current enrollment.`}
+        confirmLabel="Remove"
+      />
     </div>
   );
 }
@@ -248,6 +276,9 @@ function SessionsTab({ batchId }: { batchId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [actingId, setActingId] = useState<string | null>(null);
+  const [reschedulingId, setReschedulingId] = useState<string | null>(null);
+  const [rescheduleStart, setRescheduleStart] = useState('');
+  const [rescheduleError, setRescheduleError] = useState<string | null>(null);
   const [form, setForm] = useState({
     startLocal: '',
     durationMin: '60',
@@ -318,6 +349,30 @@ function SessionsTab({ batchId }: { batchId: string }) {
     } catch (err) {
       toast({ title: 'Could not cancel the class', description: errorMessage(err), variant: 'error' });
       await load();
+    } finally {
+      setActingId(null);
+    }
+  }
+
+  function openReschedule(session: Session) {
+    setReschedulingId(session.id);
+    setRescheduleError(null);
+    setRescheduleStart('');
+  }
+
+  async function saveReschedule(sessionId: string) {
+    if (!rescheduleStart) return;
+    setActingId(sessionId);
+    setRescheduleError(null);
+    try {
+      await api.post(`/sessions/${sessionId}/reschedule`, {
+        newStartLocal: rescheduleStart,
+      });
+      setReschedulingId(null);
+      await load();
+      toast({ title: 'Class rescheduled', variant: 'success' });
+    } catch (err) {
+      setRescheduleError(errorMessage(err));
     } finally {
       setActingId(null);
     }
@@ -442,16 +497,27 @@ function SessionsTab({ batchId }: { batchId: string }) {
                         Done
                       </Button>
                     ) : (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => void cancelSession(session.id)}
-                        disabled={actingId === session.id}
-                        loading={actingId === session.id}
-                      >
-                        <Ban className="h-3.5 w-3.5" aria-hidden />
-                        Cancel
-                      </Button>
+                      <>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => openReschedule(session)}
+                          disabled={actingId === session.id}
+                        >
+                          <PenLine className="h-3.5 w-3.5" aria-hidden />
+                          Reschedule
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => void cancelSession(session.id)}
+                          disabled={actingId === session.id}
+                          loading={actingId === session.id}
+                        >
+                          <Ban className="h-3.5 w-3.5" aria-hidden />
+                          Cancel
+                        </Button>
+                      </>
                     ))}
                   <Link href={`/dashboard/sessions/${session.id}`}>
                     <Button variant="secondary" size="sm">
@@ -460,6 +526,40 @@ function SessionsTab({ batchId }: { batchId: string }) {
                   </Link>
                 </div>
               </AcademicCard>
+              {reschedulingId === session.id && (
+                <AcademicCard className="mt-2">
+                  <Field label="New start time" hint="Your local time — the class keeps its current duration unless you're changing it too.">
+                    <Input
+                      type="datetime-local"
+                      value={rescheduleStart}
+                      onChange={(e) => setRescheduleStart(e.target.value)}
+                    />
+                  </Field>
+                  {rescheduleError && (
+                    <div className="mt-3">
+                      <InlineError>{rescheduleError}</InlineError>
+                    </div>
+                  )}
+                  <div className="mt-3 flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => void saveReschedule(session.id)}
+                      disabled={!rescheduleStart || actingId === session.id}
+                      loading={actingId === session.id}
+                    >
+                      Save new time
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setReschedulingId(null)}
+                      disabled={actingId === session.id}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </AcademicCard>
+              )}
             </TimelineItem>
           ))}
         </div>

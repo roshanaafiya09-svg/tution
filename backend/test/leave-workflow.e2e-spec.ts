@@ -686,4 +686,127 @@ describe('Teacher Leave workflow (e2e)', () => {
       (sessions.body as Array<{ session_id: string }>).map((s) => s.session_id),
     ).toEqual([aSession]);
   });
+
+  // ==========================================================================
+  // H3 extra regression coverage (confirm-only item, per the audit): the
+  // decide()/approve() path re-queries eligible sessions live at approval
+  // time rather than trusting whatever was true when the request was
+  // created — these two tests exercise that directly rather than only
+  // implicitly through the existing full-workflow test.
+  // ==========================================================================
+
+  it('stale snapshot cannot affect a freshly-created Individual session on the same day — created AFTER the leave request, BEFORE approval', async () => {
+    const A = await makeAcademy('freshindiv');
+    const T = await makeUser('tutor', 'freshindiv1');
+    await join(A.id, T.id);
+    const ctxA = `academy:${A.id}`;
+
+    const aBatch = await teacherCreatesBatch(T, `FRESHI-ACAD-${MARKER}`, ctxA);
+    const day = isoDay(32);
+    await teacherSchedules(T, aBatch, `${day}T10:00`, ctxA);
+
+    const created = await api('POST', '/leave', T.token, {
+      body: {
+        academyId: A.id,
+        startDate: day,
+        endDate: day,
+        leaveType: 'full_day',
+      },
+    });
+    expect(created.status).toBe(201);
+    const requestId = created.body.id as string;
+
+    // Created AFTER the leave request — never in any snapshot, and it's
+    // a private Individual class besides.
+    const iBatch = await teacherCreatesBatch(T, `FRESHI-INDIV-${MARKER}`);
+    const freshIndividualSession = await teacherSchedules(
+      T,
+      iBatch,
+      `${day}T18:00`,
+    );
+
+    const approved = await api(
+      'POST',
+      `/academy/me/leave-requests/${requestId}/approve`,
+      A.owner.token,
+      { body: {} },
+    );
+    expect(approved.status).toBe(201);
+
+    expect(await sessionStatus(freshIndividualSession)).toEqual({
+      status: 'scheduled',
+      cancellation_reason: null,
+      teacher_leave_request_id: null,
+    });
+  });
+
+  it("decide() re-verifies the ORIGINAL snapshot's sessions live (catches one that became ineligible since), but never expands scope to a session scheduled after the request was filed", async () => {
+    const A = await makeAcademy('livequery');
+    const T = await makeUser('tutor', 'livequery1');
+    await join(A.id, T.id);
+    const ctxA = `academy:${A.id}`;
+
+    const aBatch = await teacherCreatesBatch(T, `LIVEQ-${MARKER}`, ctxA);
+    const day = isoDay(33);
+    const originalSession = await teacherSchedules(
+      T,
+      aBatch,
+      `${day}T10:00`,
+      ctxA,
+    );
+
+    const created = await api('POST', '/leave', T.token, {
+      body: {
+        academyId: A.id,
+        startDate: day,
+        endDate: day,
+        leaveType: 'full_day',
+      },
+    });
+    expect(created.status).toBe(201);
+    const requestId = created.body.id as string;
+
+    // The snapshot taken at creation time only knew about originalSession
+    // — this IS the request's fixed scope, not a lower bound.
+    const snapshotAtCreation = await api(
+      'GET',
+      `/leave/${requestId}/sessions`,
+      T.token,
+    );
+    expect(
+      (snapshotAtCreation.body as Array<{ session_id: string }>).map(
+        (s) => s.session_id,
+      ),
+    ).toEqual([originalSession]);
+
+    // A second Academy session on the SAME day, scheduled by the teacher
+    // AFTER they already filed for leave — reading teacher-leave.
+    // repository.ts's decide() confirms this is deliberate: it re-verifies
+    // eligibility of exactly the snapshotted session ids (guarding against
+    // one having since been cancelled/reassigned), never a fresh
+    // date-range query that could sweep in something the teacher scheduled
+    // afterward without ever seeing it listed on the leave request.
+    const lateAddedSession = await teacherSchedules(
+      T,
+      aBatch,
+      `${day}T15:00`,
+      ctxA,
+    );
+
+    const approved = await api(
+      'POST',
+      `/academy/me/leave-requests/${requestId}/approve`,
+      A.owner.token,
+      { body: {} },
+    );
+    expect(approved.status).toBe(201);
+
+    expect((await sessionStatus(originalSession)).status).toBe('cancelled');
+    // Untouched — this leave request's scope was fixed at filing time.
+    expect(await sessionStatus(lateAddedSession)).toEqual({
+      status: 'scheduled',
+      cancellation_reason: null,
+      teacher_leave_request_id: null,
+    });
+  });
 });

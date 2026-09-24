@@ -43,11 +43,20 @@ export class ProfilesRepository {
       .executeTakeFirst();
   }
 
+  /** The PUBLIC lookup (Find a Teacher page, SEO tutor page) — excludes a
+   *  deleted account so its public profile stops being discoverable the
+   *  moment the account is deleted (H8), not just once whatever cached
+   *  it expires. Academy-facing/internal lookups use
+   *  findTutorByUserId, which is deliberately NOT filtered this way:
+   *  historical Academy records must keep showing a departed/deleted
+   *  teacher's name. */
   findTutorBySlug(slug: string) {
     return this.db
       .selectFrom('profiles_tutor')
-      .selectAll()
-      .where('slug', '=', slug)
+      .innerJoin('users', 'users.id', 'profiles_tutor.user_id')
+      .selectAll('profiles_tutor')
+      .where('profiles_tutor.slug', '=', slug)
+      .where('users.deleted_at', 'is', null)
       .executeTakeFirst();
   }
 

@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -17,6 +18,8 @@ import { CurrentTeachingContext } from '../../teaching-context/current-teaching-
 import type { TeachingContext } from '../../teaching-context/teaching-context';
 import { SessionsService } from './sessions.service';
 import { CreateSessionDto } from './dto/create-session.dto';
+import { UpdateSessionDto } from './dto/update-session.dto';
+import { RescheduleSessionDto } from './dto/reschedule-session.dto';
 
 const DEFAULT_WINDOW_DAYS = 14;
 
@@ -105,6 +108,27 @@ export class SessionsController {
     @Param('batchId') batchId: string,
   ) {
     return this.sessionsService.listForBatch(user.sub, batchId);
+  }
+
+  /** H4 edit — today, only meetingUrl. */
+  @Patch(':id')
+  @Roles('tutor')
+  update(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id') id: string,
+    @Body() dto: UpdateSessionDto,
+  ) {
+    return this.sessionsService.updateMeetingUrl(user.sub, id, dto);
+  }
+
+  @Post(':id/reschedule')
+  @Roles('tutor')
+  reschedule(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id') id: string,
+    @Body() dto: RescheduleSessionDto,
+  ) {
+    return this.sessionsService.reschedule(user.sub, id, dto);
   }
 
   @Post(':id/cancel')

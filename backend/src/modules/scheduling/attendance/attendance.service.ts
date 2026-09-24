@@ -40,8 +40,11 @@ export class AttendanceService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
+  /** H6: an assigned substitute can see and mark attendance for the
+   *  class they're covering, not just the original teacher — see
+   *  SessionsService.getViewableSession's doc comment. */
   async listForSession(tutorId: string, sessionId: string) {
-    const session = await this.sessionsService.getOwnedSession(
+    const session = await this.sessionsService.getViewableSession(
       tutorId,
       sessionId,
     );
@@ -54,7 +57,7 @@ export class AttendanceService {
     studentId: string,
     status: AttendanceStatus,
   ) {
-    const session = await this.sessionsService.getOwnedSession(
+    const session = await this.sessionsService.getViewableSession(
       tutorId,
       sessionId,
     );

@@ -26,11 +26,14 @@ function buildService(overrides: {
   createSeries?: jest.Mock;
   getOwnedBatch?: jest.Mock;
   getAcademyBatch?: jest.Mock;
+  findByIdUnchecked?: jest.Mock;
   findById?: jest.Mock;
   findByIdInAcademy?: jest.Mock;
   cancelIfScheduled?: jest.Mock;
   completeIfScheduled?: jest.Mock;
   cancelSeries?: jest.Mock;
+  rescheduleIfScheduled?: jest.Mock;
+  updateMeetingUrl?: jest.Mock;
 }) {
   const repository = {
     hasScheduledOverlapForTutor:
@@ -51,15 +54,35 @@ function buildService(overrides: {
       overrides.completeIfScheduled ?? jest.fn().mockResolvedValue(undefined),
     cancelSeries:
       overrides.cancelSeries ?? jest.fn().mockResolvedValue(undefined),
+    rescheduleIfScheduled:
+      overrides.rescheduleIfScheduled ?? jest.fn().mockResolvedValue(undefined),
+    updateMeetingUrl:
+      overrides.updateMeetingUrl ??
+      jest.fn().mockResolvedValue({ id: SESSION_ID, meeting_url: null }),
   } as unknown as SessionsRepository;
 
   const batchesService = {
     getOwnedBatch:
       overrides.getOwnedBatch ??
-      jest.fn().mockResolvedValue({ id: BATCH_ID, tutor_id: TUTOR_ID }),
+      jest.fn().mockResolvedValue({
+        id: BATCH_ID,
+        tutor_id: TUTOR_ID,
+        status: 'active',
+      }),
     getAcademyBatch:
       overrides.getAcademyBatch ??
-      jest.fn().mockResolvedValue({ id: BATCH_ID, tutor_id: TUTOR_ID }),
+      jest.fn().mockResolvedValue({
+        id: BATCH_ID,
+        tutor_id: TUTOR_ID,
+        status: 'active',
+      }),
+    findByIdUnchecked:
+      overrides.findByIdUnchecked ??
+      jest.fn().mockResolvedValue({
+        id: BATCH_ID,
+        tutor_id: TUTOR_ID,
+        academy_id: null,
+      }),
   } as unknown as BatchesService;
 
   const teachingContext = {
@@ -82,6 +105,9 @@ function makeSession(
     status: 'scheduled' | 'completed' | 'cancelled';
     scheduled_start_utc: Date;
     recurrence_parent_id: string | null;
+    timezone: string;
+    duration_min: number;
+    substitute_tutor_id: string | null;
   }> = {},
 ) {
   return {
@@ -91,6 +117,9 @@ function makeSession(
     status: 'scheduled' as const,
     scheduled_start_utc: new Date(Date.now() - 60_000), // started a minute ago
     recurrence_parent_id: null,
+    timezone: 'Asia/Kolkata',
+    duration_min: 60,
+    substitute_tutor_id: null,
     ...overrides,
   };
 }
@@ -169,6 +198,57 @@ describe('SessionsService.create — conflict detection', () => {
         recurrenceRule: 'FREQ=WEEKLY;COUNT=5',
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
+    expect(createSeries).not.toHaveBeenCalled();
+  });
+
+  // H11: nothing used to stop scheduling a brand-new session on an
+  // archived batch — archive's own cascade only cancels what already
+  // existed at that moment.
+  it('rejects creating a session on an archived batch (Individual path)', async () => {
+    const createSeries = jest.fn();
+    const { service } = buildService({
+      createSeries,
+      getOwnedBatch: jest.fn().mockResolvedValue({
+        id: BATCH_ID,
+        tutor_id: TUTOR_ID,
+        status: 'archived',
+      }),
+    });
+
+    await expect(
+      service.create(TUTOR_ID, {
+        batchId: BATCH_ID,
+        startLocal: '2026-09-21T16:00',
+        durationMin: 60,
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: ErrorCode.BATCH_ARCHIVED },
+    });
+    expect(createSeries).not.toHaveBeenCalled();
+  });
+
+  it('rejects creating a session on an archived batch (Academy path)', async () => {
+    const createSeries = jest.fn();
+    const { service } = buildService({
+      createSeries,
+      getAcademyBatch: jest.fn().mockResolvedValue({
+        id: BATCH_ID,
+        tutor_id: TUTOR_ID,
+        status: 'archived',
+      }),
+    });
+
+    await expect(
+      service.createForAcademy('academy-1', {
+        batchId: BATCH_ID,
+        startLocal: '2026-09-21T16:00',
+        durationMin: 60,
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: ErrorCode.BATCH_ARCHIVED },
+    });
     expect(createSeries).not.toHaveBeenCalled();
   });
 });
@@ -318,7 +398,10 @@ describe('SessionsService.cancel — H2 lifecycle guards', () => {
     const result = await service.cancel(TUTOR_ID, SESSION_ID, false);
 
     expect(result).toEqual({ cancelled: 'single' });
-    expect(cancelIfScheduled).toHaveBeenCalledWith(SESSION_ID, 'manual');
+    expect(cancelIfScheduled).toHaveBeenCalledWith(
+      SESSION_ID,
+      'teacher_manual',
+    );
   });
 
   it('rejects cancelling a class that has already started', async () => {
@@ -400,8 +483,11 @@ describe('SessionsService.cancel — H2 lifecycle guards', () => {
     const result = await service.cancel(TUTOR_ID, SESSION_ID, true);
 
     expect(result).toEqual({ cancelled: 'series' });
-    expect(cancelIfScheduled).toHaveBeenCalledWith(SESSION_ID, 'manual');
-    expect(cancelSeries).toHaveBeenCalledWith('parent-1');
+    expect(cancelIfScheduled).toHaveBeenCalledWith(
+      SESSION_ID,
+      'teacher_manual',
+    );
+    expect(cancelSeries).toHaveBeenCalledWith('parent-1', 'teacher_manual');
   });
 
   it('never sweeps the series when the target session itself fails to cancel', async () => {
@@ -449,5 +535,359 @@ describe('SessionsService.cancel — H2 lifecycle guards', () => {
     await expect(
       service.cancelForAcademy('academy-1', SESSION_ID, false),
     ).rejects.toMatchObject({ status: 404 });
+  });
+
+  // H4: the reminder wording bug — both paths used to tag every manual
+  // cancel identically ('manual'), so the reminder always said "cancelled
+  // by the academy" even for a teacher's own cancel of a private
+  // Individual class. Cancel now records WHO actually cancelled it.
+  it('a teacher cancel is tagged teacher_manual, not the shared "manual" reason', async () => {
+    const session = makeSession({
+      status: 'scheduled',
+      scheduled_start_utc: FUTURE,
+    });
+    const cancelIfScheduled = jest
+      .fn()
+      .mockResolvedValue({ ...session, status: 'cancelled' });
+    const { service } = buildService({
+      findById: jest.fn().mockResolvedValue(session),
+      cancelIfScheduled,
+    });
+
+    await service.cancel(TUTOR_ID, SESSION_ID, false);
+
+    expect(cancelIfScheduled).toHaveBeenCalledWith(
+      SESSION_ID,
+      'teacher_manual',
+    );
+  });
+
+  it('an academy cancel is tagged academy_manual, not the shared "manual" reason', async () => {
+    const session = makeSession({
+      status: 'scheduled',
+      scheduled_start_utc: FUTURE,
+    });
+    const cancelIfScheduled = jest
+      .fn()
+      .mockResolvedValue({ ...session, status: 'cancelled' });
+    const { service } = buildService({
+      findByIdInAcademy: jest.fn().mockResolvedValue(session),
+      cancelIfScheduled,
+    });
+
+    await service.cancelForAcademy('academy-1', SESSION_ID, false);
+
+    expect(cancelIfScheduled).toHaveBeenCalledWith(
+      SESSION_ID,
+      'academy_manual',
+    );
+  });
+});
+
+// H4 — new capabilities the audit found missing entirely: edit (today
+// just meetingUrl) and a real reschedule workflow, both following the
+// same atomic-guard shape H2 established for cancel/complete.
+describe('SessionsService.reschedule', () => {
+  const FUTURE_LOCAL = '2030-06-15T16:00';
+  const PAST_LOCAL = '2020-01-01T10:00';
+
+  it('succeeds for a scheduled, future, non-conflicting session', async () => {
+    const session = makeSession({
+      status: 'scheduled',
+      scheduled_start_utc: FUTURE,
+    });
+    const rescheduleIfScheduled = jest.fn().mockResolvedValue({
+      ...session,
+      scheduled_start_utc: new Date('2030-06-15T10:30:00Z'),
+    });
+    const hasScheduledOverlapForTutor = jest.fn().mockResolvedValue(false);
+    const { service } = buildService({
+      findById: jest.fn().mockResolvedValue(session),
+      rescheduleIfScheduled,
+      hasScheduledOverlapForTutor,
+    });
+
+    const result = await service.reschedule(TUTOR_ID, SESSION_ID, {
+      newStartLocal: FUTURE_LOCAL,
+    });
+
+    expect(result.scheduled_start_utc).toEqual(
+      new Date('2030-06-15T10:30:00Z'),
+    );
+    expect(rescheduleIfScheduled).toHaveBeenCalledWith(
+      SESSION_ID,
+      expect.any(Date),
+      60, // session's existing duration, since none was given
+    );
+    expect(hasScheduledOverlapForTutor).toHaveBeenCalledWith(
+      TUTOR_ID,
+      expect.any(Date),
+      expect.any(Date),
+      SESSION_ID, // excludes its own current slot
+    );
+  });
+
+  it('rejects a reschedule to a time in the past', async () => {
+    const session = makeSession({
+      status: 'scheduled',
+      scheduled_start_utc: FUTURE,
+    });
+    const rescheduleIfScheduled = jest.fn();
+    const { service } = buildService({
+      findById: jest.fn().mockResolvedValue(session),
+      rescheduleIfScheduled,
+    });
+
+    await expect(
+      service.reschedule(TUTOR_ID, SESSION_ID, { newStartLocal: PAST_LOCAL }),
+    ).rejects.toMatchObject({
+      status: 400,
+      response: { code: ErrorCode.SESSION_RESCHEDULE_IN_PAST },
+    });
+    expect(rescheduleIfScheduled).not.toHaveBeenCalled();
+  });
+
+  it("rejects a reschedule that conflicts with another of the tutor's classes", async () => {
+    const session = makeSession({
+      status: 'scheduled',
+      scheduled_start_utc: FUTURE,
+    });
+    const rescheduleIfScheduled = jest.fn();
+    const { service } = buildService({
+      findById: jest.fn().mockResolvedValue(session),
+      rescheduleIfScheduled,
+      hasScheduledOverlapForTutor: jest.fn().mockResolvedValue(true),
+    });
+
+    await expect(
+      service.reschedule(TUTOR_ID, SESSION_ID, { newStartLocal: FUTURE_LOCAL }),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: ErrorCode.SESSION_RESCHEDULE_CONFLICT },
+    });
+    expect(rescheduleIfScheduled).not.toHaveBeenCalled();
+  });
+
+  it('rejects a reschedule that conflicts with another class already on the batch', async () => {
+    const session = makeSession({
+      status: 'scheduled',
+      scheduled_start_utc: FUTURE,
+    });
+    const rescheduleIfScheduled = jest.fn();
+    const { service } = buildService({
+      findById: jest.fn().mockResolvedValue(session),
+      rescheduleIfScheduled,
+      hasScheduledOverlapForBatch: jest.fn().mockResolvedValue(true),
+    });
+
+    await expect(
+      service.reschedule(TUTOR_ID, SESSION_ID, { newStartLocal: FUTURE_LOCAL }),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: ErrorCode.SESSION_RESCHEDULE_CONFLICT },
+    });
+    expect(rescheduleIfScheduled).not.toHaveBeenCalled();
+  });
+
+  it('rejects rescheduling a class that has already started (same time rule as cancel)', async () => {
+    const session = makeSession({
+      status: 'scheduled',
+      scheduled_start_utc: PAST,
+    });
+    const { service } = buildService({
+      findById: jest.fn().mockResolvedValue(session),
+    });
+
+    await expect(
+      service.reschedule(TUTOR_ID, SESSION_ID, { newStartLocal: FUTURE_LOCAL }),
+    ).rejects.toMatchObject({
+      status: 400,
+      response: { code: ErrorCode.SESSION_ALREADY_STARTED },
+    });
+  });
+
+  it('rejects rescheduling an already-cancelled class', async () => {
+    const session = makeSession({
+      status: 'cancelled',
+      scheduled_start_utc: FUTURE,
+    });
+    const { service } = buildService({
+      findById: jest.fn().mockResolvedValue(session),
+    });
+
+    await expect(
+      service.reschedule(TUTOR_ID, SESSION_ID, { newStartLocal: FUTURE_LOCAL }),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: ErrorCode.SESSION_ALREADY_CANCELLED },
+    });
+  });
+
+  it('a reschedule racing a concurrent cancel loses cleanly instead of silently applying', async () => {
+    const session = makeSession({
+      status: 'scheduled',
+      scheduled_start_utc: FUTURE,
+    });
+    const rescheduleIfScheduled = jest.fn().mockResolvedValue(undefined); // lost the race
+    const { service } = buildService({
+      findById: jest
+        .fn()
+        .mockResolvedValueOnce(session) // initial load
+        .mockResolvedValueOnce({ ...session, status: 'cancelled' }), // re-check after losing
+      rescheduleIfScheduled,
+    });
+
+    await expect(
+      service.reschedule(TUTOR_ID, SESSION_ID, { newStartLocal: FUTURE_LOCAL }),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: ErrorCode.SESSION_ALREADY_CANCELLED },
+    });
+  });
+
+  it('the Academy path applies the same guards as the tutor path', async () => {
+    const session = makeSession({
+      status: 'cancelled',
+      scheduled_start_utc: FUTURE,
+    });
+    const { service } = buildService({
+      findByIdInAcademy: jest.fn().mockResolvedValue(session),
+    });
+
+    await expect(
+      service.rescheduleForAcademy('academy-1', SESSION_ID, {
+        newStartLocal: FUTURE_LOCAL,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+describe('SessionsService.updateMeetingUrl (H4 edit)', () => {
+  it('updates the meeting link for a scheduled session', async () => {
+    const session = makeSession({ status: 'scheduled' });
+    const updateMeetingUrl = jest
+      .fn()
+      .mockResolvedValue({ ...session, meeting_url: 'https://meet.example/x' });
+    const { service } = buildService({
+      findById: jest.fn().mockResolvedValue(session),
+      updateMeetingUrl,
+    });
+
+    const result = await service.updateMeetingUrl(TUTOR_ID, SESSION_ID, {
+      meetingUrl: 'https://meet.example/x',
+    });
+
+    expect(result.meeting_url).toBe('https://meet.example/x');
+    expect(updateMeetingUrl).toHaveBeenCalledWith(
+      SESSION_ID,
+      'https://meet.example/x',
+    );
+  });
+
+  it('clearing the link (null) is a distinct case from omitting it (undefined, no-op)', async () => {
+    const session = makeSession({ status: 'scheduled' });
+    const updateMeetingUrl = jest
+      .fn()
+      .mockResolvedValue({ ...session, meeting_url: null });
+    const { service } = buildService({
+      findById: jest.fn().mockResolvedValue(session),
+      updateMeetingUrl,
+    });
+
+    await service.updateMeetingUrl(TUTOR_ID, SESSION_ID, { meetingUrl: null });
+    expect(updateMeetingUrl).toHaveBeenCalledWith(SESSION_ID, null);
+
+    updateMeetingUrl.mockClear();
+    await service.updateMeetingUrl(TUTOR_ID, SESSION_ID, {});
+    expect(updateMeetingUrl).not.toHaveBeenCalled();
+  });
+
+  it('rejects editing a class that is no longer scheduled', async () => {
+    const session = makeSession({ status: 'completed' });
+    const { service } = buildService({
+      findById: jest.fn().mockResolvedValue(session),
+    });
+
+    await expect(
+      service.updateMeetingUrl(TUTOR_ID, SESSION_ID, {
+        meetingUrl: 'https://meet.example/x',
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: ErrorCode.SESSION_ALREADY_COMPLETED },
+    });
+  });
+});
+
+// H6 — a substitute teacher previously had zero access to the class
+// they were assigned to cover: getOwnedSession only ever matched
+// tutor_id. getViewableSession (view + attendance only, per product
+// decision — never cancel/complete/reschedule/edit) is the fix.
+describe('SessionsService.getViewableSession (H6 substitute access)', () => {
+  const SUBSTITUTE_ID = 'substitute-1';
+
+  it('the original teacher can view their own session, same as before', async () => {
+    const session = makeSession({
+      tutor_id: TUTOR_ID,
+      substitute_tutor_id: null,
+    });
+    const { service } = buildService({
+      findById: jest.fn().mockResolvedValue(session),
+    });
+
+    await expect(
+      service.getViewableSession(TUTOR_ID, SESSION_ID),
+    ).resolves.toEqual(session);
+  });
+
+  it('an assigned substitute can view the session they are covering', async () => {
+    const session = makeSession({
+      tutor_id: TUTOR_ID,
+      substitute_tutor_id: SUBSTITUTE_ID,
+    });
+    const { service } = buildService({
+      findById: jest.fn().mockResolvedValue(session),
+    });
+
+    await expect(
+      service.getViewableSession(SUBSTITUTE_ID, SESSION_ID),
+    ).resolves.toEqual(session);
+  });
+
+  it('a random teacher who is neither the owner nor the assigned substitute is rejected (direct-ID probe)', async () => {
+    const session = makeSession({
+      tutor_id: TUTOR_ID,
+      substitute_tutor_id: SUBSTITUTE_ID,
+    });
+    const { service } = buildService({
+      findById: jest.fn().mockResolvedValue(session),
+    });
+
+    await expect(
+      service.getViewableSession('random-teacher', SESSION_ID),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("a substitute's own ownership check never runs getOwnedBatch (which would always reject a non-owner)", async () => {
+    const session = makeSession({
+      tutor_id: TUTOR_ID,
+      substitute_tutor_id: SUBSTITUTE_ID,
+    });
+    const getOwnedBatch = jest.fn();
+    const findByIdUnchecked = jest.fn().mockResolvedValue({
+      id: BATCH_ID,
+      tutor_id: TUTOR_ID,
+      academy_id: null,
+    });
+    const { service } = buildService({
+      findById: jest.fn().mockResolvedValue(session),
+      getOwnedBatch,
+      findByIdUnchecked,
+    });
+
+    await service.getViewableSession(SUBSTITUTE_ID, SESSION_ID);
+
+    expect(getOwnedBatch).not.toHaveBeenCalled();
+    expect(findByIdUnchecked).toHaveBeenCalledWith(BATCH_ID);
   });
 });

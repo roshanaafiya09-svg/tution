@@ -73,7 +73,17 @@ export class SessionsRepository {
   /** A tutor's classes in ONE teaching context (null = Individual, an id
    *  = that academy's). The context comes from the session's batch, so a
    *  teacher's Individual 7 PM class never shows up in (or is affected by)
-   *  the Academy profile's schedule and vice versa. */
+   *  the Academy profile's schedule and vice versa.
+   *
+   *  H6: also matches a class this tutor is covering as SUBSTITUTE —
+   *  before this fix, an assigned substitute couldn't see the class they
+   *  were covering on their own dashboard at all (only the original
+   *  teacher's own listing showed "Covered by X"). `tutor_id` and the
+   *  original teacher's display name are selected so the frontend can
+   *  tell "my own class" apart from "I'm covering for X" and label it —
+   *  a substitute only ever sees this while active in the SAME academy
+   *  context the covered class belongs to (unchanged scoping below),
+   *  matching validateSubstitute's own membership requirement. */
   listForTutorBetween(
     tutorId: string,
     academyId: string | null,
@@ -88,9 +98,15 @@ export class SessionsRepository {
         'substitute_profile.user_id',
         'class_sessions.substitute_tutor_id',
       )
+      .leftJoin(
+        'profiles_tutor as original_tutor_profile',
+        'original_tutor_profile.user_id',
+        'class_sessions.tutor_id',
+      )
       .select([
         'class_sessions.id',
         'class_sessions.batch_id',
+        'class_sessions.tutor_id',
         'class_sessions.scheduled_start_utc',
         'class_sessions.timezone',
         'class_sessions.duration_min',
@@ -99,9 +115,15 @@ export class SessionsRepository {
         'class_sessions.cancellation_reason',
         'class_sessions.substitute_tutor_id',
         'substitute_profile.display_name as substitute_display_name',
+        'original_tutor_profile.display_name as original_tutor_display_name',
         'batches.title as batch_title',
       ])
-      .where('class_sessions.tutor_id', '=', tutorId)
+      .where((eb) =>
+        eb.or([
+          eb('class_sessions.tutor_id', '=', tutorId),
+          eb('class_sessions.substitute_tutor_id', '=', tutorId),
+        ]),
+      )
       .where('class_sessions.scheduled_start_utc', '>=', from)
       .where('class_sessions.scheduled_start_utc', '<', to);
     query =
@@ -306,13 +328,17 @@ export class SessionsRepository {
 
   /** Any scheduled batch class for this tutor overlapping [start, end) —
    *  lets 1:1 booking creation (blueprint §10 Phase 4) avoid
-   *  double-booking a tutor across the two scheduling systems. */
+   *  double-booking a tutor across the two scheduling systems.
+   *  `excludeSessionId` (H4 reschedule) leaves the session being moved
+   *  out of its own conflict check — otherwise every reschedule would
+   *  "conflict" with its own current slot. */
   async hasScheduledOverlapForTutor(
     tutorId: string,
     start: Date,
     end: Date,
+    excludeSessionId?: string,
   ): Promise<boolean> {
-    const row = await this.db
+    let query = this.db
       .selectFrom('class_sessions')
       .select((eb) => eb.fn.countAll().as('count'))
       .where('tutor_id', '=', tutorId)
@@ -320,21 +346,24 @@ export class SessionsRepository {
       .where('scheduled_start_utc', '<', end)
       .where(
         sql<boolean>`scheduled_start_utc + (duration_min * interval '1 minute') > ${start}`,
-      )
-      .executeTakeFirstOrThrow();
+      );
+    if (excludeSessionId) query = query.where('id', '!=', excludeSessionId);
+    const row = await query.executeTakeFirstOrThrow();
     return Number(row.count) > 0;
   }
 
   /** Sibling of hasScheduledOverlapForTutor, scoped to a batch instead of a
    *  tutor — a batch shouldn't have two scheduled classes at once even if
    *  (hypothetically) two different tutors tried to book it. Backs the
-   *  create-session conflict check (SessionsService.create). */
+   *  create-session conflict check (SessionsService.create) and the
+   *  reschedule conflict check. */
   async hasScheduledOverlapForBatch(
     batchId: string,
     start: Date,
     end: Date,
+    excludeSessionId?: string,
   ): Promise<boolean> {
-    const row = await this.db
+    let query = this.db
       .selectFrom('class_sessions')
       .select((eb) => eb.fn.countAll().as('count'))
       .where('batch_id', '=', batchId)
@@ -342,8 +371,9 @@ export class SessionsRepository {
       .where('scheduled_start_utc', '<', end)
       .where(
         sql<boolean>`scheduled_start_utc + (duration_min * interval '1 minute') > ${start}`,
-      )
-      .executeTakeFirstOrThrow();
+      );
+    if (excludeSessionId) query = query.where('id', '!=', excludeSessionId);
+    const row = await query.executeTakeFirstOrThrow();
     return Number(row.count) > 0;
   }
 
@@ -367,8 +397,14 @@ export class SessionsRepository {
 
   /** Sibling of completeIfScheduled for the cancel path — same atomic
    *  claim-or-lose-the-race guarantee, tagged with *why* like
-   *  setHolidayOrLeaveCancellation. */
-  cancelIfScheduled(id: string, reason: 'manual') {
+   *  setHolidayOrLeaveCancellation. `teacher_manual`/`academy_manual`
+   *  (H4) replace the old single `'manual'` value so the reminder copy
+   *  can say who actually cancelled it; `batch_archived` (H11) is the
+   *  archive-cascade's own reason. */
+  cancelIfScheduled(
+    id: string,
+    reason: 'teacher_manual' | 'academy_manual' | 'batch_archived',
+  ) {
     return this.db
       .updateTable('class_sessions')
       .set({ status: 'cancelled', cancellation_reason: reason })
@@ -376,6 +412,38 @@ export class SessionsRepository {
       .where('status', '=', 'scheduled')
       .returningAll()
       .executeTakeFirst();
+  }
+
+  /** Atomic claim like cancelIfScheduled/completeIfScheduled (H4/H2): only
+   *  succeeds while the row is still 'scheduled', so a reschedule racing
+   *  a cancel/complete resolves to exactly one winner. */
+  rescheduleIfScheduled(
+    id: string,
+    scheduledStartUtc: Date,
+    durationMin: number,
+  ) {
+    return this.db
+      .updateTable('class_sessions')
+      .set({
+        scheduled_start_utc: scheduledStartUtc,
+        duration_min: durationMin,
+      })
+      .where('id', '=', id)
+      .where('status', '=', 'scheduled')
+      .returningAll()
+      .executeTakeFirst();
+  }
+
+  /** H4 "edit": the only session field that's safe to change without it
+   *  being a reschedule (time) or an ownership change (there is no such
+   *  field — batch_id/tutor_id/academy_id are never editable here). */
+  updateMeetingUrl(id: string, meetingUrl: string | null) {
+    return this.db
+      .updateTable('class_sessions')
+      .set({ meeting_url: meetingUrl })
+      .where('id', '=', id)
+      .returningAll()
+      .executeTakeFirstOrThrow();
   }
 
   findByIds(ids: string[]) {
@@ -595,17 +663,20 @@ export class SessionsRepository {
   }
 
   /** Cancels the still-scheduled members of a series (the parent and
-   *  everything pointing at it) — same 'manual' reason-tagging as
-   *  setHolidayOrLeaveCancellation above, for the same cancelled-class-
-   *  reminder reason. The `status = 'scheduled'` guard means a sibling
-   *  that already completed, or that a previous cancelSeries call already
+   *  everything pointing at it) — same actor-tagged reason as
+   *  cancelIfScheduled above (H4), for the same cancelled-class-reminder
+   *  wording. The `status = 'scheduled'` guard means a sibling that
+   *  already completed, or that a previous cancelSeries call already
    *  cancelled, is left untouched — a series cancel can never turn a
    *  COMPLETED occurrence back into CANCELLED, and repeating the call is
    *  a safe no-op on anything it already reached. */
-  cancelSeries(parentId: string) {
+  cancelSeries(
+    parentId: string,
+    reason: 'teacher_manual' | 'academy_manual' | 'batch_archived',
+  ) {
     return this.db
       .updateTable('class_sessions')
-      .set({ status: 'cancelled', cancellation_reason: 'manual' })
+      .set({ status: 'cancelled', cancellation_reason: reason })
       .where((eb) =>
         eb.or([
           eb('id', '=', parentId),

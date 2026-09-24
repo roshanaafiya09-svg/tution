@@ -17,7 +17,7 @@ export class AccountController {
   @Delete('me')
   @HttpCode(200)
   async deleteAccount(@CurrentUser() user: AccessTokenPayload) {
-    await this.accountService.deleteAccount(user.sub);
+    await this.accountService.deleteAccount(user.sub, user.roles);
     return { deleted: true };
   }
 }

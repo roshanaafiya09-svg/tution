@@ -154,6 +154,9 @@ export class RemindersService {
       title: '📚 Class reminder',
       body: `Your ${session.batch_title} class starts in ${REMINDER_LEAD_MINUTES} minutes${substituteNote}.`,
       payload: { sessionId: session.id },
+      // H7: DB-backed backstop on top of the app-level check above — see
+      // NotificationsRepository.createMany's doc comment.
+      dedupeKey: `reminder:${session.id}:upcoming`,
     });
   }
 
@@ -178,7 +181,10 @@ export class RemindersService {
     const individual = cancelled.filter(
       (s) =>
         s.cancellation_reason === 'teacher_leave' ||
-        s.cancellation_reason === 'manual',
+        s.cancellation_reason === 'teacher_manual' ||
+        s.cancellation_reason === 'academy_manual' ||
+        s.cancellation_reason === 'batch_archived' ||
+        s.cancellation_reason === 'manual', // legacy rows predating the H4 reason split
     );
     const holidayCaused = cancelled.filter(
       (s) =>
@@ -242,10 +248,26 @@ export class RemindersService {
     if (recipientIds.length === 0) return;
 
     const time = classTime(session);
-    const body =
-      session.cancellation_reason === 'teacher_leave'
-        ? `Your ${session.batch_title} class at ${time} today has been cancelled because your teacher is on approved leave.`
-        : `Your ${session.batch_title} class at ${time} today has been cancelled by the academy.`;
+    // H4: cancellation_reason now distinguishes WHO cancelled — every
+    // manual cancel used to be tagged the same 'manual' value, so this
+    // used to say "cancelled by the academy" even for a teacher's own
+    // cancel of a private Individual class. A legacy 'manual' row
+    // (cancelled before this reason split shipped) falls back to a
+    // neutral message rather than guessing which actor it was.
+    const body = (() => {
+      switch (session.cancellation_reason) {
+        case 'teacher_leave':
+          return `Your ${session.batch_title} class at ${time} today has been cancelled because your teacher is on approved leave.`;
+        case 'teacher_manual':
+          return `Your ${session.batch_title} class at ${time} today has been cancelled by your teacher.`;
+        case 'academy_manual':
+          return `Your ${session.batch_title} class at ${time} today has been cancelled by the academy.`;
+        case 'batch_archived':
+          return `Your ${session.batch_title} class at ${time} today has been cancelled — this batch is no longer active.`;
+        default:
+          return `Your ${session.batch_title} class at ${time} today has been cancelled.`;
+      }
+    })();
 
     await this.notificationsService.notify({
       userIds: recipientIds,
@@ -253,6 +275,8 @@ export class RemindersService {
       title: '🔔 Class Cancelled',
       body,
       payload: { sessionId: session.id, reason: session.cancellation_reason },
+      // H7: DB-backed backstop — see remindOneUpcoming's identical use.
+      dedupeKey: `reminder:${session.id}:cancelled`,
     });
   }
 

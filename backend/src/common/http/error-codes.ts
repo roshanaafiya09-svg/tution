@@ -51,6 +51,23 @@ export const ErrorCode = {
   SESSION_ALREADY_STARTED: 'SESSION_ALREADY_STARTED',
   /** Complete requested before the session's scheduled start time. */
   SESSION_NOT_STARTED: 'SESSION_NOT_STARTED',
+  /** Reschedule requested to a time that has already passed. */
+  SESSION_RESCHEDULE_IN_PAST: 'SESSION_RESCHEDULE_IN_PAST',
+  /** The requested new time overlaps another scheduled class for the
+   *  same teacher or the same batch. */
+  SESSION_RESCHEDULE_CONFLICT: 'SESSION_RESCHEDULE_CONFLICT',
+
+  // Fee ledger guards (H5) — see FeesService.recordPayment/waive.
+  /** Payment/waive requested on a fee entry that is already 'paid'. */
+  FEE_ALREADY_PAID: 'FEE_ALREADY_PAID',
+  /** Payment/waive requested on a fee entry that is already 'waived'. */
+  FEE_ALREADY_WAIVED: 'FEE_ALREADY_WAIVED',
+  /** Recorded payment amount exceeds what is actually expected. */
+  FEE_AMOUNT_EXCEEDS_EXPECTED: 'FEE_AMOUNT_EXCEEDS_EXPECTED',
+
+  // Archive cascade (H11) — see BatchesRepository.archive / SessionsService.assertBatchActive.
+  /** A new session/series was requested on an archived batch. */
+  BATCH_ARCHIVED: 'BATCH_ARCHIVED',
 } as const;
 
 export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode];

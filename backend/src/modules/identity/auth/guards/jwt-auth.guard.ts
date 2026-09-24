@@ -17,7 +17,7 @@ export interface AuthenticatedRequest extends FastifyRequest {
 export class JwtAuthGuard implements CanActivate {
   constructor(private readonly tokensService: TokensService) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const header = request.headers.authorization;
     const token = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
@@ -29,6 +29,12 @@ export class JwtAuthGuard implements CanActivate {
     try {
       request.user = this.tokensService.verifyAccessToken(token);
     } catch {
+      throw new UnauthorizedException('Invalid or expired access token');
+    }
+
+    // H8: a deleted account's already-issued access token must stop
+    // working immediately, not just at its natural ≤15min expiry.
+    if (await this.tokensService.isAccessRevoked(request.user.sub)) {
       throw new UnauthorizedException('Invalid or expired access token');
     }
 

@@ -38,7 +38,7 @@ describe('Class session lifecycle guards (e2e)', () => {
   let phoneSeq = 0;
 
   async function api(
-    method: 'GET' | 'POST' | 'DELETE',
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
     url: string,
     token: string,
     opts: { body?: unknown; ctx?: string } = {},
@@ -547,5 +547,193 @@ describe('Class session lifecycle guards (e2e)', () => {
     );
     expect(second.status).toBe(409);
     expect(second.body.code).toBe('SESSION_ALREADY_CANCELLED');
+  });
+
+  // ==========================================================================
+  // H4 — edit, reschedule, and the cancellation-reason/wording fix.
+  // ==========================================================================
+
+  it('H4: a teacher can edit the meeting link of a scheduled class, and the change survives a re-fetch', async () => {
+    const T = await makeUser('tutor', 'edit1');
+    const batch = await teacherCreatesBatch(T, `EDIT-${MARKER}`);
+    const s = await scheduleSessionAt(T, batch, FUTURE());
+
+    const res = await api('PATCH', `/sessions/${s}`, T.token, {
+      body: { meetingUrl: 'https://meet.example/new-link' },
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.meeting_url).toBe('https://meet.example/new-link');
+
+    const row = await db
+      .selectFrom('class_sessions')
+      .select('meeting_url')
+      .where('id', '=', s)
+      .executeTakeFirstOrThrow();
+    expect(row.meeting_url).toBe('https://meet.example/new-link');
+  });
+
+  it('H4: editing never accepts an ownership-changing field — the request is rejected outright, not silently ignored', async () => {
+    const T = await makeUser('tutor', 'edit2');
+    const batch = await teacherCreatesBatch(T, `EDIT2-${MARKER}`);
+    const s = await scheduleSessionAt(T, batch, FUTURE());
+
+    const res = await api('PATCH', `/sessions/${s}`, T.token, {
+      body: {
+        meetingUrl: 'https://meet.example/x',
+        academyId: 'not-a-real-field',
+      },
+    });
+    expect(res.status).toBe(400); // forbidNonWhitelisted rejects the unknown field
+  });
+
+  it("H4: a teacher cannot edit another teacher's session (direct-ID, not just hidden UI)", async () => {
+    const T1 = await makeUser('tutor', 'edit3a');
+    const T2 = await makeUser('tutor', 'edit3b');
+    const batch = await teacherCreatesBatch(T1, `EDIT3-${MARKER}`);
+    const s = await scheduleSessionAt(T1, batch, FUTURE());
+
+    const res = await api('PATCH', `/sessions/${s}`, T2.token, {
+      body: { meetingUrl: 'https://meet.example/hijack' },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('H4: reschedule moves a scheduled class to a new time and rejects a repeat cancel-of-the-old-slot race correctly', async () => {
+    const T = await makeUser('tutor', 'resched1');
+    const batch = await teacherCreatesBatch(T, `RESCHED-${MARKER}`);
+    const s = await scheduleSessionAt(T, batch, FUTURE());
+    const newStart = new Date(Date.now() + 5 * 3600_000);
+
+    const res = await api('POST', `/sessions/${s}/reschedule`, T.token, {
+      body: {
+        newStartLocal: newStart.toISOString().slice(0, 19),
+        timezone: 'UTC',
+      },
+    });
+    expect(res.status).toBe(201);
+
+    const row = await db
+      .selectFrom('class_sessions')
+      .select(['scheduled_start_utc', 'status'])
+      .where('id', '=', s)
+      .executeTakeFirstOrThrow();
+    expect(row.status).toBe('scheduled');
+    // startLocal truncates to whole seconds (see scheduleSessionAt) —
+    // compare at the same precision rather than exact getTime().
+    expect(new Date(row.scheduled_start_utc).toISOString().slice(0, 19)).toBe(
+      newStart.toISOString().slice(0, 19),
+    );
+  });
+
+  it('H4: reschedule to a time that conflicts with another of the same class is rejected, and nothing changes', async () => {
+    const T = await makeUser('tutor', 'resched2');
+    const batch = await teacherCreatesBatch(T, `RESCHED2-${MARKER}`);
+    const existingStart = new Date(Date.now() + 5 * 3600_000);
+    await scheduleSessionAt(T, batch, existingStart);
+    const toMove = await scheduleSessionAt(T, batch, FUTURE());
+
+    const res = await api('POST', `/sessions/${toMove}/reschedule`, T.token, {
+      body: {
+        newStartLocal: existingStart.toISOString().slice(0, 19),
+        timezone: 'UTC',
+      },
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('SESSION_RESCHEDULE_CONFLICT');
+
+    const row = await db
+      .selectFrom('class_sessions')
+      .select('scheduled_start_utc')
+      .where('id', '=', toMove)
+      .executeTakeFirstOrThrow();
+    expect(new Date(row.scheduled_start_utc).toISOString()).not.toBe(
+      existingStart.toISOString(),
+    );
+  });
+
+  it('H4: reschedule cannot cross teaching contexts — an Academy cannot reschedule a session via the Individual route and vice versa', async () => {
+    const A = await makeAcademy('reschedctx');
+    const T = await makeUser('tutor', 'reschedctx1');
+    await join(A.id, T.id);
+    const iBatch = await teacherCreatesBatch(T, `RESCHEDI-${MARKER}`);
+    const iSession = await scheduleSessionAt(T, iBatch, FUTURE());
+
+    // The academy has no idea this Individual session id even exists.
+    const res = await api(
+      'POST',
+      `/academy/me/batches/${iBatch}/sessions/${iSession}/reschedule`,
+      A.owner.token,
+      { body: { newStartLocal: '2030-01-01T10:00:00', timezone: 'UTC' } },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('H4: teacher and academy cancellations are tagged with WHO cancelled, not a shared undifferentiated reason', async () => {
+    const A = await makeAcademy('reasonsplit');
+    const T = await makeUser('tutor', 'reasonsplit1');
+    await join(A.id, T.id);
+    const ctxA = `academy:${A.id}`;
+
+    // Teacher cancels their own Individual class.
+    const iBatch = await teacherCreatesBatch(T, `REASONI-${MARKER}`);
+    const iSession = await scheduleSessionAt(T, iBatch, FUTURE());
+    const teacherCancel = await api(
+      'POST',
+      `/sessions/${iSession}/cancel`,
+      T.token,
+    );
+    expect(teacherCancel.status).toBe(201);
+
+    // Academy cancels a class it owns.
+    const aBatch = await teacherCreatesBatch(T, `REASONA-${MARKER}`, ctxA);
+    const aSession = await academyScheduleSessionAt(A.owner, aBatch, FUTURE());
+    const academyCancel = await api(
+      'POST',
+      `/academy/me/batches/${aBatch}/sessions/${aSession}/cancel`,
+      A.owner.token,
+    );
+    expect(academyCancel.status).toBe(201);
+
+    const reasons = await db
+      .selectFrom('class_sessions')
+      .select(['id', 'cancellation_reason'])
+      .where('id', 'in', [iSession, aSession])
+      .execute();
+    const byId = Object.fromEntries(
+      reasons.map((r) => [r.id, r.cancellation_reason]),
+    );
+    expect(byId[iSession]).toBe('teacher_manual');
+    expect(byId[aSession]).toBe('academy_manual');
+    // The old bug: both used to be the same 'manual' value, which is
+    // exactly what made the reminder copy always say "the academy".
+    expect(byId[iSession]).not.toBe(byId[aSession]);
+  });
+
+  it("H4: remove-student preserves history — the enrollment is marked 'left', not deleted", async () => {
+    const T = await makeUser('tutor', 'removestu');
+    const S = await makeUser('student', 'removestu-s');
+    const batch = await teacherCreatesBatch(T, `REMOVESTU-${MARKER}`);
+    // Enrollment happens via the invite/join flow in this codebase, not a
+    // direct POST — a plain DB insert is the same fixture shorthand
+    // teaching-contexts.e2e-spec.ts's own `enroll` helper uses.
+    await db
+      .insertInto('enrollments')
+      .values({ id: newId(), batch_id: batch, student_id: S.id })
+      .execute();
+
+    const res = await api(
+      'DELETE',
+      `/batches/${batch}/students/${S.id}`,
+      T.token,
+    );
+    expect(res.status).toBe(200);
+
+    const row = await db
+      .selectFrom('enrollments')
+      .select(['status'])
+      .where('batch_id', '=', batch)
+      .where('student_id', '=', S.id)
+      .executeTakeFirstOrThrow();
+    expect(row.status).toBe('left');
   });
 });

@@ -97,6 +97,19 @@ export class BatchesService {
     return batch;
   }
 
+  /** H6: a plain lookup with NO tutor_id-ownership assertion — for a
+   *  caller that has already established its own right to see this
+   *  batch some other way (SessionsService.getViewableSession, for a
+   *  substitute teacher, who is never the batch's own tutor_id and so
+   *  can never pass getOwnedBatch's ownership check). Still returns the
+   *  batch's academy_id so the caller can enforce its own context-match
+   *  rule. */
+  async findByIdUnchecked(batchId: string) {
+    const batch = await this.repository.findById(batchId);
+    if (!batch) throw new NotFoundException('Batch not found');
+    return batch;
+  }
+
   /** Loads a batch without an ownership check — for invite redemption,
    * where the caller is a prospective student, not the owning tutor. */
   async getBatchForInvite(batchId: string) {

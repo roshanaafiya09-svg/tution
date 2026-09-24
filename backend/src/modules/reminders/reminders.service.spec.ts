@@ -60,7 +60,40 @@ const MANUAL_CANCELLED_SESSION = {
   batch_title: 'Grade 11 Biology',
   scheduled_start_utc: SCHEDULED_START,
   timezone: 'Asia/Kolkata',
-  cancellation_reason: 'manual' as const,
+  cancellation_reason: 'manual' as const, // legacy, predates the H4 reason split
+  holiday_id: null,
+  teacher_leave_request_id: null,
+};
+// H4: cancellation_reason now says WHO cancelled — these two replace the
+// single 'manual' value going forward (see MANUAL_CANCELLED_SESSION above
+// for what a pre-existing legacy row still looks like).
+const TEACHER_MANUAL_CANCELLED_SESSION = {
+  id: 'session-teacher-manual-cancelled',
+  batch_id: 'batch-7',
+  batch_title: 'Grade 8 English',
+  scheduled_start_utc: SCHEDULED_START,
+  timezone: 'Asia/Kolkata',
+  cancellation_reason: 'teacher_manual' as const,
+  holiday_id: null,
+  teacher_leave_request_id: null,
+};
+const ACADEMY_MANUAL_CANCELLED_SESSION = {
+  id: 'session-academy-manual-cancelled',
+  batch_id: 'batch-8',
+  batch_title: 'Grade 7 History',
+  scheduled_start_utc: SCHEDULED_START,
+  timezone: 'Asia/Kolkata',
+  cancellation_reason: 'academy_manual' as const,
+  holiday_id: null,
+  teacher_leave_request_id: null,
+};
+const BATCH_ARCHIVED_CANCELLED_SESSION = {
+  id: 'session-batch-archived-cancelled',
+  batch_id: 'batch-9',
+  batch_title: 'Grade 6 Geography',
+  scheduled_start_utc: SCHEDULED_START,
+  timezone: 'Asia/Kolkata',
+  cancellation_reason: 'batch_archived' as const,
   holiday_id: null,
   teacher_leave_request_id: null,
 };
@@ -237,7 +270,71 @@ describe('RemindersService — cancelled-class reminder (teacher leave / manual)
     );
   });
 
-  it('sends the plain "cancelled by the academy" copy for a manually cancelled class', async () => {
+  // H4 regression: every manual cancel used to be tagged the same
+  // 'manual' reason, so this always said "cancelled by the academy" —
+  // wrong for a teacher's own cancel, and nonsensical for a private
+  // Individual class with no academy involved at all.
+  it('attributes a teacher cancel to the teacher, not the academy', async () => {
+    const listScheduledRemindersBetween = jest.fn().mockResolvedValue([]);
+    const listCancelledRemindersBetween = jest
+      .fn()
+      .mockResolvedValue([TEACHER_MANUAL_CANCELLED_SESSION]);
+    const { service, notify } = buildService({
+      listScheduledRemindersBetween,
+      listCancelledRemindersBetween,
+    });
+
+    await service.sendUpcomingClassReminders();
+
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'class_cancelled_reminder',
+        body: 'Your Grade 8 English class at 4:00 PM today has been cancelled by your teacher.',
+      }),
+    );
+  });
+
+  it('attributes an academy cancel to the academy', async () => {
+    const listScheduledRemindersBetween = jest.fn().mockResolvedValue([]);
+    const listCancelledRemindersBetween = jest
+      .fn()
+      .mockResolvedValue([ACADEMY_MANUAL_CANCELLED_SESSION]);
+    const { service, notify } = buildService({
+      listScheduledRemindersBetween,
+      listCancelledRemindersBetween,
+    });
+
+    await service.sendUpcomingClassReminders();
+
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'class_cancelled_reminder',
+        body: 'Your Grade 7 History class at 4:00 PM today has been cancelled by the academy.',
+      }),
+    );
+  });
+
+  it('gives a batch-archived cancel its own copy, not the generic academy wording', async () => {
+    const listScheduledRemindersBetween = jest.fn().mockResolvedValue([]);
+    const listCancelledRemindersBetween = jest
+      .fn()
+      .mockResolvedValue([BATCH_ARCHIVED_CANCELLED_SESSION]);
+    const { service, notify } = buildService({
+      listScheduledRemindersBetween,
+      listCancelledRemindersBetween,
+    });
+
+    await service.sendUpcomingClassReminders();
+
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'class_cancelled_reminder',
+        body: 'Your Grade 6 Geography class at 4:00 PM today has been cancelled — this batch is no longer active.',
+      }),
+    );
+  });
+
+  it('falls back to a neutral, actor-free message for a legacy pre-split "manual" row', async () => {
     const listScheduledRemindersBetween = jest.fn().mockResolvedValue([]);
     const listCancelledRemindersBetween = jest
       .fn()
@@ -252,7 +349,7 @@ describe('RemindersService — cancelled-class reminder (teacher leave / manual)
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'class_cancelled_reminder',
-        body: 'Your Grade 11 Biology class at 4:00 PM today has been cancelled by the academy.',
+        body: 'Your Grade 11 Biology class at 4:00 PM today has been cancelled.',
       }),
     );
   });

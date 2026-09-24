@@ -24,13 +24,18 @@ export function cancellationBadgeLabel(session: CancellableSession): string | nu
       return 'holiday';
     case 'teacher_leave':
       return 'leave';
+    case 'batch_archived':
+      return 'archived';
     default:
       return null;
   }
 }
 
 /** Human label for a cancellation reason — used where the badge's short
- *  form ("holiday") isn't specific enough (e.g. Calendar list items). */
+ *  form ("holiday") isn't specific enough (e.g. Calendar list items).
+ *  'teacher_manual'/'academy_manual' (H4) say WHO cancelled it, replacing
+ *  the old undifferentiated 'manual' value — still handled below for a
+ *  pre-existing row cancelled before that split shipped. */
 export function cancellationReasonLabel(session: CancellableSession): string | null {
   switch (session.cancellationReason) {
     case 'government_holiday':
@@ -39,6 +44,12 @@ export function cancellationReasonLabel(session: CancellableSession): string | n
       return 'Academy Holiday';
     case 'teacher_leave':
       return 'Teacher Leave';
+    case 'teacher_manual':
+      return 'Cancelled by Teacher';
+    case 'academy_manual':
+      return 'Cancelled by Academy';
+    case 'batch_archived':
+      return 'Batch Archived';
     case 'manual':
       return 'Cancelled';
     default:

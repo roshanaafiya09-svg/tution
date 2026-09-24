@@ -19,6 +19,8 @@ import { AcademyOwnerBatchesService } from './academy-owner-batches.service';
 import { CreateBatchDto } from '../../scheduling/batches/dto/create-batch.dto';
 import { UpdateBatchDto } from '../../scheduling/batches/dto/update-batch.dto';
 import { CreateSessionDto } from '../../scheduling/sessions/dto/create-session.dto';
+import { UpdateSessionDto } from '../../scheduling/sessions/dto/update-session.dto';
+import { RescheduleSessionDto } from '../../scheduling/sessions/dto/reschedule-session.dto';
 import { CreateInviteDto } from '../../scheduling/invites/dto/create-invite.dto';
 
 class CreateAcademyBatchDto extends CreateBatchDto {
@@ -120,6 +122,26 @@ export class AcademyOwnerBatchesController {
       sessionId,
       series === 'true',
     );
+  }
+
+  @Patch(':id/sessions/:sessionId')
+  updateSession(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id') id: string,
+    @Param('sessionId') sessionId: string,
+    @Body() dto: UpdateSessionDto,
+  ) {
+    return this.service.updateSession(user.sub, id, sessionId, dto);
+  }
+
+  @Post(':id/sessions/:sessionId/reschedule')
+  rescheduleSession(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id') id: string,
+    @Param('sessionId') sessionId: string,
+    @Body() dto: RescheduleSessionDto,
+  ) {
+    return this.service.rescheduleSession(user.sub, id, sessionId, dto);
   }
 
   @Get(':id/invites')

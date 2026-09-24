@@ -16,6 +16,8 @@ import { AcademyOwnerParentsRepository } from './academy-owner-parents.repositor
 import type { CreateBatchDto } from '../../scheduling/batches/dto/create-batch.dto';
 import type { UpdateBatchDto } from '../../scheduling/batches/dto/update-batch.dto';
 import type { CreateSessionDto } from '../../scheduling/sessions/dto/create-session.dto';
+import type { UpdateSessionDto } from '../../scheduling/sessions/dto/update-session.dto';
+import type { RescheduleSessionDto } from '../../scheduling/sessions/dto/reschedule-session.dto';
 import type { CreateInviteDto } from '../../scheduling/invites/dto/create-invite.dto';
 
 /**
@@ -180,6 +182,36 @@ export class AcademyOwnerBatchesService {
       academy.id,
       sessionId,
       wholeSeries,
+    );
+  }
+
+  async updateSession(
+    ownerUserId: string,
+    batchId: string,
+    sessionId: string,
+    dto: UpdateSessionDto,
+  ) {
+    const academy = await this.resolveOwnAcademy(ownerUserId);
+    await this.resolveAcademyBatch(academy.id, batchId);
+    return this.sessionsService.updateMeetingUrlForAcademy(
+      academy.id,
+      sessionId,
+      dto,
+    );
+  }
+
+  async rescheduleSession(
+    ownerUserId: string,
+    batchId: string,
+    sessionId: string,
+    dto: RescheduleSessionDto,
+  ) {
+    const academy = await this.resolveOwnAcademy(ownerUserId);
+    await this.resolveAcademyBatch(academy.id, batchId);
+    return this.sessionsService.rescheduleForAcademy(
+      academy.id,
+      sessionId,
+      dto,
     );
   }
 

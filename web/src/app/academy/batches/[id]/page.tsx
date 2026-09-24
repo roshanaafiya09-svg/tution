@@ -477,6 +477,9 @@ function SessionsTab({ batchId }: { batchId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [reschedulingId, setReschedulingId] = useState<string | null>(null);
+  const [rescheduleStart, setRescheduleStart] = useState('');
+  const [rescheduleError, setRescheduleError] = useState<string | null>(null);
   const [form, setForm] = useState({ startLocal: '', durationMin: '60', meetingUrl: '', repeat: 'none', count: '8' });
 
   const load = useCallback(async () => {
@@ -522,6 +525,30 @@ function SessionsTab({ batchId }: { batchId: string }) {
     } catch (err) {
       toast({ title: 'Could not cancel the class', description: errorMessage(err), variant: 'error' });
       await load();
+    } finally {
+      setCancellingId(null);
+    }
+  }
+
+  function openReschedule(session: AcademyManagedSession) {
+    setReschedulingId(session.id);
+    setRescheduleError(null);
+    setRescheduleStart('');
+  }
+
+  async function saveReschedule(sessionId: string) {
+    if (!rescheduleStart) return;
+    setCancellingId(sessionId);
+    setRescheduleError(null);
+    try {
+      await api.post(`/academy/me/batches/${batchId}/sessions/${sessionId}/reschedule`, {
+        newStartLocal: rescheduleStart,
+      });
+      setReschedulingId(null);
+      await load();
+      toast({ title: 'Class rescheduled', variant: 'success' });
+    } catch (err) {
+      setRescheduleError(errorMessage(err));
     } finally {
       setCancellingId(null);
     }
@@ -614,18 +641,58 @@ function SessionsTab({ batchId }: { batchId: string }) {
               <div className="flex items-center gap-3">
                 <StatusBadge status={session.status} />
                 {session.status === 'scheduled' && new Date(session.scheduled_start_utc) > new Date() && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => void cancelSession(session.id)}
-                    disabled={cancellingId === session.id}
-                    loading={cancellingId === session.id}
-                  >
-                    <Ban className="h-3.5 w-3.5" aria-hidden />
-                    Cancel
-                  </Button>
+                  <>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => openReschedule(session)}
+                      disabled={cancellingId === session.id}
+                    >
+                      <Pencil className="h-3.5 w-3.5" aria-hidden />
+                      Reschedule
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => void cancelSession(session.id)}
+                      disabled={cancellingId === session.id}
+                      loading={cancellingId === session.id}
+                    >
+                      <Ban className="h-3.5 w-3.5" aria-hidden />
+                      Cancel
+                    </Button>
+                  </>
                 )}
               </div>
+              {reschedulingId === session.id && (
+                <div className="w-full">
+                  <Field label="New start time" hint="Local time — the class keeps its current duration unless you're changing it too.">
+                    <Input
+                      type="datetime-local"
+                      value={rescheduleStart}
+                      onChange={(e) => setRescheduleStart(e.target.value)}
+                    />
+                  </Field>
+                  {rescheduleError && (
+                    <div className="mt-3">
+                      <InlineError>{rescheduleError}</InlineError>
+                    </div>
+                  )}
+                  <div className="mt-3 flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => void saveReschedule(session.id)}
+                      disabled={!rescheduleStart || cancellingId === session.id}
+                      loading={cancellingId === session.id}
+                    >
+                      Save new time
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={() => setReschedulingId(null)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </AcademyCard>

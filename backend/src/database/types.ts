@@ -213,7 +213,13 @@ export interface InvitesTable {
 }
 
 export type ClassSessionCancellationReason =
-  'government_holiday' | 'academy_holiday' | 'teacher_leave' | 'manual';
+  | 'government_holiday'
+  | 'academy_holiday'
+  | 'teacher_leave'
+  | 'manual'
+  | 'teacher_manual'
+  | 'academy_manual'
+  | 'batch_archived';
 
 export interface ClassSessionsTable {
   id: string;
@@ -418,6 +424,13 @@ export interface NotificationsTable {
   payload: JSONColumnType<Record<string, unknown>, string | undefined, string>;
   read_at: Timestamp | null;
   created_at: GeneratedTimestamp;
+  /** H7: opt-in DB-backed dedupe key — see migration 0043. Null for
+   *  every notify() caller that doesn't set one (unchanged behavior). */
+  dedupe_key: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
 }
 
 export interface DeviceTokensTable {

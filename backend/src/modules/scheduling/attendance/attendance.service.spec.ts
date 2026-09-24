@@ -21,19 +21,19 @@ const TUTOR_ID = 'tutor-1';
 const SESSION_ID = 'session-1';
 
 function buildService(overrides: {
-  getOwnedSession?: jest.Mock;
+  getViewableSession?: jest.Mock;
   findEnrollment?: jest.Mock;
   upsert?: jest.Mock;
   listForSession?: jest.Mock;
 }) {
-  const getOwnedSession =
-    overrides.getOwnedSession ??
+  const getViewableSession =
+    overrides.getViewableSession ??
     jest.fn().mockResolvedValue({
       id: SESSION_ID,
       batch_id: 'batch-1',
       status: 'scheduled',
     });
-  const sessionsService = { getOwnedSession } as unknown as SessionsService;
+  const sessionsService = { getViewableSession } as unknown as SessionsService;
 
   const findEnrollment =
     overrides.findEnrollment ??
@@ -42,7 +42,8 @@ function buildService(overrides: {
 
   const upsert =
     overrides.upsert ?? jest.fn().mockResolvedValue({ id: 'attendance-1' });
-  const listForSession = overrides.listForSession ?? jest.fn().mockResolvedValue([]);
+  const listForSession =
+    overrides.listForSession ?? jest.fn().mockResolvedValue([]);
   const repository = {
     upsert,
     listForSession,
@@ -64,18 +65,18 @@ function buildService(overrides: {
     notificationsService,
   );
 
-  return { service, getOwnedSession, upsert, listForSession };
+  return { service, getViewableSession, upsert, listForSession };
 }
 
 describe('AttendanceService.markManually — holiday/cancelled-class guard', () => {
   it('refuses to mark attendance on a cancelled class, so it can never create a false absence', async () => {
-    const getOwnedSession = jest.fn().mockResolvedValue({
+    const getViewableSession = jest.fn().mockResolvedValue({
       id: SESSION_ID,
       batch_id: 'batch-1',
       status: 'cancelled',
     });
     const upsert = jest.fn();
-    const { service } = buildService({ getOwnedSession, upsert });
+    const { service } = buildService({ getViewableSession, upsert });
 
     await expect(
       service.markManually(TUTOR_ID, SESSION_ID, 'student-1', 'absent'),
@@ -115,12 +116,12 @@ describe('AttendanceService.markManually — holiday/cancelled-class guard', () 
 
 describe('AttendanceService.listForSession — roster-based listing (C4 fix)', () => {
   it("builds the roster from the session's batch, not from the session id alone, so listForSession queries the full expected roster rather than only rows that already exist", async () => {
-    const getOwnedSession = jest.fn().mockResolvedValue({
+    const getViewableSession = jest.fn().mockResolvedValue({
       id: SESSION_ID,
       batch_id: 'batch-42',
       status: 'scheduled',
     });
-    const { service, listForSession } = buildService({ getOwnedSession });
+    const { service, listForSession } = buildService({ getViewableSession });
 
     await service.listForSession(TUTOR_ID, SESSION_ID);
 
@@ -128,14 +129,14 @@ describe('AttendanceService.listForSession — roster-based listing (C4 fix)', (
   });
 
   it('still enforces ownership before listing — an unowned session throws before the roster is ever queried', async () => {
-    const getOwnedSession = jest
+    const getViewableSession = jest
       .fn()
       .mockRejectedValue(new Error('not your session'));
-    const { service, listForSession } = buildService({ getOwnedSession });
+    const { service, listForSession } = buildService({ getViewableSession });
 
-    await expect(
-      service.listForSession(TUTOR_ID, SESSION_ID),
-    ).rejects.toThrow('not your session');
+    await expect(service.listForSession(TUTOR_ID, SESSION_ID)).rejects.toThrow(
+      'not your session',
+    );
     expect(listForSession).not.toHaveBeenCalled();
   });
 });

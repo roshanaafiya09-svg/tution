@@ -92,3 +92,40 @@ describe('RefreshTokenRepository.findActiveByJti / findAnyByJti', () => {
     await expect(repo.findAnyByJti('jti-1')).resolves.toBeNull();
   });
 });
+
+// H8 — account deletion must invalidate an already-issued access token
+// immediately, not just its refresh session. See markAccessRevoked's
+// doc comment for why this is a plain Redis flag with no DB column.
+describe('RefreshTokenRepository.markAccessRevoked / isAccessRevoked', () => {
+  function buildRepoWithExists(overrides: {
+    set?: jest.Mock;
+    exists?: jest.Mock;
+  }) {
+    const set = overrides.set ?? jest.fn().mockResolvedValue('OK');
+    const exists = overrides.exists ?? jest.fn().mockResolvedValue(0);
+    const redis = { set, exists } as unknown as Redis;
+    return { repo: new RefreshTokenRepository(redis), set, exists };
+  }
+
+  it('marks a user revoked with no TTL — a deleted account is never un-deleted', async () => {
+    const { repo, set } = buildRepoWithExists({});
+    await repo.markAccessRevoked('user-1');
+    expect(set).toHaveBeenCalledWith('auth:access-revoked:user-1', '1');
+    expect(set.mock.calls[0]).toHaveLength(2); // no EX/PX/KEEPTTL argument
+  });
+
+  it('isAccessRevoked is true only after markAccessRevoked, for that exact user', async () => {
+    const { repo, exists } = buildRepoWithExists({
+      exists: jest.fn().mockResolvedValue(1),
+    });
+    await expect(repo.isAccessRevoked('user-1')).resolves.toBe(true);
+    expect(exists).toHaveBeenCalledWith('auth:access-revoked:user-1');
+  });
+
+  it('isAccessRevoked is false for a user who was never revoked', async () => {
+    const { repo } = buildRepoWithExists({
+      exists: jest.fn().mockResolvedValue(0),
+    });
+    await expect(repo.isAccessRevoked('user-2')).resolves.toBe(false);
+  });
+});

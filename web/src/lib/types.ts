@@ -16,6 +16,17 @@ export interface AdminTeacherSummary {
   createdAt: string;
 }
 
+export interface VerificationQueueItem {
+  id: string;
+  tutor_id: string;
+  type: 'id_proof' | 'qualification';
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
+  tutor_display_name: string | null;
+  tutor_email: string | null;
+  tutor_phone_e164: string | null;
+}
+
 export interface AdminStudentSummary {
   id: string;
   displayName: string | null;
@@ -117,7 +128,10 @@ export type ClassCancellationReason =
   | 'government_holiday'
   | 'academy_holiday'
   | 'teacher_leave'
-  | 'manual';
+  | 'manual'
+  | 'teacher_manual'
+  | 'academy_manual'
+  | 'batch_archived';
 
 export interface Session {
   id: string;
@@ -261,6 +275,9 @@ export interface FeeTotals {
   periodLabel: string;
   expectedMinor: number;
   collectedMinor: number;
+  /** Sum of 'waived' entries' expected amount — excluded from
+   *  expectedMinor/outstandingMinor, which only cover money still owed. */
+  waivedMinor: number;
   outstandingMinor: number;
   entries: number;
   paidCount: number;

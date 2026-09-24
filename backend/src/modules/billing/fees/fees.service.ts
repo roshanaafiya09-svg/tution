@@ -1,9 +1,12 @@
 import {
+  BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { FeesRepository } from './fees.repository';
+import { ErrorCode } from '../../../common/http/error-codes';
 import {
   academyIdOf,
   type TeachingContext,
@@ -96,13 +99,26 @@ export class FeesService {
     note: string | null,
   ) {
     const entry = await this.getOwnedEntry(tutorId, entryId);
+    if (paidMinor > entry.expected_minor) {
+      throw new BadRequestException({
+        code: ErrorCode.FEE_AMOUNT_EXCEEDS_EXPECTED,
+        message: 'The recorded payment cannot exceed the expected amount.',
+      });
+    }
     const status = paidMinor >= entry.expected_minor ? 'paid' : 'partial';
+    // Atomic claim (H5, mirrors H2's cancelIfScheduled): only succeeds
+    // while the entry is still 'due'/'partial', so this can never
+    // silently resurrect a 'waived' entry or overwrite a 'paid' one, and
+    // a payment racing a waive resolves to exactly one winner.
     const result = await this.repository.recordPayment(
       entryId,
       paidMinor,
       status,
       note,
     );
+    if (!result) {
+      return this.rejectFeeTransition(await this.currentStatus(entryId));
+    }
 
     this.analytics.capture(tutorId, 'fee_payment_recorded', {
       entryId,
@@ -115,7 +131,36 @@ export class FeesService {
 
   async waive(tutorId: string, entryId: string, note: string | null) {
     await this.getOwnedEntry(tutorId, entryId);
-    return this.repository.waive(entryId, note);
+    // Same atomic claim as recordPayment: a 'paid' entry can't be waived
+    // (that would erase recorded collected money), and a repeat waive of
+    // an already-'waived' entry is a precise conflict, not a silent no-op.
+    const result = await this.repository.waive(entryId, note);
+    if (!result) {
+      return this.rejectFeeTransition(await this.currentStatus(entryId));
+    }
+    return result;
+  }
+
+  private async currentStatus(entryId: string) {
+    const fresh = await this.repository.findById(entryId);
+    // The row can't vanish (fee entries are never deleted) — this only
+    // runs right after an UPDATE targeting this same id found nothing,
+    // meaning the row exists but its status no longer matched.
+    if (!fresh) throw new NotFoundException('Fee entry not found');
+    return fresh.status;
+  }
+
+  private rejectFeeTransition(currentStatus: string): never {
+    if (currentStatus === 'paid') {
+      throw new ConflictException({
+        code: ErrorCode.FEE_ALREADY_PAID,
+        message: 'This fee has already been recorded as paid.',
+      });
+    }
+    throw new ConflictException({
+      code: ErrorCode.FEE_ALREADY_WAIVED,
+      message: 'This fee has already been waived.',
+    });
   }
 
   private async getOwnedEntry(tutorId: string, entryId: string) {

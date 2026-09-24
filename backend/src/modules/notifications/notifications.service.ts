@@ -11,6 +11,10 @@ export interface NotifyInput {
   title: string;
   body: string;
   payload?: Record<string, unknown>;
+  /** H7: see NotificationsRepository.createMany's doc comment. Opt-in —
+   *  most callers omit this and keep relying on whatever app-level check
+   *  they already do before calling notify(). */
+  dedupeKey?: string;
 }
 
 @Injectable()
@@ -39,6 +43,7 @@ export class NotificationsService {
         userId,
         type: input.type,
         payload: { title: input.title, body: input.body, ...input.payload },
+        dedupeKey: input.dedupeKey,
       })),
     );
 

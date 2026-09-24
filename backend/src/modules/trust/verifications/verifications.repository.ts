@@ -39,12 +39,31 @@ export class VerificationsRepository {
   }
 
   /** The review queue, oldest first — SLA is measured from submission (blueprint §4: <24h). */
+  /** H9: joins in enough of the tutor's identity to make the reviewer
+   *  queue actually usable — the bare tutor_id a plain selectAll()
+   *  returned wasn't enough to review anything against without a
+   *  second lookup per row. */
   listPending() {
     return this.db
       .selectFrom('tutor_verifications')
-      .selectAll()
-      .where('status', '=', 'pending')
-      .orderBy('created_at', 'asc')
+      .leftJoin(
+        'profiles_tutor',
+        'profiles_tutor.user_id',
+        'tutor_verifications.tutor_id',
+      )
+      .leftJoin('users', 'users.id', 'tutor_verifications.tutor_id')
+      .select([
+        'tutor_verifications.id',
+        'tutor_verifications.tutor_id',
+        'tutor_verifications.type',
+        'tutor_verifications.status',
+        'tutor_verifications.created_at',
+        'profiles_tutor.display_name as tutor_display_name',
+        'users.email as tutor_email',
+        'users.phone_e164 as tutor_phone_e164',
+      ])
+      .where('tutor_verifications.status', '=', 'pending')
+      .orderBy('tutor_verifications.created_at', 'asc')
       .execute();
   }
 

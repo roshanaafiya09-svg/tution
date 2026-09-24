@@ -199,6 +199,23 @@ export class TokensService {
     return this.refreshTokenRepository.revokeAllForUser(userId);
   }
 
+  /** H8: instantly invalidates this user's already-issued access
+   *  tokens, on top of revokeAllSessions revoking their refresh
+   *  sessions — see RefreshTokenRepository.markAccessRevoked. Deliberately
+   *  separate from revokeAllSessions: that method also runs on an email
+   *  change and an admin-forced sign-out, neither of which should make
+   *  a still-valid account's live access tokens start failing. */
+  revokeAccessTokens(userId: string): Promise<void> {
+    return this.refreshTokenRepository.markAccessRevoked(userId);
+  }
+
+  /** Checked by JwtAuthGuard on every request, after the JWT's own
+   *  signature/expiry passes — the one place an already-issued access
+   *  token can be killed before its natural 15-minute expiry. */
+  isAccessRevoked(userId: string): Promise<boolean> {
+    return this.refreshTokenRepository.isAccessRevoked(userId);
+  }
+
   /** Single-device sign-out: revokes only this refresh token's session,
    *  leaving the caller's other devices logged in. Tolerant of an
    *  already-invalid/expired token — the caller's goal ("I'm logged

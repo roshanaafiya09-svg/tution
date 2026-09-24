@@ -44,6 +44,12 @@ export class FeesRepository {
       .executeTakeFirst();
   }
 
+  /** Atomic claim like SessionsRepository.cancelIfScheduled (H2): only a
+   *  'due'/'partial' entry can be paid, so two concurrent requests (or a
+   *  payment racing a waive) resolve to exactly one winner via Postgres's
+   *  row lock, and recording a payment can never silently resurrect a
+   *  'waived' entry or overwrite an already-'paid' one. Returns undefined
+   *  if the entry was not in a payable state. */
   recordPayment(
     id: string,
     paidMinor: number,
@@ -59,17 +65,23 @@ export class FeesRepository {
         note,
       })
       .where('id', '=', id)
+      .where('status', 'in', ['due', 'partial'])
       .returningAll()
-      .executeTakeFirstOrThrow();
+      .executeTakeFirst();
   }
 
+  /** Same atomic-claim guard as recordPayment: waiving an already-'paid'
+   *  entry (which would erase recorded collected money) or a
+   *  double-waive is rejected rather than silently applied. Returns
+   *  undefined if the entry was not in a waivable state. */
   waive(id: string, note: string | null) {
     return this.db
       .updateTable('fee_ledger')
       .set({ status: 'waived', note })
       .where('id', '=', id)
+      .where('status', 'in', ['due', 'partial'])
       .returningAll()
-      .executeTakeFirstOrThrow();
+      .executeTakeFirst();
   }
 
   /** Fee entries for one period IN ONE teaching context (null =
@@ -156,10 +168,32 @@ export class FeesRepository {
       .selectFrom('fee_ledger')
       .innerJoin('batches', 'batches.id', 'fee_ledger.batch_id')
       .select((eb) => [
-        eb.fn.sum('fee_ledger.expected_minor').as('expected'),
+        // Waived entries must never count as outstanding: split expected
+        // into a non-waived bucket (what "outstanding" is computed from)
+        // and a waived bucket, rather than summing every status together.
+        eb.fn
+          .sum(
+            eb
+              .case()
+              .when('fee_ledger.status', '!=', 'waived')
+              .then(eb.ref('fee_ledger.expected_minor'))
+              .else(0)
+              .end(),
+          )
+          .as('expected'),
         eb.fn
           .sum(eb.fn.coalesce('fee_ledger.recorded_paid_minor', eb.lit(0)))
           .as('collected'),
+        eb.fn
+          .sum(
+            eb
+              .case()
+              .when('fee_ledger.status', '=', 'waived')
+              .then(eb.ref('fee_ledger.expected_minor'))
+              .else(0)
+              .end(),
+          )
+          .as('waived'),
         eb.fn.countAll().as('entries'),
         eb.fn
           .sum(
@@ -182,11 +216,13 @@ export class FeesRepository {
 
     const expectedMinor = Number(row.expected ?? 0);
     const collectedMinor = Number(row.collected ?? 0);
+    const waivedMinor = Number(row.waived ?? 0);
 
     return {
       periodLabel,
       expectedMinor,
       collectedMinor,
+      waivedMinor,
       outstandingMinor: expectedMinor - collectedMinor,
       entries: Number(row.entries),
       paidCount: Number(row.paid_count ?? 0),

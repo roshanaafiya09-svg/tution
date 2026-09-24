@@ -11,10 +11,13 @@ import { BatchesService } from '../batches/batches.service';
 import { TeachingContextService } from '../../teaching-context/teaching-context.service';
 import {
   academyIdOf,
+  currentTeachingContext,
   type TeachingContext,
 } from '../../teaching-context/teaching-context';
 import { expandRecurrence } from './recurrence';
 import type { CreateSessionDto } from './dto/create-session.dto';
+import type { UpdateSessionDto } from './dto/update-session.dto';
+import type { RescheduleSessionDto } from './dto/reschedule-session.dto';
 import { ErrorCode } from '../../../common/http/error-codes';
 import type { ClassSessionsTable } from '../../../database/types';
 
@@ -35,7 +38,8 @@ export class SessionsService {
    *  an Academy profile cannot schedule a class on a private Individual
    *  batch. */
   async create(tutorId: string, dto: CreateSessionDto) {
-    await this.batchesService.getOwnedBatch(tutorId, dto.batchId);
+    const batch = await this.batchesService.getOwnedBatch(tutorId, dto.batchId);
+    this.assertBatchActive(batch);
     return this.createSeries(tutorId, dto);
   }
 
@@ -47,8 +51,21 @@ export class SessionsService {
       academyId,
       dto.batchId,
     );
+    this.assertBatchActive(batch);
     await this.teachingContext.assertActiveMember(academyId, batch.tutor_id);
     return this.createSeries(batch.tutor_id, dto);
+  }
+
+  /** H11: nothing stops a NEW session being scheduled on an archived
+   *  batch without this — archive's own cascade (BatchesRepository.
+   *  archive) only cancels what already existed at that moment. */
+  private assertBatchActive(batch: { status: string }) {
+    if (batch.status !== 'active') {
+      throw new ConflictException({
+        code: ErrorCode.BATCH_ARCHIVED,
+        message: 'This batch is archived and can no longer be scheduled.',
+      });
+    }
   }
 
   private async createSeries(tutorId: string, dto: CreateSessionDto) {
@@ -172,6 +189,46 @@ export class SessionsService {
     return session;
   }
 
+  /**
+   * H6: view + attendance-marking access (never cancel/complete/
+   * reschedule/edit — those stay on getOwnedSession, tutor_id only).
+   * Accepts either the original teacher OR the session's assigned
+   * substitute. The owner path reuses getOwnedBatch unchanged; the
+   * substitute path can't (a substitute is never the batch's own
+   * tutor_id, so getOwnedBatch would always reject it) and instead
+   * applies the same context-match rule directly via
+   * BatchesService.findByIdUnchecked. A caller who is neither is
+   * rejected exactly like getOwnedSession — same "Not your session",
+   * so a random teacher probing by session id learns nothing.
+   */
+  async getViewableSession(tutorId: string, sessionId: string) {
+    const session = await this.repository.findById(sessionId);
+    if (!session) throw new NotFoundException('Session not found');
+
+    if (session.tutor_id === tutorId) {
+      await this.batchesService.getOwnedBatch(tutorId, session.batch_id);
+      return session;
+    }
+
+    if (session.substitute_tutor_id === tutorId) {
+      const batch = await this.batchesService.findByIdUnchecked(
+        session.batch_id,
+      );
+      const active = currentTeachingContext();
+      if (active && academyIdOf(active) !== batch.academy_id) {
+        throw new ForbiddenException({
+          code: ErrorCode.TEACHING_CONTEXT_MISMATCH,
+          message: batch.academy_id
+            ? 'This is an Academy class. Switch to that academy profile to view it.'
+            : 'This is an Individual class. Switch to your Individual profile to view it.',
+        });
+      }
+      return session;
+    }
+
+    throw new ForbiddenException('Not your session');
+  }
+
   /** Academy-side lookup: the session must belong to a batch this academy
    *  owns. An Individual class or another academy's is "not found". */
   async getAcademySession(academyId: string, sessionId: string) {
@@ -185,7 +242,7 @@ export class SessionsService {
 
   async cancel(tutorId: string, sessionId: string, wholeSeries: boolean) {
     const session = await this.getOwnedSession(tutorId, sessionId);
-    return this.cancelSession(session, wholeSeries);
+    return this.cancelSession(session, wholeSeries, 'teacher_manual');
   }
 
   /** The academy cancels a class it owns — works even if the teacher has
@@ -196,7 +253,7 @@ export class SessionsService {
     wholeSeries: boolean,
   ) {
     const session = await this.getAcademySession(academyId, sessionId);
-    return this.cancelSession(session, wholeSeries);
+    return this.cancelSession(session, wholeSeries, 'academy_manual');
   }
 
   /**
@@ -223,7 +280,11 @@ export class SessionsService {
    * side effects after the transition commits" reduces to this atomic
    * update being the whole operation.
    */
-  private async cancelSession(session: SessionRow, wholeSeries: boolean) {
+  private async cancelSession(
+    session: SessionRow,
+    wholeSeries: boolean,
+    reason: 'teacher_manual' | 'academy_manual' | 'batch_archived',
+  ) {
     if (session.status !== 'scheduled') {
       return this.rejectTransition(session.status, 'cancelled');
     }
@@ -231,7 +292,7 @@ export class SessionsService {
 
     const cancelled = await this.repository.cancelIfScheduled(
       session.id,
-      'manual',
+      reason,
     );
     if (!cancelled) {
       return this.rejectTransition(
@@ -244,7 +305,7 @@ export class SessionsService {
       const parentId = session.recurrence_parent_id ?? session.id;
       // Only reaches still-scheduled siblings (see cancelSeries's doc
       // comment) — a completed occurrence in the series is left alone.
-      await this.repository.cancelSeries(parentId);
+      await this.repository.cancelSeries(parentId, reason);
       return { cancelled: 'series' as const };
     }
     return { cancelled: 'single' as const };
@@ -265,6 +326,149 @@ export class SessionsService {
       );
     }
     return completed;
+  }
+
+  /** H4 "edit": today, the only field this can change is meetingUrl —
+   *  see UpdateSessionDto. Only allowed while still 'scheduled', same as
+   *  cancel/complete/reschedule: a cancelled or completed class's
+   *  details are frozen, not silently editable. */
+  async updateMeetingUrl(
+    tutorId: string,
+    sessionId: string,
+    dto: UpdateSessionDto,
+  ) {
+    const session = await this.getOwnedSession(tutorId, sessionId);
+    return this.applyMeetingUrlUpdate(session, dto);
+  }
+
+  async updateMeetingUrlForAcademy(
+    academyId: string,
+    sessionId: string,
+    dto: UpdateSessionDto,
+  ) {
+    const session = await this.getAcademySession(academyId, sessionId);
+    return this.applyMeetingUrlUpdate(session, dto);
+  }
+
+  private async applyMeetingUrlUpdate(
+    session: SessionRow,
+    dto: UpdateSessionDto,
+  ) {
+    if (session.status !== 'scheduled') {
+      throw new ConflictException({
+        code:
+          session.status === 'cancelled'
+            ? ErrorCode.SESSION_ALREADY_CANCELLED
+            : ErrorCode.SESSION_ALREADY_COMPLETED,
+        message: `This class is ${session.status}; its details can no longer be edited.`,
+      });
+    }
+    if (dto.meetingUrl === undefined) return session; // nothing to change
+    return this.repository.updateMeetingUrl(session.id, dto.meetingUrl);
+  }
+
+  async reschedule(
+    tutorId: string,
+    sessionId: string,
+    dto: RescheduleSessionDto,
+  ) {
+    const session = await this.getOwnedSession(tutorId, sessionId);
+    return this.rescheduleSession(session, dto);
+  }
+
+  async rescheduleForAcademy(
+    academyId: string,
+    sessionId: string,
+    dto: RescheduleSessionDto,
+  ) {
+    const session = await this.getAcademySession(academyId, sessionId);
+    return this.rescheduleSession(session, dto);
+  }
+
+  /**
+   * H4 reschedule — follows the same shape as H2's cancel/complete:
+   *   1. reject outright if not currently 'scheduled';
+   *   2. the same time rule as cancel (assertCancellable) — a class
+   *      whose original time already passed is done rescheduling, same
+   *      reasoning as why it can no longer be cancelled either;
+   *   3. reject a new time that's also in the past, and a new time that
+   *      conflicts with another scheduled class for this tutor or batch
+   *      (excluding this session's own current slot);
+   *   4. apply with the same atomic `UPDATE ... WHERE status =
+   *      'scheduled'` pattern (rescheduleIfScheduled) — a reschedule
+   *      racing a concurrent cancel/complete resolves to exactly one
+   *      winner, just like cancel/complete racing each other.
+   */
+  private async rescheduleSession(
+    session: SessionRow,
+    dto: RescheduleSessionDto,
+  ) {
+    if (session.status !== 'scheduled') {
+      return this.rejectRescheduleTransition(session.status);
+    }
+    this.assertCancellable(session);
+
+    const timezone = dto.timezone ?? session.timezone;
+    const [newStart] = expandRecurrence(dto.newStartLocal, timezone, null);
+    const durationMin = dto.durationMin ?? session.duration_min;
+
+    if (newStart.getTime() <= Date.now()) {
+      throw new BadRequestException({
+        code: ErrorCode.SESSION_RESCHEDULE_IN_PAST,
+        message: 'The new class time must be in the future.',
+      });
+    }
+
+    const newEnd = new Date(newStart.getTime() + durationMin * 60_000);
+    const [tutorConflict, batchConflict] = await Promise.all([
+      this.repository.hasScheduledOverlapForTutor(
+        session.tutor_id,
+        newStart,
+        newEnd,
+        session.id,
+      ),
+      this.repository.hasScheduledOverlapForBatch(
+        session.batch_id,
+        newStart,
+        newEnd,
+        session.id,
+      ),
+    ]);
+    if (tutorConflict || batchConflict) {
+      throw new ConflictException({
+        code: ErrorCode.SESSION_RESCHEDULE_CONFLICT,
+        message: tutorConflict
+          ? 'This teacher already has a class scheduled at that time.'
+          : 'This batch already has a class scheduled at that time.',
+      });
+    }
+
+    const rescheduled = await this.repository.rescheduleIfScheduled(
+      session.id,
+      newStart,
+      durationMin,
+    );
+    if (!rescheduled) {
+      return this.rejectRescheduleTransition(
+        await this.currentStatus(session.id),
+      );
+    }
+    return rescheduled;
+  }
+
+  /** Reschedule's own version of rejectTransition — same error codes
+   *  (a caller branches on `code`, not message text), reschedule-
+   *  specific wording. */
+  private rejectRescheduleTransition(
+    currentStatus: SessionRow['status'],
+  ): never {
+    throw new ConflictException({
+      code:
+        currentStatus === 'cancelled'
+          ? ErrorCode.SESSION_ALREADY_CANCELLED
+          : ErrorCode.SESSION_ALREADY_COMPLETED,
+      message: `This class is ${currentStatus} and can no longer be rescheduled.`,
+    });
   }
 
   /** A class can only be cancelled before it was due to start — once its
