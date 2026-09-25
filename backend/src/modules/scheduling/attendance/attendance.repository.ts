@@ -19,6 +19,13 @@ export class AttendanceRepository {
    * never tapped Join (or an offline class where nobody taps anything)
    * must still appear, with status `null` meaning Unmarked rather than
    * being silently dropped or treated as absent.
+   *
+   * H4.4: plus any student who already HAS an attendance row for this
+   * session, even if they have since been removed from the batch — a
+   * removal must not erase a past class's record from its own roster.
+   * `enrollment_status` tells the UI which rows are former students; a
+   * removed student can't be newly marked (AttendanceService.markManually
+   * still requires an active enrollment).
    */
   listForSession(sessionId: string, batchId: string) {
     return this.db
@@ -40,9 +47,15 @@ export class AttendanceRepository {
         'attendance.joined_at',
         'attendance.method',
         'profiles_student.display_name',
+        'enrollments.status as enrollment_status',
       ])
       .where('enrollments.batch_id', '=', batchId)
-      .where('enrollments.status', '=', 'active')
+      .where((eb) =>
+        eb.or([
+          eb('enrollments.status', '=', 'active'),
+          eb('attendance.id', 'is not', null),
+        ]),
+      )
       .orderBy('profiles_student.display_name')
       .execute();
   }

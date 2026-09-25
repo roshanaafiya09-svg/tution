@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
 import { safeHref } from '@/lib/safe-url';
+import { coverageLabel } from '@/lib/session-labels';
 import type {
   AvailabilityException,
   AvailabilityRule,
@@ -46,6 +47,10 @@ interface CalendarEvent {
   meetingUrl: string | null;
   /** Bookings the student moved keep their original slot server-side. */
   rescheduledFrom: string | null;
+  /** H6: "Covering for <teacher>" when the viewer is the class's assigned
+   *  substitute, "Covered by <substitute>" when someone covers theirs. */
+  coverage: string | null;
+  covering: boolean;
 }
 
 function startOfDay(date: Date): Date {
@@ -124,7 +129,7 @@ function EventChip({ event, compact = false }: { event: CalendarEvent; compact?:
   return (
     <Link
       href={event.href}
-      title={`${timeLabel(event.start)} · ${event.title}`}
+      title={`${timeLabel(event.start)} · ${event.title}${event.coverage ? ` · ${event.coverage}` : ''}`}
       className={cn(
         'block truncate rounded-md border-l-2 px-1.5 py-1 text-left text-[11px] font-medium transition-colors',
         compact ? 'leading-tight' : 'text-xs',
@@ -136,6 +141,7 @@ function EventChip({ event, compact = false }: { event: CalendarEvent; compact?:
       )}
     >
       {timeLabel(event.start)} {event.title}
+      {event.covering && <span className="font-normal opacity-80"> · covering</span>}
     </Link>
   );
 }
@@ -171,6 +177,18 @@ function EventRow({ event }: { event: CalendarEvent }) {
           {event.kind === 'booking' && (
             <span className="rounded-full bg-accent-100 px-2 py-0.5 text-[11px] font-medium text-accent-800 dark:bg-accent-500/15 dark:text-accent-200">
               1:1 booking
+            </span>
+          )}
+          {event.coverage && (
+            <span
+              className={cn(
+                'rounded-full px-2 py-0.5 text-[11px] font-medium',
+                event.covering
+                  ? 'bg-brand-100 text-brand-800 dark:bg-brand-500/15 dark:text-brand-200'
+                  : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300',
+              )}
+            >
+              {event.coverage}
             </span>
           )}
           {event.rescheduledFrom && (
@@ -257,6 +275,8 @@ export default function CalendarPage() {
       href: `/dashboard/sessions/${session.id}`,
       meetingUrl: session.meeting_url,
       rescheduledFrom: null,
+      coverage: coverageLabel(session),
+      covering: session.viewer_role === 'substitute',
     }));
 
     const bookingEvents: CalendarEvent[] = bookings
@@ -275,6 +295,8 @@ export default function CalendarPage() {
         href: '/dashboard/marketplace',
         meetingUrl: booking.meeting_url,
         rescheduledFrom: booking.original_scheduled_start_utc,
+        coverage: null,
+        covering: false,
       }));
 
     return [...classEvents, ...bookingEvents].sort((a, b) => a.start.getTime() - b.start.getTime());

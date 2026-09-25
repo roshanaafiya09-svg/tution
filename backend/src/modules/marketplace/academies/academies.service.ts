@@ -114,7 +114,7 @@ export class AcademiesService {
 
           const [teachers, { summary }, location, studentsCount, batchCount] =
             await Promise.all([
-              this.academyMembershipsRepository.listActiveForAcademy(academyId),
+              this.academyMembershipsRepository.listPublicForAcademy(academyId),
               this.academyReviewsService.listForAcademy(academyId),
               this.academyLocationsRepository.findByAcademyId(academyId),
               this.countStudentsForAcademy(academyId),
@@ -172,8 +172,9 @@ export class AcademiesService {
       throw new NotFoundException('Academy not found');
     }
 
+    // Public page: a deleted teacher's card is never shown (H8).
     const teachersRaw =
-      await this.academyMembershipsRepository.listActiveForAcademy(academy.id);
+      await this.academyMembershipsRepository.listPublicForAcademy(academy.id);
 
     const [
       location,
@@ -189,7 +190,9 @@ export class AcademiesService {
       this.academyLocationsRepository.findByAcademyId(academy.id),
       this.academyPhotosRepository.listForAcademy(academy.id),
       this.academiesRepository.listOfferingsForAcademy(academy.id),
-      this.batchesRepository.listOpenWithSeatsForAcademy(academy.id),
+      this.batchesRepository.listOpenWithSeatsForAcademy(academy.id, {
+        excludeDeletedTeachers: true,
+      }),
       this.academyReviewsService.listForAcademy(academy.id),
       this.countStudentsForAcademy(academy.id),
       Promise.all(

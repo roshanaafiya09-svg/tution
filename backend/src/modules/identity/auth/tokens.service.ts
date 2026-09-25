@@ -1,13 +1,22 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import type { UserRole } from '../../../database/types';
-import { RefreshTokenRepository } from './refresh-token.repository';
+import {
+  RefreshTokenRepository,
+  type CachedAuthState,
+} from './refresh-token.repository';
+import { UsersRepository } from '../users/users.repository';
 
 const ACCESS_TOKEN_TTL = '15m';
 export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 export const REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
+/** How long a user's token_version may be served from Redis before the
+ *  guard re-reads the database. Account deletion overwrites the cached
+ *  value immediately; this TTL only bounds how stale it could get if that
+ *  overwrite itself failed while Redis kept serving reads. */
+export const AUTH_STATE_CACHE_TTL_SECONDS = 60;
 
 export interface IssuedRefreshToken {
   token: string;
@@ -23,18 +32,31 @@ export interface AccessTokenPayload {
   /** The Super Admin's own user id, carried alongside an impersonation
    *  token for traceability — who is really behind this session. */
   actorId?: string;
+  /** H8: users.token_version at issue time. A token whose version no
+   *  longer matches the account's current one is rejected. Tokens issued
+   *  before this claim existed carry none and are treated as version 0
+   *  (every account's starting version), so they keep working until
+   *  their normal ≤15-minute expiry unless the account is deleted. */
+  tv?: number;
 }
 
 @Injectable()
 export class TokensService {
+  private readonly logger = new Logger(TokensService.name);
+
   constructor(
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
     private readonly refreshTokenRepository: RefreshTokenRepository,
+    private readonly usersRepository: UsersRepository,
   ) {}
 
-  signAccessToken(userId: string, roles: UserRole[]): string {
-    const payload: AccessTokenPayload = { sub: userId, roles };
+  signAccessToken(userId: string, roles: UserRole[], tokenVersion = 0): string {
+    const payload: AccessTokenPayload = {
+      sub: userId,
+      roles,
+      tv: tokenVersion,
+    };
     return this.jwtService.sign(payload, {
       secret: this.config.getOrThrow<string>('auth.jwtAccessSecret'),
       expiresIn: ACCESS_TOKEN_TTL,
@@ -51,12 +73,14 @@ export class TokensService {
     targetUserId: string,
     roles: UserRole[],
     actorId: string,
+    tokenVersion = 0,
   ): string {
     const payload: AccessTokenPayload = {
       sub: targetUserId,
       roles,
       impersonation: true,
       actorId,
+      tv: tokenVersion,
     };
     return this.jwtService.sign(payload, {
       secret: this.config.getOrThrow<string>('auth.jwtAccessSecret'),
@@ -199,21 +223,80 @@ export class TokensService {
     return this.refreshTokenRepository.revokeAllForUser(userId);
   }
 
-  /** H8: instantly invalidates this user's already-issued access
-   *  tokens, on top of revokeAllSessions revoking their refresh
-   *  sessions — see RefreshTokenRepository.markAccessRevoked. Deliberately
-   *  separate from revokeAllSessions: that method also runs on an email
-   *  change and an admin-forced sign-out, neither of which should make
-   *  a still-valid account's live access tokens start failing. */
-  revokeAccessTokens(userId: string): Promise<void> {
-    return this.refreshTokenRepository.markAccessRevoked(userId);
+  /** H8: the account's CURRENT token version — what a newly issued
+   *  access token must carry. */
+  async currentTokenVersion(userId: string): Promise<number> {
+    const row = await this.usersRepository.findAuthState(userId);
+    return row?.token_version ?? 0;
   }
 
-  /** Checked by JwtAuthGuard on every request, after the JWT's own
-   *  signature/expiry passes — the one place an already-issued access
-   *  token can be killed before its natural 15-minute expiry. */
-  isAccessRevoked(userId: string): Promise<boolean> {
-    return this.refreshTokenRepository.isAccessRevoked(userId);
+  /**
+   * H8: called right after the durable change (UsersRepository.softDelete
+   * already bumped token_version in the database — that alone is what
+   * invalidates the old tokens). This only refreshes the cache so the
+   * very next request sees the new state instead of waiting out the
+   * cached entry. Best-effort: if Redis is unavailable, reads fall back to
+   * the database anyway.
+   */
+  async revokeAccessTokens(userId: string): Promise<void> {
+    try {
+      const state = await this.loadAuthState(userId);
+      if (state) {
+        await this.refreshTokenRepository.cacheAuthState(
+          userId,
+          state,
+          AUTH_STATE_CACHE_TTL_SECONDS,
+        );
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Could not refresh cached auth state for ${userId}; the database remains authoritative: ${String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * Checked by JwtAuthGuard on every request, after the JWT's own
+   * signature/expiry passes — the one place an already-issued access
+   * token can be killed before its natural 15-minute expiry. Valid only
+   * if the account still exists, is not deleted, and its token_version
+   * is the one the token was issued under.
+   *
+   * Source of truth is users.token_version / users.deleted_at. Redis
+   * caches it for AUTH_STATE_CACHE_TTL_SECONDS so a normal request costs
+   * one Redis GET, not a database query; a cache miss or a Redis failure
+   * reads the database — so losing Redis can make this slower, never
+   * more permissive.
+   */
+  async isAccessTokenCurrent(payload: AccessTokenPayload): Promise<boolean> {
+    let state: CachedAuthState | null = null;
+    try {
+      state = await this.refreshTokenRepository.getCachedAuthState(payload.sub);
+    } catch {
+      state = null; // Redis unavailable — fall through to the database
+    }
+    if (!state) {
+      state = await this.loadAuthState(payload.sub);
+      if (state) {
+        try {
+          await this.refreshTokenRepository.cacheAuthState(
+            payload.sub,
+            state,
+            AUTH_STATE_CACHE_TTL_SECONDS,
+          );
+        } catch {
+          // Caching is an optimisation only.
+        }
+      }
+    }
+    if (!state || state.deleted) return false;
+    return (payload.tv ?? 0) === state.version;
+  }
+
+  private async loadAuthState(userId: string): Promise<CachedAuthState | null> {
+    const row = await this.usersRepository.findAuthState(userId);
+    if (!row) return null;
+    return { version: row.token_version, deleted: row.deleted_at !== null };
   }
 
   /** Single-device sign-out: revokes only this refresh token's session,

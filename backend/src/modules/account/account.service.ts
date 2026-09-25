@@ -8,6 +8,7 @@ import { BatchesRepository } from '../scheduling/batches/batches.repository';
 import { AttendanceRepository } from '../scheduling/attendance/attendance.repository';
 import { SubmissionsRepository } from '../assessment/submissions/submissions.repository';
 import { FeesRepository } from '../billing/fees/fees.repository';
+import { InvitesRepository } from '../scheduling/invites/invites.repository';
 import { NotificationsService } from '../notifications/notifications.service';
 
 /**
@@ -29,6 +30,7 @@ export class AccountService {
     private readonly submissionsRepository: SubmissionsRepository,
     private readonly feesRepository: FeesRepository,
     private readonly notificationsService: NotificationsService,
+    private readonly invitesRepository: InvitesRepository,
   ) {}
 
   /**
@@ -108,16 +110,26 @@ export class AccountService {
    *
    * A tutor's public Find-a-Teacher listing is hidden as soon as this
    * runs too (ProfilesRepository.findTutorBySlug / DiscoveryRepository.
-   * searchOfferings now exclude a deleted user) — batches, sessions,
+   * searchOfferings now exclude a deleted user), as is their card on any
+   * public Academy page (AcademyMembershipsRepository.listPublicForAcademy)
+   * and their batches in that page's open-batch list — batches, sessions,
    * attendance, fee history and any Academy membership record are
    * deliberately left untouched, same as exportData's scoping: those
    * are historical records other parties (students, Academies) still
    * legitimately need, not just this account's own data.
    */
   async deleteAccount(userId: string, roles: string[]): Promise<void> {
+    // Durable first: the tombstone also bumps users.token_version, which
+    // is what invalidates every access token issued before now — the
+    // Redis refresh below only makes the next request see it sooner.
     await this.usersRepository.softDelete(userId);
     await this.tokensService.revokeAllSessions(userId);
     await this.tokensService.revokeAccessTokens(userId);
+    // H8: a deleted teacher's invite links must not enroll anyone new
+    // (InvitesRepository.claimUse also refuses them independently).
+    if (roles.includes('tutor')) {
+      await this.invitesRepository.revokeAllForTutor(userId);
+    }
     // Best-effort, mirrors ProfilesService.removeAvatar's own existing
     // pattern — only tutors have a profile photo to clean up, and a
     // deleted account's avatar is no longer reachable through any live

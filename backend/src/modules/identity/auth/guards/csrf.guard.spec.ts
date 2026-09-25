@@ -1,3 +1,8 @@
+// UsersRepository pulls in Kysely (pure ESM, not transformed by the unit
+// Jest config) — same workaround the other DB-adjacent specs use.
+jest.mock('../../users/users.repository', () => ({
+  UsersRepository: class {},
+}));
 import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import type { ExecutionContext } from '@nestjs/common';
 import { CsrfGuard } from './csrf.guard';

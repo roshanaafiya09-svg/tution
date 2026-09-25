@@ -25,6 +25,12 @@ export const ErrorCode = {
   GATEWAY_TIMEOUT: 'GATEWAY_TIMEOUT',
   /** A backing service (Postgres, Redis) dropped or refused the connection. */
   DEPENDENCY_UNAVAILABLE: 'DEPENDENCY_UNAVAILABLE',
+  /** A value had the wrong shape for its type — e.g. a malformed id in the
+   *  URL (Postgres 22P02) or an unparseable date (22007/22008). */
+  INVALID_INPUT_FORMAT: 'INVALID_INPUT_FORMAT',
+  /** A number (or text) was outside what can be stored (Postgres 22003 /
+   *  22001), or outside a DTO's declared bounds. */
+  VALUE_OUT_OF_RANGE: 'VALUE_OUT_OF_RANGE',
 
   // Individual / Academy teaching-context isolation.
   /** The X-Teaching-Context header was malformed. */
@@ -68,6 +74,10 @@ export const ErrorCode = {
   // Archive cascade (H11) — see BatchesRepository.archive / SessionsService.assertBatchActive.
   /** A new session/series was requested on an archived batch. */
   BATCH_ARCHIVED: 'BATCH_ARCHIVED',
+
+  // Account deletion (H8).
+  /** The invite was revoked — its teacher's account was deleted. */
+  INVITE_REVOKED: 'INVITE_REVOKED',
 } as const;
 
 export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode];

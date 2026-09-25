@@ -1,4 +1,15 @@
-import { IsOptional, IsInt, IsString, Matches, Min } from 'class-validator';
+import {
+  IsInt,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  Min,
+} from 'class-validator';
+import {
+  MAX_MONEY_MINOR,
+  MAX_MONEY_MINOR_MESSAGE,
+} from '../../../../common/http/money-bounds';
 
 export class GeneratePeriodDto {
   /** Billing period, e.g. "2026-08". Free-form label, not a date. */
@@ -12,5 +23,6 @@ export class GeneratePeriodDto {
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(MAX_MONEY_MINOR, { message: MAX_MONEY_MINOR_MESSAGE })
   expectedMinor?: number;
 }

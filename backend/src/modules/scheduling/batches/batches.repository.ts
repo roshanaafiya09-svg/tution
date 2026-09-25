@@ -115,20 +115,27 @@ export class BatchesRepository {
         .executeTakeFirst();
 
       if (flipped) {
-        await trx
+        const cancelled = await trx
           .updateTable('class_sessions')
           .set({ status: 'cancelled', cancellation_reason: 'batch_archived' })
           .where('batch_id', '=', id)
           .where('status', '=', 'scheduled')
+          .returning('id')
           .execute();
-        return flipped;
+        // The ids let the caller announce exactly these cancellations
+        // once the transaction has committed (H4).
+        return {
+          batch: flipped,
+          cancelledSessionIds: cancelled.map((r) => r.id),
+        };
       }
 
-      return trx
+      const batch = await trx
         .selectFrom('batches')
         .selectAll()
         .where('id', '=', id)
         .executeTakeFirstOrThrow();
+      return { batch, cancelledSessionIds: [] as string[] };
     });
   }
 
@@ -495,8 +502,11 @@ export class BatchesRepository {
    *  backs the public Academy Profile's "Academy batches" section. Also
    *  selects tutor_id so the UI can attribute each batch to the teacher
    *  running it. */
-  listOpenWithSeatsForAcademy(academyId: string) {
-    return this.db
+  listOpenWithSeatsForAcademy(
+    academyId: string,
+    opts: { excludeDeletedTeachers?: boolean } = {},
+  ) {
+    let query = this.db
       .selectFrom('batches')
       .leftJoin('enrollments', (join) =>
         join
@@ -516,7 +526,21 @@ export class BatchesRepository {
         eb.fn.count('enrollments.id').as('enrolled_count'),
       ])
       .where('batches.academy_id', '=', academyId)
-      .where('batches.status', '=', 'active')
+      .where('batches.status', '=', 'active');
+    if (opts.excludeDeletedTeachers) {
+      // H8: the public Academy page must not advertise (and invite
+      // students into) a batch whose teacher's account was deleted.
+      query = query.where((eb) =>
+        eb.exists(
+          eb
+            .selectFrom('users')
+            .select('users.id')
+            .whereRef('users.id', '=', 'batches.tutor_id')
+            .where('users.deleted_at', 'is', null),
+        ),
+      );
+    }
+    return query
       .groupBy([
         'batches.id',
         'batches.tutor_id',

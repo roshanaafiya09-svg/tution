@@ -32,6 +32,9 @@ export interface UsersTable {
     Date | string | null | undefined,
     Date | string | null
   >;
+  /** H8 (migration 0044): every access token carries the version it was
+   *  issued under; bumping this invalidates all earlier tokens. */
+  token_version: Generated<number>;
 }
 
 export type UserRole =
@@ -208,6 +211,13 @@ export interface InvitesTable {
   expires_at: Timestamp;
   max_uses: Generated<number>;
   used_count: Generated<number>;
+  /** H8 (migration 0044): set when the inviting teacher's account is
+   *  deleted — a revoked invite can never be redeemed. */
+  revoked_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
 }
@@ -263,6 +273,14 @@ export interface ClassSessionsTable {
     string | null,
     string | null | undefined,
     string | null
+  >;
+  /** H4 (migration 0044): when students/parents were told about this
+   *  class's cancellation at the moment it happened — the 10-minute
+   *  cancelled-class sweep skips a row that has it. */
+  cancellation_notified_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
   >;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;

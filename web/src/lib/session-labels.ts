@@ -1,4 +1,4 @@
-import type { AcademyTodaySession, ClassCancellationReason } from './types';
+import type { AcademyTodaySession, ClassCancellationReason, Session } from './types';
 
 /** Just the fields cancellationBadgeLabel/cancellationReasonLabel actually
  *  read — lets callers pass any session-shaped row (AcademyTodaySession,
@@ -74,4 +74,24 @@ export function sessionDateTime(session: AcademyTodaySession): string {
     hour: 'numeric',
     minute: '2-digit',
   });
+}
+
+/** H6: the teacher-side coverage line for a class on /sessions/me.
+ *  - the caller is covering it → "Covering for <original teacher>"
+ *  - the caller owns it and someone covers it → "Covered by <substitute>"
+ *  The substitute's own name is never shown as the person being covered. */
+export function coverageLabel(
+  session: Pick<Session, 'viewer_role' | 'original_tutor_display_name' | 'substitute_display_name'>,
+): string | null {
+  if (session.viewer_role === 'substitute') {
+    return `Covering for ${session.original_tutor_display_name ?? 'another teacher'}`;
+  }
+  return session.substitute_display_name ? `Covered by ${session.substitute_display_name}` : null;
+}
+
+/** H6: a substitute may view the class and mark attendance only — the
+ *  lifecycle actions (cancel, complete, reschedule, edit) stay with the
+ *  class's own teacher (the API returns 403 for them). */
+export function canManageSession(session: Pick<Session, 'viewer_role'>): boolean {
+  return session.viewer_role !== 'substitute';
 }

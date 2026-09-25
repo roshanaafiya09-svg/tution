@@ -415,12 +415,15 @@ export class SessionsRepository {
   }
 
   /** Atomic claim like cancelIfScheduled/completeIfScheduled (H4/H2): only
-   *  succeeds while the row is still 'scheduled', so a reschedule racing
-   *  a cancel/complete resolves to exactly one winner. */
+   *  succeeds while the row is still 'scheduled' AND still at the time the
+   *  caller read (`expected`), so a reschedule racing a cancel/complete —
+   *  or another reschedule of the same class — resolves to exactly one
+   *  winner, and only the winner announces the change. */
   rescheduleIfScheduled(
     id: string,
     scheduledStartUtc: Date,
     durationMin: number,
+    expected: { scheduledStartUtc: Date; durationMin: number },
   ) {
     return this.db
       .updateTable('class_sessions')
@@ -430,8 +433,23 @@ export class SessionsRepository {
       })
       .where('id', '=', id)
       .where('status', '=', 'scheduled')
+      .where('scheduled_start_utc', '=', expected.scheduledStartUtc)
+      .where('duration_min', '=', expected.durationMin)
       .returningAll()
       .executeTakeFirst();
+  }
+
+  /** H4: records that a cancellation was announced the moment it
+   *  happened, so the 10-minute cancelled-class sweep doesn't announce it
+   *  a second time (see listCancelledRemindersBetween). */
+  async markCancellationNotified(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.db
+      .updateTable('class_sessions')
+      .set({ cancellation_notified_at: new Date() })
+      .where('id', 'in', ids)
+      .where('status', '=', 'cancelled')
+      .execute();
   }
 
   /** H4 "edit": the only session field that's safe to change without it
@@ -540,7 +558,9 @@ export class SessionsRepository {
    *  have run" is just this same query with status flipped relative to
    *  listScheduledRemindersBetween. Only rows with a recorded
    *  cancellation_reason qualify — a pre-this-feature cancellation with
-   *  no reason on record has nothing to say why. */
+   *  no reason on record has nothing to say why. cancellation_notified_at
+   *  is returned so the sweep can skip a cancellation that was already
+   *  announced the moment it happened (H4). */
   listCancelledRemindersBetween(from: Date, to: Date) {
     return this.db
       .selectFrom('class_sessions')
@@ -553,6 +573,7 @@ export class SessionsRepository {
         'class_sessions.cancellation_reason',
         'class_sessions.holiday_id',
         'class_sessions.teacher_leave_request_id',
+        'class_sessions.cancellation_notified_at',
         'batches.title as batch_title',
       ])
       .where('class_sessions.status', '=', 'cancelled')
@@ -684,6 +705,8 @@ export class SessionsRepository {
         ]),
       )
       .where('status', '=', 'scheduled')
-      .execute();
+      .returning('id')
+      .execute()
+      .then((rows) => rows.map((r) => r.id));
   }
 }

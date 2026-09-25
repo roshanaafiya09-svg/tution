@@ -144,10 +144,19 @@ function clientErrorStatus(exception: unknown): number | null {
  *   23514 check_violation        — a CHECK constraint or trigger (incl. context-ownership) rejected the write.
  *   23502 not_null_violation     — a required column was left out.
  *   P0001 raise_exception        — a plain `RAISE EXCEPTION` with no explicit SQLSTATE.
+ *
+ * Plus the class-22 "data exception" codes a malformed request reaches
+ * when nothing upstream validated it (e.g. `POST /batches/not-a-uuid/
+ * archive` — route params are plain strings): the caller sent bad input,
+ * so it is a 400, never a 500.
+ *   22P02 invalid_text_representation — malformed uuid/int/enum literal.
+ *   22003 numeric_value_out_of_range  — e.g. an amount beyond int4.
+ *   22001 string_data_right_truncation — text longer than its column.
+ *   22007/22008 invalid datetime format / datetime field overflow.
  */
-const CONSTRAINT_VIOLATION_STATUS: Record<
+const SQLSTATE_STATUS: Record<
   string,
-  { status: number; code: ErrorCodeValue }
+  { status: number; code: ErrorCodeValue; message?: string }
 > = {
   '23505': { status: HttpStatus.CONFLICT, code: ErrorCode.CONFLICT },
   '23503': { status: HttpStatus.CONFLICT, code: ErrorCode.CONFLICT },
@@ -157,13 +166,38 @@ const CONSTRAINT_VIOLATION_STATUS: Record<
     status: HttpStatus.UNPROCESSABLE_ENTITY,
     code: ErrorCode.UNPROCESSABLE,
   },
+  '22P02': {
+    status: HttpStatus.BAD_REQUEST,
+    code: ErrorCode.INVALID_INPUT_FORMAT,
+    message: 'One of the values in this request is not in a valid format.',
+  },
+  '22007': {
+    status: HttpStatus.BAD_REQUEST,
+    code: ErrorCode.INVALID_INPUT_FORMAT,
+    message: 'One of the dates in this request is not valid.',
+  },
+  '22008': {
+    status: HttpStatus.BAD_REQUEST,
+    code: ErrorCode.INVALID_INPUT_FORMAT,
+    message: 'One of the dates in this request is not valid.',
+  },
+  '22003': {
+    status: HttpStatus.BAD_REQUEST,
+    code: ErrorCode.VALUE_OUT_OF_RANGE,
+    message: 'One of the numbers in this request is too large.',
+  },
+  '22001': {
+    status: HttpStatus.BAD_REQUEST,
+    code: ErrorCode.VALUE_OUT_OF_RANGE,
+    message: 'One of the values in this request is too long.',
+  },
 };
 
 function constraintViolationStatus(
   exception: unknown,
-): { status: number; code: ErrorCodeValue } | null {
+): { status: number; code: ErrorCodeValue; message?: string } | null {
   const code = pgCode(exception);
-  return code ? (CONSTRAINT_VIOLATION_STATUS[code] ?? null) : null;
+  return code ? (SQLSTATE_STATUS[code] ?? null) : null;
 }
 
 interface Resolved {
@@ -265,14 +299,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
           exception instanceof Error ? exception.message : String(exception),
       };
     } else if (constraintViolationStatus(exception)) {
-      const { status, code } = constraintViolationStatus(exception)!;
+      const { status, code, message } = constraintViolationStatus(exception)!;
       resolved = {
         status,
         code,
         // Never the raw driver message here: it can name tables, columns
-        // or constraints. safeMessageForStatus's generic copy for the
-        // status is all the client gets; the real detail is in the log.
-        message: safeMessageForStatus(status),
+        // or constraints. Fixed per-SQLSTATE copy (or the status's generic
+        // copy) is all the client gets; the real detail is in the log.
+        message: message ?? safeMessageForStatus(status),
         extra: {},
         internalMessage:
           exception instanceof Error ? exception.message : String(exception),

@@ -11,6 +11,7 @@ import {
   Sparkles,
   Wallet,
 } from 'lucide-react';
+import { owedCount } from '@/lib/fee-status';
 import { api, formatMinor } from '@/lib/api';
 import type { Batch, FeeEntry, FeeTotals } from '@/lib/types';
 import {
@@ -186,7 +187,7 @@ export default function FeesPage() {
               icon={CheckCircle2}
               label="Collected this month"
               value={formatMinor(totals?.collectedMinor ?? 0, totals?.currency ?? 'INR')}
-              hint={totals ? `${totals.paidCount} of ${totals.entries} students` : undefined}
+              hint={totals ? `${totals.paidCount} of ${owedCount(totals)} students` : undefined}
               tone="success"
             />
             <MetricCard

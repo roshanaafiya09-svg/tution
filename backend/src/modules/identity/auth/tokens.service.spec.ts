@@ -1,8 +1,12 @@
+// UsersRepository pulls in Kysely (pure ESM, not transformed by the unit
+// Jest config) — same workaround the other DB-adjacent specs use.
+jest.mock('../users/users.repository', () => ({ UsersRepository: class {} }));
 import { UnauthorizedException } from '@nestjs/common';
 import { TokensService } from './tokens.service';
 import type { JwtService } from '@nestjs/jwt';
 import type { ConfigService } from '@nestjs/config';
 import type { RefreshTokenRepository } from './refresh-token.repository';
+import type { UsersRepository } from '../users/users.repository';
 
 /**
  * Covers the refresh-token reuse/theft-detection fix: a jti that's
@@ -31,7 +35,12 @@ function buildService(overrides: {
     revokeAllForUser,
   } as unknown as RefreshTokenRepository;
 
-  const service = new TokensService(jwtService, config, refreshTokenRepository);
+  const service = new TokensService(
+    jwtService,
+    config,
+    refreshTokenRepository,
+    {} as UsersRepository,
+  );
   return { service, verify, findActiveByJti, findAnyByJti, revokeAllForUser };
 }
 
@@ -168,5 +177,99 @@ describe('TokensService.peekRefreshJti', () => {
     });
 
     expect(service.peekRefreshJti('garbage')).toBeNull();
+  });
+});
+
+/**
+ * H8 — access-token validity is decided by the DURABLE users.token_version
+ * / deleted_at; Redis only caches it. The earlier design kept a Redis-only
+ * "revoked" flag, so losing that key re-opened a deleted account's old
+ * token until its natural expiry.
+ */
+describe('TokensService.isAccessTokenCurrent', () => {
+  function build(opts: {
+    cached?: { version: number; deleted: boolean } | null;
+    redisDown?: boolean;
+    db?: { token_version: number; deleted_at: Date | null } | undefined;
+  }) {
+    const getCachedAuthState = opts.redisDown
+      ? jest.fn().mockRejectedValue(new Error('ECONNREFUSED'))
+      : jest.fn().mockResolvedValue(opts.cached ?? null);
+    const cacheAuthState = opts.redisDown
+      ? jest.fn().mockRejectedValue(new Error('ECONNREFUSED'))
+      : jest.fn().mockResolvedValue(undefined);
+    const findAuthState = jest.fn().mockResolvedValue(opts.db);
+    const service = new TokensService(
+      { sign: jest.fn(), verify: jest.fn() } as unknown as JwtService,
+      { getOrThrow: () => 'secret' } as unknown as ConfigService,
+      {
+        getCachedAuthState,
+        cacheAuthState,
+      } as unknown as RefreshTokenRepository,
+      { findAuthState } as unknown as UsersRepository,
+    );
+    return { service, getCachedAuthState, cacheAuthState, findAuthState };
+  }
+  const token = (tv?: number) => ({ sub: 'user-1', roles: [], tv });
+
+  it('accepts a token whose version matches the cached state — no DB query', async () => {
+    const { service, findAuthState } = build({
+      cached: { version: 0, deleted: false },
+    });
+    await expect(service.isAccessTokenCurrent(token(0))).resolves.toBe(true);
+    expect(findAuthState).not.toHaveBeenCalled();
+  });
+
+  it('rejects a token issued before deletion (version bumped, account deleted)', async () => {
+    const { service } = build({ cached: { version: 1, deleted: true } });
+    await expect(service.isAccessTokenCurrent(token(0))).resolves.toBe(false);
+  });
+
+  it('after cache LOSS, re-reads the database and still rejects the old token', async () => {
+    const { service, findAuthState, cacheAuthState } = build({
+      cached: null,
+      db: { token_version: 1, deleted_at: new Date() },
+    });
+    await expect(service.isAccessTokenCurrent(token(0))).resolves.toBe(false);
+    expect(findAuthState).toHaveBeenCalledWith('user-1');
+    expect(cacheAuthState).toHaveBeenCalledWith(
+      'user-1',
+      { version: 1, deleted: true },
+      60,
+    );
+  });
+
+  it('with Redis DOWN entirely, fails closed via the database — never open', async () => {
+    const deleted = build({
+      redisDown: true,
+      db: { token_version: 1, deleted_at: new Date() },
+    });
+    await expect(deleted.service.isAccessTokenCurrent(token(0))).resolves.toBe(
+      false,
+    );
+
+    const live = build({
+      redisDown: true,
+      db: { token_version: 0, deleted_at: null },
+    });
+    await expect(live.service.isAccessTokenCurrent(token(0))).resolves.toBe(
+      true,
+    );
+  });
+
+  it('a token without a tv claim (issued before versioning) counts as version 0', async () => {
+    const { service } = build({ cached: { version: 0, deleted: false } });
+    await expect(service.isAccessTokenCurrent(token(undefined))).resolves.toBe(
+      true,
+    );
+    const bumped = build({ cached: { version: 1, deleted: false } });
+    await expect(
+      bumped.service.isAccessTokenCurrent(token(undefined)),
+    ).resolves.toBe(false);
+  });
+
+  it('rejects a token for a user row that no longer exists at all', async () => {
+    const { service } = build({ cached: null, db: undefined });
+    await expect(service.isAccessTokenCurrent(token(0))).resolves.toBe(false);
   });
 });

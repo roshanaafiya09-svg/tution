@@ -4,9 +4,14 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
   Min,
 } from 'class-validator';
+import {
+  MAX_MONEY_MINOR,
+  MAX_MONEY_MINOR_MESSAGE,
+} from '../../../../common/http/money-bounds';
 
 /** Every field optional — a partial update, unlike CreateBatchDto. New
  *  capability (previously only `archive` existed); see
@@ -33,6 +38,7 @@ export class UpdateBatchDto {
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(MAX_MONEY_MINOR, { message: MAX_MONEY_MINOR_MESSAGE })
   feeMinor?: number;
 
   @IsOptional()

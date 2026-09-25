@@ -33,12 +33,16 @@ export class NotificationsService {
    * never fail the action that triggered it (posting an announcement,
    * approving a leave request, say), so each send() is caught and
    * logged independently rather than propagated — one channel failing
-   * never blocks another from trying.
+   * never blocks another from trying. Returns the user ids a new
+   * notification was actually created for.
    */
-  async notify(input: NotifyInput): Promise<void> {
-    if (input.userIds.length === 0) return;
+  async notify(input: NotifyInput): Promise<string[]> {
+    if (input.userIds.length === 0) return [];
 
-    await this.repository.createMany(
+    // H7: with a dedupeKey, a user who already has this exact notification
+    // gets no new row — and must get no new push/WhatsApp either. Without
+    // one every row is always inserted, so this is the full list as before.
+    const delivered = await this.repository.createMany(
       input.userIds.map((userId) => ({
         userId,
         type: input.type,
@@ -46,10 +50,11 @@ export class NotificationsService {
         dedupeKey: input.dedupeKey,
       })),
     );
+    if (delivered.length === 0) return [];
 
     try {
       await this.push.send(
-        input.userIds.map((userId) => ({
+        delivered.map((userId) => ({
           userId,
           title: input.title,
           body: input.body,
@@ -64,7 +69,7 @@ export class NotificationsService {
 
     try {
       await this.whatsapp.send(
-        input.userIds.map((userId) => ({
+        delivered.map((userId) => ({
           userId,
           title: input.title,
           body: input.body,
@@ -76,6 +81,7 @@ export class NotificationsService {
         err instanceof Error ? err.stack : err,
       );
     }
+    return delivered;
   }
 
   listForUser(userId: string) {

@@ -13,6 +13,11 @@ interface StoredRefreshToken {
   revoked?: boolean;
 }
 
+export interface CachedAuthState {
+  version: number;
+  deleted: boolean;
+}
+
 @Injectable()
 export class RefreshTokenRepository {
   constructor(@Inject(REDIS_CONNECTION) private readonly redis: Redis) {}
@@ -25,26 +30,37 @@ export class RefreshTokenRepository {
     return `refresh:user:${userId}`;
   }
 
-  private accessRevokedKey(userId: string): string {
-    return `auth:access-revoked:${userId}`;
+  private authStateKey(userId: string): string {
+    return `auth:state:${userId}`;
   }
 
-  /** Account deletion (H8): an access token is a stateless JWT good for
-   *  up to 15 minutes, so revoking only the refresh session (above)
-   *  leaves an already-issued access token usable until it naturally
-   *  expires. This flag is checked on every request (JwtAuthGuard) and
-   *  makes that window instant instead — no TTL, since a deleted
-   *  account is never un-deleted. Kept in Redis, not a DB column: this
-   *  repository already IS the source of truth for "is this user's auth
-   *  state currently valid" (refresh sessions have no DB backing
-   *  either), so this stays consistent with that rather than adding a
-   *  second, differently-shaped mechanism. */
-  async markAccessRevoked(userId: string): Promise<void> {
-    await this.redis.set(this.accessRevokedKey(userId), '1');
+  /** H8: a CACHE of the durable access-token state (users.token_version +
+   *  whether the account is deleted) — never the source of truth. A miss,
+   *  an expired entry or a Redis outage just means TokensService reads the
+   *  database again, so losing this key can never make a revoked token
+   *  valid (the earlier Redis-only "revoked" flag could: once it was gone,
+   *  an old token worked again until its natural expiry). */
+  async getCachedAuthState(userId: string): Promise<CachedAuthState | null> {
+    const raw = await this.redis.get(this.authStateKey(userId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<CachedAuthState>;
+    return typeof parsed.version === 'number' &&
+      typeof parsed.deleted === 'boolean'
+      ? { version: parsed.version, deleted: parsed.deleted }
+      : null;
   }
 
-  async isAccessRevoked(userId: string): Promise<boolean> {
-    return (await this.redis.exists(this.accessRevokedKey(userId))) === 1;
+  async cacheAuthState(
+    userId: string,
+    state: CachedAuthState,
+    ttlSeconds: number,
+  ): Promise<void> {
+    await this.redis.set(
+      this.authStateKey(userId),
+      JSON.stringify(state),
+      'EX',
+      ttlSeconds,
+    );
   }
 
   async create(

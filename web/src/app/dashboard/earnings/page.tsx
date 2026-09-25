@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CircleDollarSign, Landmark, TrendingUp, Wallet } from 'lucide-react';
+import { owedCount } from '@/lib/fee-status';
 import { api, formatMinor } from '@/lib/api';
 import type { FeeTotals, Payout } from '@/lib/types';
 import { buttonVariants, CardSkeleton, ErrorState, StatusBadge } from '@/components/ui';
@@ -99,7 +100,7 @@ export default function EarningsPage() {
               icon={CircleDollarSign}
               label="Collected this month"
               value={formatMinor(thisMonth?.collectedMinor ?? 0, currency)}
-              hint={thisMonth ? `${thisMonth.paidCount}/${thisMonth.entries} students paid` : undefined}
+              hint={thisMonth ? `${thisMonth.paidCount}/${owedCount(thisMonth)} students paid` : undefined}
               tone="success"
             />
             <MetricCard

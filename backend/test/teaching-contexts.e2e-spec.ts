@@ -7,6 +7,7 @@ import { FastifyAdapter } from '@nestjs/platform-fastify';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { sql, type Kysely } from 'kysely';
+import { DateTime } from 'luxon';
 import { AppModule } from '../src/app.module';
 import { KYSELY_CONNECTION } from '../src/database/database.module';
 import type { DB, UserRole } from '../src/database/types';
@@ -174,6 +175,10 @@ describe('Teaching contexts — Individual vs Academy isolation (e2e)', () => {
     expect(res.status).toBe(201);
     return res.body.id as string;
   }
+
+  /** Monday of `dt`'s week in the assessment timezone, as YYYY-MM-DD. */
+  const mondayIST = (dt: DateTime) =>
+    dt.setZone('Asia/Kolkata').startOf('day').set({ weekday: 1 }).toISODate()!;
 
   const isoDay = (offsetDays: number) => {
     const d = new Date(Date.now() + offsetDays * 24 * 3600 * 1000);
@@ -1319,7 +1324,16 @@ describe('Teaching contexts — Individual vs Academy isolation (e2e)', () => {
   });
 
   it("DB — assessments can't straddle contexts, and an assessment's context is immutable", async () => {
-    const asmt = async (academyId: string | null) => {
+    // assessments.week_start_date always holds the Monday (Asia/Kolkata)
+    // of the academic week. This test used to insert `isoDay(0)` — today's
+    // UTC date — so it only matched the compliance query when the suite
+    // happened to run on a Monday. Computed independently of the
+    // production helper, so a bug there can't hide behind the test.
+    const thisWeekMonday = mondayIST(DateTime.now());
+    const asmt = async (
+      academyId: string | null,
+      weekStart: string = thisWeekMonday,
+    ) => {
       const aid = newId();
       await db
         .insertInto('assessments')
@@ -1330,7 +1344,7 @@ describe('Teaching contexts — Individual vs Academy isolation (e2e)', () => {
           mode: 'online',
           title: 't',
           subject_id: subjectId,
-          week_start_date: isoDay(0),
+          week_start_date: weekStart,
         })
         .execute();
       return aid;
@@ -1382,8 +1396,11 @@ describe('Teaching contexts — Individual vs Academy isolation (e2e)', () => {
       '/academy/me/assessments/weekly-compliance',
       A.owner.token,
     );
+    expect(compliance.status).toBe(200);
+    expect(compliance.body.weekStartDate).toBe(thisWeekMonday);
     expect(JSON.stringify(compliance.body)).toContain(academyOwned);
     expect(JSON.stringify(compliance.body)).not.toContain(individual);
+
     // Teachers see their own assessments per profile, too.
     expect(
       (
@@ -1399,6 +1416,36 @@ describe('Teaching contexts — Individual vs Academy isolation (e2e)', () => {
         ).body as any[]
       ).map((a) => a.id),
     ).toEqual([academyOwned]);
+
+    // The same guarantee for explicit weeks, asked for by EVERY weekday of
+    // a fixed reference week (Mon 2026-10-05 … Sun 2026-10-11) — so the
+    // week-boundary logic is exercised on a Monday and on non-Mondays no
+    // matter which day the suite itself runs.
+    const refMonday = '2026-10-05';
+    const refOwned = await asmt(A.id, refMonday);
+    await sql`insert into assessment_batches (assessment_id, batch_id) values (${refOwned}, ${id.aBatchT1})`.execute(
+      db,
+    );
+    const refIndividual = await asmt(null, refMonday);
+    for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+      const asked = DateTime.fromISO(refMonday)
+        .plus({ days: dayOffset })
+        .toISODate()!;
+      const res = await api(
+        'GET',
+        `/academy/me/assessments/weekly-compliance?weekStartDate=${asked}`,
+        A.owner.token,
+      );
+      expect({ asked, status: res.status }).toEqual({ asked, status: 200 });
+      expect({ asked, week: res.body.weekStartDate }).toEqual({
+        asked,
+        week: refMonday,
+      });
+      expect(JSON.stringify(res.body)).toContain(refOwned);
+      expect(JSON.stringify(res.body)).not.toContain(refIndividual);
+      // ...and never bleeds into the neighbouring (current) week's data.
+      expect(JSON.stringify(res.body)).not.toContain(academyOwned);
+    }
   });
 
   it("public discovery — an academy is described by ITS OWN batches, never its members' Individual listings", async () => {

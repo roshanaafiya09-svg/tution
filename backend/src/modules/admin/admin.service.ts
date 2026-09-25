@@ -68,6 +68,7 @@ export class AdminService {
       targetUserId,
       roles,
       adminId,
+      target.token_version,
     );
     const displayName = await this.adminRepository.findDisplayName(
       targetUserId,

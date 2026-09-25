@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { BatchesRepository } from './batches.repository';
+import { SessionNotificationsService } from '../sessions/session-notifications.service';
 import type { CreateBatchDto } from './dto/create-batch.dto';
 import type { UpdateBatchDto } from './dto/update-batch.dto';
 import { AnalyticsService } from '../../analytics/analytics.service';
@@ -22,6 +23,7 @@ export class BatchesService {
     private readonly repository: BatchesRepository,
     private readonly analytics: AnalyticsService,
     private readonly teachingContext: TeachingContextService,
+    private readonly sessionNotices: SessionNotificationsService,
   ) {}
 
   /** The tutor's batches in ONE context (Individual, or one academy they
@@ -120,7 +122,20 @@ export class BatchesService {
 
   async archive(tutorId: string, batchId: string) {
     await this.getOwnedBatch(tutorId, batchId);
-    return this.repository.archive(batchId);
+    return this.archiveAndAnnounce(batchId);
+  }
+
+  /** H11's archive cascade, then (after it committed) the immediate
+   *  cancellation notice for exactly the classes it cancelled (H4). A
+   *  repeat archive cancels nothing and so announces nothing. */
+  private async archiveAndAnnounce(batchId: string) {
+    const { batch, cancelledSessionIds } =
+      await this.repository.archive(batchId);
+    await this.sessionNotices.notifyCancelled(
+      cancelledSessionIds,
+      'batch_archived',
+    );
+    return batch;
   }
 
   async update(tutorId: string, batchId: string, dto: UpdateBatchDto) {
@@ -130,7 +145,7 @@ export class BatchesService {
 
   async archiveForAcademy(academyId: string, batchId: string) {
     await this.getAcademyBatch(academyId, batchId);
-    return this.repository.archive(batchId);
+    return this.archiveAndAnnounce(batchId);
   }
 
   async updateForAcademy(

@@ -12,6 +12,8 @@ interface InvitePreview {
   expiresAt: string;
   isExhausted: boolean;
   isExpired: boolean;
+  /** The invite was revoked (e.g. the teacher deleted their account). */
+  isRevoked?: boolean;
 }
 
 export default function JoinPage() {
@@ -89,7 +91,7 @@ export default function JoinPage() {
                 {preview.batchTitle}
               </p>
 
-              {preview.isExpired || preview.isExhausted ? (
+              {preview.isExpired || preview.isExhausted || preview.isRevoked ? (
                 <p className="mt-4 flex items-center justify-center gap-1.5 text-sm text-warning dark:text-warning-dark">
                   <AlertTriangle className="h-4 w-4" aria-hidden />
                   This invite link is no longer active. Ask your tutor for a new one.

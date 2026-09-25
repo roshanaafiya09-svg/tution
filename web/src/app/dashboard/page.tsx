@@ -25,6 +25,8 @@ import {
 } from 'lucide-react';
 import { api, errorMessage, formatMinor } from '@/lib/api';
 import { safeHref } from '@/lib/safe-url';
+import { canManageSession, coverageLabel } from '@/lib/session-labels';
+import { owedCount } from '@/lib/fee-status';
 import { currentPeriodLabel, loadRoster } from '@/lib/teacher-roster';
 import { GREETING, dayPeriod, todayLabel } from '@/lib/greeting';
 import { useCachedFetch } from '@/lib/use-cached-fetch';
@@ -271,7 +273,8 @@ export default function TodayPage() {
   }
 
   function studentCountOf(session: Session): number | null {
-    if (!roster) return null;
+    // A covered class isn't in this teacher's own roster — unknown, not 0.
+    if (!roster || session.viewer_role === 'substitute') return null;
     return roster.students.filter(
       (student) => student.status === 'active' && student.batches.some((b) => b.id === session.batch_id),
     ).length;
@@ -321,7 +324,7 @@ export default function TodayPage() {
       href: '/dashboard/fees',
       icon: Wallet,
       label: `${formatMinor(feeTotals.outstandingMinor, feeTotals.currency)} in fees outstanding`,
-      meta: `${feeTotals.entries - feeTotals.paidCount} of ${feeTotals.entries} students haven't paid for ${periodLabel}`,
+      meta: `${owedCount(feeTotals) - feeTotals.paidCount} of ${owedCount(feeTotals)} students haven't paid for ${periodLabel}`,
       tone: 'error',
     });
   }
@@ -513,7 +516,9 @@ export default function TodayPage() {
                   ? 'Could not be checked'
                   : 'Loading…'
                 : feeTotals && feeTotals.entries > 0
-                  ? `${feeTotals.paidCount}/${feeTotals.entries} paid · ${periodLabel}`
+                  ? owedCount(feeTotals) === 0
+                    ? `All waived · ${periodLabel}`
+                    : `${feeTotals.paidCount}/${owedCount(feeTotals)} paid · ${periodLabel}`
                   : `Nothing generated for ${periodLabel}`
             }
             tone={feeTotalsQuery.status === 'success' ? ((feeTotals?.outstandingMinor ?? 0) > 0 ? 'warning' : 'success') : 'brand'}
@@ -606,10 +611,8 @@ export default function TodayPage() {
                       </span>
                     </span>
                     <StatusBadge status={cancellationBadgeLabel(session) ?? session.status} />
-                    {session.substitute_display_name && (
-                      <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                        Covered by {session.substitute_display_name}
-                      </span>
+                    {coverageLabel(session) && (
+                      <span className="text-xs text-neutral-500 dark:text-neutral-400">{coverageLabel(session)}</span>
                     )}
                     <span className="flex shrink-0 flex-wrap items-center gap-2">
                       {safeHref(session.meeting_url) && session.status === 'scheduled' && (
@@ -630,6 +633,7 @@ export default function TodayPage() {
                         View class
                       </Link>
                       {session.status === 'scheduled' &&
+                        canManageSession(session) &&
                         (new Date(session.scheduled_start_utc) <= now ? (
                           <Button
                             variant="ghost"

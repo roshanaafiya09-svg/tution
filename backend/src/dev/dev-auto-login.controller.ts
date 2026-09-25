@@ -44,7 +44,11 @@ export class DevAutoLoginController {
     }
 
     const roles = await this.usersRepository.getRoles(user.id);
-    const accessToken = this.tokensService.signAccessToken(user.id, roles);
+    const accessToken = this.tokensService.signAccessToken(
+      user.id,
+      roles,
+      user.token_version,
+    );
     const issued = await this.tokensService.issueRefreshToken(
       user.id,
       'dev-auto-login',

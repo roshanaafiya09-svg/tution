@@ -107,7 +107,11 @@ export class AuthService {
     await this.otpService.consumeOtp(identifier);
 
     const roles = await this.usersRepository.getRoles(user.id);
-    const accessToken = this.tokensService.signAccessToken(user.id, roles);
+    const accessToken = this.tokensService.signAccessToken(
+      user.id,
+      roles,
+      user.token_version,
+    );
     const issued = await this.tokensService.issueRefreshToken(
       user.id,
       deviceLabel,
@@ -125,7 +129,11 @@ export class AuthService {
       await this.tokensService.verifyRefreshToken(refreshToken);
     const roles = await this.usersRepository.getRoles(userId);
 
-    const accessToken = this.tokensService.signAccessToken(userId, roles);
+    const accessToken = this.tokensService.signAccessToken(
+      userId,
+      roles,
+      await this.tokensService.currentTokenVersion(userId),
+    );
     const rotated = await this.tokensService.rotateRefreshToken(
       jti,
       userId,

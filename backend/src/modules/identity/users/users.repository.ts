@@ -176,17 +176,35 @@ export class UsersRepository {
    * be reused, sign-in becomes impossible, and `deleted_at`-gated finders
    * (findByPhone/findByEmail/findById above) stop returning the account.
    */
+  /** H8: also bumps token_version, which is what actually invalidates
+   *  every access token issued before this moment (see
+   *  TokensService.isAccessTokenCurrent) — in the same UPDATE as the
+   *  tombstone, so there is no instant where the account is deleted but
+   *  its old tokens still match. */
   softDelete(userId: string) {
     return this.db
       .updateTable('users')
-      .set({
+      .set((eb) => ({
         phone_e164: `deleted-${userId}`,
         email: null,
         status: 'deleted',
         deleted_at: new Date(),
-      })
+        token_version: eb('token_version', '+', 1),
+      }))
       .where('id', '=', userId)
       .execute();
+  }
+
+  /** H8: the durable access-token state JwtAuthGuard relies on. Unlike
+   *  findById this does NOT hide a deleted account — "deleted" is exactly
+   *  what the caller needs to learn. Undefined only if the row is gone
+   *  entirely (a Super Admin hard delete). */
+  findAuthState(userId: string) {
+    return this.db
+      .selectFrom('users')
+      .select(['token_version', 'deleted_at'])
+      .where('id', '=', userId)
+      .executeTakeFirst();
   }
 
   /**

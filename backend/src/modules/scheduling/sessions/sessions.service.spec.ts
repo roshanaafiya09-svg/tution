@@ -11,6 +11,7 @@ jest.mock('kysely', () => ({
 
 import { BadRequestException } from '@nestjs/common';
 import { SessionsService } from './sessions.service';
+import type { SessionNotificationsService } from './session-notifications.service';
 import type { SessionsRepository } from './sessions.repository';
 import type { BatchesService } from '../batches/batches.service';
 import type { TeachingContextService } from '../../teaching-context/teaching-context.service';
@@ -52,8 +53,7 @@ function buildService(overrides: {
       overrides.cancelIfScheduled ?? jest.fn().mockResolvedValue(undefined),
     completeIfScheduled:
       overrides.completeIfScheduled ?? jest.fn().mockResolvedValue(undefined),
-    cancelSeries:
-      overrides.cancelSeries ?? jest.fn().mockResolvedValue(undefined),
+    cancelSeries: overrides.cancelSeries ?? jest.fn().mockResolvedValue([]),
     rescheduleIfScheduled:
       overrides.rescheduleIfScheduled ?? jest.fn().mockResolvedValue(undefined),
     updateMeetingUrl:
@@ -89,9 +89,20 @@ function buildService(overrides: {
     assertActiveMember: jest.fn().mockResolvedValue(undefined),
   } as unknown as TeachingContextService;
 
+  const notices = {
+    notifyCancelled: jest.fn().mockResolvedValue(undefined),
+    notifyRescheduled: jest.fn().mockResolvedValue(undefined),
+  };
+
   return {
-    service: new SessionsService(repository, batchesService, teachingContext),
+    service: new SessionsService(
+      repository,
+      batchesService,
+      teachingContext,
+      notices as unknown as SessionNotificationsService,
+    ),
     repository,
+    notices,
   };
 }
 
@@ -473,8 +484,8 @@ describe('SessionsService.cancel — H2 lifecycle guards', () => {
     const cancelIfScheduled = jest
       .fn()
       .mockResolvedValue({ ...session, status: 'cancelled' });
-    const cancelSeries = jest.fn().mockResolvedValue(undefined);
-    const { service } = buildService({
+    const cancelSeries = jest.fn().mockResolvedValue(['sibling-1']);
+    const { service, notices } = buildService({
       findById: jest.fn().mockResolvedValue(session),
       cancelIfScheduled,
       cancelSeries,
@@ -483,6 +494,12 @@ describe('SessionsService.cancel — H2 lifecycle guards', () => {
     const result = await service.cancel(TUTOR_ID, SESSION_ID, true);
 
     expect(result).toEqual({ cancelled: 'series' });
+    // H4: one immediate notice for exactly the classes this event cancelled.
+    expect(notices.notifyCancelled).toHaveBeenCalledTimes(1);
+    expect(notices.notifyCancelled).toHaveBeenCalledWith(
+      [SESSION_ID, 'sibling-1'],
+      'teacher_manual',
+    );
     expect(cancelIfScheduled).toHaveBeenCalledWith(
       SESSION_ID,
       'teacher_manual',
@@ -601,7 +618,7 @@ describe('SessionsService.reschedule', () => {
       scheduled_start_utc: new Date('2030-06-15T10:30:00Z'),
     });
     const hasScheduledOverlapForTutor = jest.fn().mockResolvedValue(false);
-    const { service } = buildService({
+    const { service, notices } = buildService({
       findById: jest.fn().mockResolvedValue(session),
       rescheduleIfScheduled,
       hasScheduledOverlapForTutor,
@@ -618,6 +635,16 @@ describe('SessionsService.reschedule', () => {
       SESSION_ID,
       expect.any(Date),
       60, // session's existing duration, since none was given
+      // Guarded on the time it read, so a raced reschedule can't also win.
+      { scheduledStartUtc: FUTURE, durationMin: 60 },
+    );
+    // H4.1: announced after (never before) the committed change.
+    expect(notices.notifyRescheduled).toHaveBeenCalledTimes(1);
+    expect(notices.notifyRescheduled).toHaveBeenCalledWith(
+      session,
+      expect.objectContaining({
+        scheduled_start_utc: new Date('2030-06-15T10:30:00Z'),
+      }),
     );
     expect(hasScheduledOverlapForTutor).toHaveBeenCalledWith(
       TUTOR_ID,
@@ -889,5 +916,159 @@ describe('SessionsService.getViewableSession (H6 substitute access)', () => {
 
     expect(getOwnedBatch).not.toHaveBeenCalled();
     expect(findByIdUnchecked).toHaveBeenCalledWith(BATCH_ID);
+  });
+});
+
+describe('SessionsService — H4 immediate notices only after a committed change', () => {
+  const FUTURE_LOCAL = '2030-06-15T16:00';
+
+  it('a single cancel announces exactly that class, with the teacher as actor', async () => {
+    const session = makeSession({
+      status: 'scheduled',
+      scheduled_start_utc: FUTURE,
+    });
+    const { service, notices } = buildService({
+      findById: jest.fn().mockResolvedValue(session),
+      cancelIfScheduled: jest
+        .fn()
+        .mockResolvedValue({ ...session, status: 'cancelled' }),
+    });
+
+    await service.cancel(TUTOR_ID, SESSION_ID, false);
+
+    expect(notices.notifyCancelled).toHaveBeenCalledWith(
+      [SESSION_ID],
+      'teacher_manual',
+    );
+  });
+
+  it('an academy cancel is attributed to the academy', async () => {
+    const session = makeSession({
+      status: 'scheduled',
+      scheduled_start_utc: FUTURE,
+    });
+    const { service, notices } = buildService({
+      findByIdInAcademy: jest.fn().mockResolvedValue(session),
+      cancelIfScheduled: jest
+        .fn()
+        .mockResolvedValue({ ...session, status: 'cancelled' }),
+    });
+
+    await service.cancelForAcademy('academy-1', SESSION_ID, false);
+
+    expect(notices.notifyCancelled).toHaveBeenCalledWith(
+      [SESSION_ID],
+      'academy_manual',
+    );
+  });
+
+  it('a cancel that lost the race (or repeats) announces nothing', async () => {
+    const session = makeSession({
+      status: 'scheduled',
+      scheduled_start_utc: FUTURE,
+    });
+    const findById = jest
+      .fn()
+      .mockResolvedValueOnce(session)
+      .mockResolvedValue({ ...session, status: 'cancelled' });
+    const { service, notices } = buildService({
+      findById,
+      cancelIfScheduled: jest.fn().mockResolvedValue(undefined),
+    });
+
+    await expect(
+      service.cancel(TUTOR_ID, SESSION_ID, false),
+    ).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(notices.notifyCancelled).not.toHaveBeenCalled();
+  });
+
+  it('a rejected reschedule announces nothing', async () => {
+    const session = makeSession({
+      status: 'scheduled',
+      scheduled_start_utc: FUTURE,
+    });
+    const { service, notices } = buildService({
+      findById: jest.fn().mockResolvedValue(session),
+      hasScheduledOverlapForTutor: jest.fn().mockResolvedValue(true),
+    });
+
+    await expect(
+      service.reschedule(TUTOR_ID, SESSION_ID, { newStartLocal: FUTURE_LOCAL }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(notices.notifyRescheduled).not.toHaveBeenCalled();
+  });
+
+  it('rescheduling to the time it already has is a silent no-op (a double submit notifies once)', async () => {
+    const session = makeSession({
+      status: 'scheduled',
+      scheduled_start_utc: new Date('2030-06-15T10:30:00Z'), // = 16:00 IST
+    });
+    const rescheduleIfScheduled = jest.fn();
+    const { service, notices } = buildService({
+      findById: jest.fn().mockResolvedValue(session),
+      rescheduleIfScheduled,
+    });
+
+    const result = await service.reschedule(TUTOR_ID, SESSION_ID, {
+      newStartLocal: FUTURE_LOCAL,
+    });
+
+    expect(result).toBe(session);
+    expect(rescheduleIfScheduled).not.toHaveBeenCalled();
+    expect(notices.notifyRescheduled).not.toHaveBeenCalled();
+  });
+
+  it('losing a race to an identical concurrent reschedule returns the result without a second notice', async () => {
+    const session = makeSession({
+      status: 'scheduled',
+      scheduled_start_utc: FUTURE,
+    });
+    const moved = {
+      ...session,
+      scheduled_start_utc: new Date('2030-06-15T10:30:00Z'),
+    };
+    const findById = jest
+      .fn()
+      .mockResolvedValueOnce(session)
+      .mockResolvedValue(moved);
+    const { service, notices } = buildService({
+      findById,
+      rescheduleIfScheduled: jest.fn().mockResolvedValue(undefined),
+    });
+
+    const result = await service.reschedule(TUTOR_ID, SESSION_ID, {
+      newStartLocal: FUTURE_LOCAL,
+    });
+
+    expect(result).toEqual(moved);
+    expect(notices.notifyRescheduled).not.toHaveBeenCalled();
+  });
+
+  it('losing a race to a DIFFERENT concurrent reschedule is a 409, not a silent overwrite', async () => {
+    const session = makeSession({
+      status: 'scheduled',
+      scheduled_start_utc: FUTURE,
+    });
+    const findById = jest
+      .fn()
+      .mockResolvedValueOnce(session)
+      .mockResolvedValue({
+        ...session,
+        scheduled_start_utc: new Date('2030-07-01T10:30:00Z'),
+      });
+    const { service, notices } = buildService({
+      findById,
+      rescheduleIfScheduled: jest.fn().mockResolvedValue(undefined),
+    });
+
+    await expect(
+      service.reschedule(TUTOR_ID, SESSION_ID, { newStartLocal: FUTURE_LOCAL }),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: ErrorCode.SESSION_RESCHEDULE_CONFLICT },
+    });
+    expect(notices.notifyRescheduled).not.toHaveBeenCalled();
   });
 });

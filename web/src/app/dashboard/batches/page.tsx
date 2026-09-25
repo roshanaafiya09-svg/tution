@@ -23,6 +23,7 @@ import {
 } from '@/components/ui';
 import { TeacherPageHeader, AcademicCard, EmptyPanel } from '@/components/dashboard';
 import { useApiQuery } from '@/lib/query';
+import { batchFeeLabel, summarizeBatchFees } from '@/lib/fee-status';
 
 function currentPeriod(): string {
   const now = new Date();
@@ -156,14 +157,11 @@ export default function BatchesPage() {
   }, [sessions]);
 
   const feeStatusByBatch = useMemo(() => {
-    const map = new Map<string, { paid: number; total: number }>();
+    const byBatch = new Map<string, FeeEntry[]>();
     for (const e of feeEntries) {
-      const cur = map.get(e.batch_id) ?? { paid: 0, total: 0 };
-      cur.total += 1;
-      if (e.status === 'paid' || e.status === 'waived') cur.paid += 1;
-      map.set(e.batch_id, cur);
+      byBatch.set(e.batch_id, [...(byBatch.get(e.batch_id) ?? []), e]);
     }
-    return map;
+    return new Map([...byBatch].map(([batchId, entries]) => [batchId, summarizeBatchFees(entries)]));
   }, [feeEntries]);
 
   const filteredBatches = (batches ?? []).filter((batch) => {
@@ -398,7 +396,7 @@ export default function BatchesPage() {
                         {nextSession ? `Next class ${formatNextClass(nextSession)}` : 'No upcoming class scheduled'}
                       </p>
                       <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                        {feeStatus ? `${feeStatus.paid}/${feeStatus.total} paid this period` : 'Fees not generated this period'}
+                        {feeStatus ? batchFeeLabel(feeStatus) : 'Fees not generated this period'}
                       </p>
                     </Link>
                   </AcademicCard>

@@ -11,6 +11,7 @@ import { InvitesRepository } from './invites/invites.repository';
 import { SessionsController } from './sessions/sessions.controller';
 import { SessionsService } from './sessions/sessions.service';
 import { SessionsRepository } from './sessions/sessions.repository';
+import { SessionNotificationsService } from './sessions/session-notifications.service';
 import { AttendanceController } from './attendance/attendance.controller';
 import { AttendanceService } from './attendance/attendance.service';
 import { AttendanceRepository } from './attendance/attendance.repository';
@@ -49,6 +50,7 @@ import { TeacherAttendanceRepository } from './attendance/teacher-attendance.rep
     InvitesRepository,
     SessionsService,
     SessionsRepository,
+    SessionNotificationsService,
     AttendanceService,
     AttendanceRepository,
     TeacherAttendanceRepository,
@@ -57,8 +59,10 @@ import { TeacherAttendanceRepository } from './attendance/teacher-attendance.rep
     BatchesService,
     BatchesRepository,
     InvitesService,
+    InvitesRepository,
     SessionsService,
     SessionsRepository,
+    SessionNotificationsService,
     AttendanceRepository,
     TeacherAttendanceRepository,
   ],

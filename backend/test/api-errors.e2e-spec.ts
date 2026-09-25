@@ -1,9 +1,9 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return --
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access --
  * HTTP response bodies are untyped JSON in an e2e test; asserting on their shape IS the test. */
 import 'dotenv/config';
 import { Test } from '@nestjs/testing';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import { AppModule } from '../src/app.module';
 import { KYSELY_CONNECTION } from '../src/database/database.module';
 import type { DB, UserRole } from '../src/database/types';
@@ -98,6 +98,7 @@ describe('API error envelope (e2e over HTTP)', () => {
   let tutor: { id: string; token: string };
   let student: { id: string; token: string };
   let academyId: string;
+  let academyOwnerToken: string;
   let subjectId: string;
   let gradeLevelId: string;
   let individualBatchId: string;
@@ -129,6 +130,7 @@ describe('API error envelope (e2e over HTTP)', () => {
 
     // An academy this tutor IS an active member of (for the mismatch case).
     const owner = await makeUser('academy', 'owner');
+    academyOwnerToken = owner.token;
     academyId = newId();
     await db
       .insertInto('academies')
@@ -189,7 +191,9 @@ describe('API error envelope (e2e over HTTP)', () => {
   it('401 — no token: UNAUTHENTICATED with safe copy', async () => {
     const res = await call('GET', '/batches/me');
     expectEnvelope(res, 401, 'UNAUTHENTICATED');
-    expect(res.body.message).toBe('Your session has expired. Please sign in again.');
+    expect(res.body.message).toBe(
+      'Your session has expired. Please sign in again.',
+    );
   });
 
   it('401 — garbage bearer token', async () => {
@@ -203,12 +207,16 @@ describe('API error envelope (e2e over HTTP)', () => {
   });
 
   it('404 — unknown route', async () => {
-    const res = await call('GET', '/definitely/not/a/route', { token: tutor.token });
+    const res = await call('GET', '/definitely/not/a/route', {
+      token: tutor.token,
+    });
     expectEnvelope(res, 404, 'NOT_FOUND');
   });
 
   it('404 — a real route, a batch that does not exist (specific message kept)', async () => {
-    const res = await call('GET', `/batches/${newId()}`, { token: tutor.token });
+    const res = await call('GET', `/batches/${newId()}`, {
+      token: tutor.token,
+    });
     expectEnvelope(res, 404, 'NOT_FOUND');
     expect(res.body.message).toBe('Batch not found');
   });
@@ -230,7 +238,10 @@ describe('API error envelope (e2e over HTTP)', () => {
       rawBody: '{"title": ',
     });
     expect(res.status).toBe(400);
-    expect(res.body).toMatchObject({ statusCode: 400, code: expect.any(String) });
+    expect(res.body).toMatchObject({
+      statusCode: 400,
+      code: expect.any(String),
+    });
     expect(res.body.message).not.toMatch(/JSON at position|Unexpected token/i);
   });
 
@@ -250,7 +261,9 @@ describe('API error envelope (e2e over HTTP)', () => {
     });
 
     it('replaces an unsafe client-supplied id with a generated one', async () => {
-      const res = await call('GET', '/batches/me', { requestId: 'bad id with spaces!!' });
+      const res = await call('GET', '/batches/me', {
+        requestId: 'bad id with spaces!!',
+      });
       expect(res.body.requestId).not.toBe('bad id with spaces!!');
       expect(res.body.requestId).toMatch(/^[0-9a-f-]{36}$/);
     });
@@ -258,12 +271,18 @@ describe('API error envelope (e2e over HTTP)', () => {
 
   describe('Individual / Academy isolation errors stay visible and machine-readable', () => {
     it('a malformed context header → 400 TEACHING_CONTEXT_INVALID', async () => {
-      const res = await call('GET', '/batches/me', { token: tutor.token, ctx: 'academy:nope' });
+      const res = await call('GET', '/batches/me', {
+        token: tutor.token,
+        ctx: 'academy:nope',
+      });
       expectEnvelope(res, 400, 'TEACHING_CONTEXT_INVALID');
     });
 
     it('an academy context the teacher is NOT a member of → 403 TEACHING_CONTEXT_FORBIDDEN', async () => {
-      const res = await call('GET', '/batches/me', { token: tutor.token, ctx: `academy:${newId()}` });
+      const res = await call('GET', '/batches/me', {
+        token: tutor.token,
+        ctx: `academy:${newId()}`,
+      });
       expectEnvelope(res, 403, 'TEACHING_CONTEXT_FORBIDDEN');
       expect(res.body.message).toMatch(/active member/);
     });
@@ -284,6 +303,174 @@ describe('API error envelope (e2e over HTTP)', () => {
       });
       expect(res.status).toBe(200);
       expect(res.body).toEqual([]);
+    });
+  });
+
+  // H10 — database errors reached through REAL endpoints come back as a
+  // safe, typed client error, never a generic 500, and never leak SQL,
+  // table/column/constraint names or stack traces.
+  describe('H10 — database errors through real endpoints', () => {
+    const LEAKS =
+      /invalid input syntax|violates|constraint|relation|column|batches_|_fkey|_uq|select |insert |update |kysely|pg[_-]|\bat [A-Za-z]+\.|stack|22P02|22003|23505|23503|23514/i;
+
+    function expectSafe(res: Res) {
+      expect(JSON.stringify(res.body)).not.toMatch(LEAKS);
+    }
+
+    it('22P02 — a malformed UUID in the URL is a 400 INVALID_INPUT_FORMAT', async () => {
+      const res = await call('POST', '/batches/not-a-uuid/archive', {
+        token: tutor.token,
+      });
+      expectEnvelope(res, 400, 'INVALID_INPUT_FORMAT');
+      expectSafe(res);
+    });
+
+    it('22007 — an unparseable date in the query is a 400, not a 500', async () => {
+      const res = await call('GET', '/sessions/me?from=not-a-date', {
+        token: tutor.token,
+      });
+      expectEnvelope(res, 400, 'INVALID_INPUT_FORMAT');
+      expectSafe(res);
+    });
+
+    it('22003 — an integer too large for its column is a 400 VALUE_OUT_OF_RANGE', async () => {
+      // capacity has no DTO upper bound, so this genuinely reaches Postgres.
+      const res = await call('POST', '/batches', {
+        token: tutor.token,
+        body: {
+          title: `Overflow ${MARKER}`,
+          subjectId,
+          gradeLevelId,
+          capacity: 3_000_000_000,
+          feeMinor: 1000,
+        },
+      });
+      expectEnvelope(res, 400, 'VALUE_OUT_OF_RANGE');
+      expectSafe(res);
+    });
+
+    it('an enormous money amount is rejected at the DTO boundary (complements 22003)', async () => {
+      const res = await call(
+        'POST',
+        `/fees/batch/${individualBatchId}/generate`,
+        {
+          token: tutor.token,
+          body: { periodLabel: '2026-09', expectedMinor: 99_999_999_999 },
+        },
+      );
+      expectEnvelope(res, 400, 'VALIDATION_FAILED');
+      expectSafe(res);
+    });
+
+    it('23503 — referencing a row that does not exist is a 409, not a 500', async () => {
+      const res = await call('POST', '/batches', {
+        token: tutor.token,
+        body: {
+          title: `Dangling ${MARKER}`,
+          subjectId: newId(), // well-formed, but no such subject
+          gradeLevelId,
+          capacity: 10,
+          feeMinor: 1000,
+        },
+      });
+      expectEnvelope(res, 409, 'CONFLICT');
+      expectSafe(res);
+    });
+
+    it('23505 — a duplicate that slips past the service pre-check (a real race) is a safe 409', async () => {
+      // Every unique insert in this app is either an upsert or pre-checked,
+      // so a unique violation is only reachable through a check-then-insert
+      // race. It's made deterministic here: a SHARE lock on the table lets
+      // both requests' pre-check SELECTs run but holds both INSERTs until
+      // the lock is released — exactly the interleaving a real double-click
+      // can produce.
+      const joiner = await makeUser('tutor', 'dup-joiner');
+      const owner = await makeUser('academy', 'dup-owner');
+      const dupAcademyId = newId();
+      const dupSlug = `${MARKER}-dup-academy`;
+      await db
+        .insertInto('academies')
+        .values({
+          id: dupAcademyId,
+          name: `Dup ${MARKER}`,
+          slug: dupSlug,
+          owner_user_id: owner.id,
+        })
+        .execute();
+      cleanup.academies.push(dupAcademyId);
+
+      let pending: Promise<Res[]> | undefined;
+      await db.transaction().execute(async (trx) => {
+        await sql`lock table academy_membership_requests in share mode`.execute(
+          trx,
+        );
+        pending = Promise.all([
+          call('POST', `/marketplace/academies/${dupSlug}/join-requests`, {
+            token: joiner.token,
+            body: {},
+          }),
+          call('POST', `/marketplace/academies/${dupSlug}/join-requests`, {
+            token: joiner.token,
+            body: {},
+          }),
+        ]);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      });
+      const results = await pending!;
+      const statuses = results.map((r) => r.status).sort();
+      expect(statuses).toEqual([201, 409]);
+      const loser = results.find((r) => r.status === 409)!;
+      expectEnvelope(loser, 409, 'CONFLICT');
+      expectSafe(loser);
+      const rows = await db
+        .selectFrom('academy_membership_requests')
+        .select('id')
+        .where('academy_id', '=', dupAcademyId)
+        .where('tutor_id', '=', joiner.id)
+        .execute();
+      expect(rows).toHaveLength(1);
+    });
+
+    it('23514 — a CHECK constraint violation (end time before start time) is a safe 409, not a 500', async () => {
+      const res = await call('POST', '/availability/exceptions', {
+        token: tutor.token,
+        body: {
+          date: '2031-02-03',
+          isAvailable: true,
+          startTime: '18:00',
+          endTime: '09:00',
+        },
+      });
+      expect(res.status).not.toBe(500);
+      expect([400, 409, 422]).toContain(res.status);
+      expect(res.body.requestId).toEqual(expect.any(String));
+      expectSafe(res);
+    });
+
+    it("ownership — an academy holiday aimed at a teacher's Individual batch is refused before the DB trigger, as a safe 404", async () => {
+      // The natural API path for the holiday_batches_same_academy trigger.
+      // HolidayService validates batch ownership first, so the trigger is
+      // unreachable through a valid request (it's the backstop for a
+      // race/bug, exercised directly in teaching-contexts.e2e-spec.ts);
+      // what matters here is that the ownership violation never surfaces
+      // as an unexplained 500.
+      const res = await call('POST', '/academy/me/holidays', {
+        token: academyOwnerToken,
+        body: {
+          name: `Cross-context ${MARKER}`,
+          startDate: '2030-01-01',
+          scope: 'batches',
+          batchIds: [individualBatchId],
+        },
+      });
+      expectEnvelope(res, 404, 'NOT_FOUND');
+      expectSafe(res);
+      const cancelled = await db
+        .selectFrom('holiday_batches')
+        .select('holiday_id')
+        .where('batch_id', '=', individualBatchId)
+        .execute();
+      expect(cancelled).toHaveLength(0);
     });
   });
 

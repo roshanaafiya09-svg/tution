@@ -1,3 +1,8 @@
+// UsersRepository pulls in Kysely (pure ESM, not transformed by the unit
+// Jest config) — same workaround the other DB-adjacent specs use.
+jest.mock('../../users/users.repository', () => ({
+  UsersRepository: class {},
+}));
 import { UnauthorizedException } from '@nestjs/common';
 import type { ExecutionContext } from '@nestjs/common';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -5,7 +10,7 @@ import type { TokensService } from '../tokens.service';
 
 /**
  * H8 — a deleted account's already-issued access token must be rejected
- * immediately (TokensService.isAccessRevoked), not just once it
+ * immediately (TokensService.isAccessTokenCurrent), not just once it
  * naturally expires. Covers the guard's new second check, run only
  * after the JWT's own signature/expiry already passed.
  */
@@ -24,16 +29,19 @@ describe('JwtAuthGuard.canActivate', () => {
     const verifyAccessToken = jest
       .fn()
       .mockReturnValue({ sub: 'user-1', roles: ['tutor'] });
-    const isAccessRevoked = jest.fn().mockResolvedValue(false);
+    const isAccessTokenCurrent = jest.fn().mockResolvedValue(true);
     const tokensService = {
       verifyAccessToken,
-      isAccessRevoked,
+      isAccessTokenCurrent,
     } as unknown as TokensService;
     const guard = new JwtAuthGuard(tokensService);
     const { context, request } = buildContext('Bearer good-token');
 
     await expect(guard.canActivate(context)).resolves.toBe(true);
-    expect(isAccessRevoked).toHaveBeenCalledWith('user-1');
+    expect(isAccessTokenCurrent).toHaveBeenCalledWith({
+      sub: 'user-1',
+      roles: ['tutor'],
+    });
     expect((request as { user?: unknown }).user).toEqual({
       sub: 'user-1',
       roles: ['tutor'],
@@ -44,10 +52,10 @@ describe('JwtAuthGuard.canActivate', () => {
     const verifyAccessToken = jest
       .fn()
       .mockReturnValue({ sub: 'deleted-user', roles: ['tutor'] });
-    const isAccessRevoked = jest.fn().mockResolvedValue(true);
+    const isAccessTokenCurrent = jest.fn().mockResolvedValue(false);
     const tokensService = {
       verifyAccessToken,
-      isAccessRevoked,
+      isAccessTokenCurrent,
     } as unknown as TokensService;
     const guard = new JwtAuthGuard(tokensService);
     const { context } = buildContext('Bearer stale-token');
@@ -61,10 +69,10 @@ describe('JwtAuthGuard.canActivate', () => {
     const verifyAccessToken = jest.fn().mockImplementation(() => {
       throw new Error('expired');
     });
-    const isAccessRevoked = jest.fn();
+    const isAccessTokenCurrent = jest.fn();
     const tokensService = {
       verifyAccessToken,
-      isAccessRevoked,
+      isAccessTokenCurrent,
     } as unknown as TokensService;
     const guard = new JwtAuthGuard(tokensService);
     const { context } = buildContext('Bearer bad-token');
@@ -72,15 +80,15 @@ describe('JwtAuthGuard.canActivate', () => {
     await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
-    expect(isAccessRevoked).not.toHaveBeenCalled();
+    expect(isAccessTokenCurrent).not.toHaveBeenCalled();
   });
 
   it('rejects a request with no bearer token before touching either check', async () => {
     const verifyAccessToken = jest.fn();
-    const isAccessRevoked = jest.fn();
+    const isAccessTokenCurrent = jest.fn();
     const tokensService = {
       verifyAccessToken,
-      isAccessRevoked,
+      isAccessTokenCurrent,
     } as unknown as TokensService;
     const guard = new JwtAuthGuard(tokensService);
     const { context } = buildContext();
@@ -89,6 +97,6 @@ describe('JwtAuthGuard.canActivate', () => {
       UnauthorizedException,
     );
     expect(verifyAccessToken).not.toHaveBeenCalled();
-    expect(isAccessRevoked).not.toHaveBeenCalled();
+    expect(isAccessTokenCurrent).not.toHaveBeenCalled();
   });
 });

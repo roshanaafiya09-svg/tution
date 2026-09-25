@@ -4,9 +4,14 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
   Min,
 } from 'class-validator';
+import {
+  MAX_MONEY_MINOR,
+  MAX_MONEY_MINOR_MESSAGE,
+} from '../../../../common/http/money-bounds';
 
 export class CreateBatchDto {
   @IsString()
@@ -25,6 +30,7 @@ export class CreateBatchDto {
 
   @IsInt()
   @Min(0)
+  @Max(MAX_MONEY_MINOR, { message: MAX_MONEY_MINOR_MESSAGE })
   feeMinor!: number;
 
   @IsOptional()

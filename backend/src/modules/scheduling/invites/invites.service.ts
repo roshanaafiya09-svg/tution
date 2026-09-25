@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ErrorCode } from '../../../common/http/error-codes';
 import { InvitesRepository } from './invites.repository';
 import { BatchesService } from '../batches/batches.service';
 import type { CreateInviteDto } from './dto/create-invite.dto';
@@ -86,6 +87,11 @@ export class InvitesService {
       expiresAt: invite.expires_at,
       isExhausted: invite.used_count >= invite.max_uses,
       isExpired: new Date(invite.expires_at) <= new Date(),
+      // H8: revoked (e.g. the teacher deleted their account) — the landing
+      // page must not offer to join.
+      isRevoked:
+        invite.revoked_at !== null ||
+        !(await this.repository.isBatchTeacherActive(invite.batch_id)),
     };
   }
 
@@ -95,6 +101,15 @@ export class InvitesService {
 
     const claimed = await this.repository.claimUse(token);
     if (!claimed) {
+      if (
+        invite.revoked_at !== null ||
+        !(await this.repository.isBatchTeacherActive(invite.batch_id))
+      ) {
+        throw new BadRequestException({
+          code: ErrorCode.INVITE_REVOKED,
+          message: 'This invite link is no longer valid.',
+        });
+      }
       throw new BadRequestException(
         'This invite link has expired or is fully used',
       );

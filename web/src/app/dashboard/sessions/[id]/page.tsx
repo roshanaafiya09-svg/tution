@@ -38,7 +38,9 @@ export default function SessionAttendancePage() {
     if (!rows) return;
     try {
       await Promise.all(
-        rows.map((row) => api.post(`/attendance/session/${id}/mark`, { studentId: row.student_id, status: 'present' })),
+        rows
+          .filter((row) => row.enrollment_status !== 'left')
+          .map((row) => api.post(`/attendance/session/${id}/mark`, { studentId: row.student_id, status: 'present' })),
       );
       await load();
     } catch {
@@ -80,11 +82,18 @@ export default function SessionAttendancePage() {
                 key={row.student_id}
                 name={row.display_name ?? row.student_id.slice(0, 8)}
                 meta={
-                  row.method === 'join_tap' ? 'Tapped Join' : row.method === 'manual' ? 'Marked by you' : 'Not marked yet'
+                  row.enrollment_status === 'left'
+                    ? 'Removed from this batch — record kept'
+                    : row.method === 'join_tap'
+                      ? 'Tapped Join'
+                      : row.method === 'manual'
+                        ? 'Marked by you'
+                        : 'Not marked yet'
                 }
                 badge={<StatusBadge status={row.status ?? 'unmarked'} />}
                 className="flex-wrap"
                 action={
+                  row.enrollment_status === 'left' ? undefined : (
                   <div className="flex gap-1">
                     {STATUSES.map((status) => (
                       <Button
@@ -98,6 +107,7 @@ export default function SessionAttendancePage() {
                       </Button>
                     ))}
                   </div>
+                  )
                 }
               />
             ))}

@@ -93,39 +93,48 @@ describe('RefreshTokenRepository.findActiveByJti / findAnyByJti', () => {
   });
 });
 
-// H8 — account deletion must invalidate an already-issued access token
-// immediately, not just its refresh session. See markAccessRevoked's
-// doc comment for why this is a plain Redis flag with no DB column.
-describe('RefreshTokenRepository.markAccessRevoked / isAccessRevoked', () => {
-  function buildRepoWithExists(overrides: {
-    set?: jest.Mock;
-    exists?: jest.Mock;
-  }) {
+// H8 — the Redis entry is only a CACHE of users.token_version / deleted
+// (see TokensService.isAccessTokenCurrent for the source of truth).
+describe('RefreshTokenRepository auth-state cache', () => {
+  function buildRepo(overrides: { set?: jest.Mock; get?: jest.Mock }) {
     const set = overrides.set ?? jest.fn().mockResolvedValue('OK');
-    const exists = overrides.exists ?? jest.fn().mockResolvedValue(0);
-    const redis = { set, exists } as unknown as Redis;
-    return { repo: new RefreshTokenRepository(redis), set, exists };
+    const get = overrides.get ?? jest.fn().mockResolvedValue(null);
+    const redis = { set, get } as unknown as Redis;
+    return { repo: new RefreshTokenRepository(redis), set, get };
   }
 
-  it('marks a user revoked with no TTL — a deleted account is never un-deleted', async () => {
-    const { repo, set } = buildRepoWithExists({});
-    await repo.markAccessRevoked('user-1');
-    expect(set).toHaveBeenCalledWith('auth:access-revoked:user-1', '1');
-    expect(set.mock.calls[0]).toHaveLength(2); // no EX/PX/KEEPTTL argument
+  it('caches with a TTL — it is never the only record of a revocation', async () => {
+    const { repo, set } = buildRepo({});
+    await repo.cacheAuthState('user-1', { version: 3, deleted: true }, 60);
+    expect(set).toHaveBeenCalledWith(
+      'auth:state:user-1',
+      JSON.stringify({ version: 3, deleted: true }),
+      'EX',
+      60,
+    );
   });
 
-  it('isAccessRevoked is true only after markAccessRevoked, for that exact user', async () => {
-    const { repo, exists } = buildRepoWithExists({
-      exists: jest.fn().mockResolvedValue(1),
+  it('reads back what was cached, for that exact user', async () => {
+    const { repo, get } = buildRepo({
+      get: jest
+        .fn()
+        .mockResolvedValue(JSON.stringify({ version: 2, deleted: false })),
     });
-    await expect(repo.isAccessRevoked('user-1')).resolves.toBe(true);
-    expect(exists).toHaveBeenCalledWith('auth:access-revoked:user-1');
+    await expect(repo.getCachedAuthState('user-1')).resolves.toEqual({
+      version: 2,
+      deleted: false,
+    });
+    expect(get).toHaveBeenCalledWith('auth:state:user-1');
   });
 
-  it('isAccessRevoked is false for a user who was never revoked', async () => {
-    const { repo } = buildRepoWithExists({
-      exists: jest.fn().mockResolvedValue(0),
-    });
-    await expect(repo.isAccessRevoked('user-2')).resolves.toBe(false);
+  it('a missing or malformed entry is a cache miss, not a verdict', async () => {
+    await expect(
+      buildRepo({}).repo.getCachedAuthState('user-2'),
+    ).resolves.toBeNull();
+    await expect(
+      buildRepo({
+        get: jest.fn().mockResolvedValue(JSON.stringify({ deleted: true })),
+      }).repo.getCachedAuthState('user-2'),
+    ).resolves.toBeNull();
   });
 });

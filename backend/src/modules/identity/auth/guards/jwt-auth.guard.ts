@@ -33,8 +33,10 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     // H8: a deleted account's already-issued access token must stop
-    // working immediately, not just at its natural ≤15min expiry.
-    if (await this.tokensService.isAccessRevoked(request.user.sub)) {
+    // working immediately, not just at its natural ≤15min expiry — checked
+    // against the durable users.token_version (cached), see
+    // TokensService.isAccessTokenCurrent.
+    if (!(await this.tokensService.isAccessTokenCurrent(request.user))) {
       throw new UnauthorizedException('Invalid or expired access token');
     }
 

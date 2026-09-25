@@ -98,6 +98,7 @@ describe('BatchesService.getOwnedBatch — context rules', () => {
       repository,
       { capture: jest.fn() } as unknown as AnalyticsService,
       teachingContext,
+      { notifyCancelled: jest.fn() } as never,
     );
   }
 

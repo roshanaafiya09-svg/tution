@@ -20,10 +20,14 @@ export interface NewNotification {
 export class NotificationsRepository {
   constructor(@Inject(KYSELY_CONNECTION) private readonly db: Kysely<DB>) {}
 
-  createMany(notifications: NewNotification[]) {
-    if (notifications.length === 0) return Promise.resolve();
+  /** Inserts the rows and returns the user ids a row was actually written
+   *  for — a dedupe-key conflict writes nothing for that user, and the
+   *  caller must not push/WhatsApp them either (see NotificationsService.
+   *  notify), or the "deduped" notification would still reach their phone. */
+  async createMany(notifications: NewNotification[]): Promise<string[]> {
+    if (notifications.length === 0) return [];
 
-    return this.db
+    const rows = await this.db
       .insertInto('notifications')
       .values(
         notifications.map((n) => ({
@@ -43,8 +47,9 @@ export class NotificationsRepository {
           .where('dedupe_key', 'is not', null)
           .doNothing(),
       )
-      .execute()
-      .then(() => undefined);
+      .returning('user_id')
+      .execute();
+    return rows.map((r) => r.user_id);
   }
 
   /** Bounded lookback used by callers (e.g. the attendance module's

@@ -307,6 +307,12 @@ export class HolidayService {
         startDate: holiday.start_date,
         endDate: holiday.end_date,
       },
+      // H7: the check above is read-then-write, so two overlapping runs
+      // (the daily cron re-scanning while an admin re-applies, say) could
+      // both pass it. One notice per (holiday, academy, user) is enforced
+      // by the unique index instead — a different holiday or academy is a
+      // different key, never merged.
+      dedupeKey: `holiday:${holiday.id}:${academyId}`,
     });
   }
 

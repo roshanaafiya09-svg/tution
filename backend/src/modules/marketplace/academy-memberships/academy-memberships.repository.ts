@@ -60,6 +60,38 @@ export class AcademyMembershipsRepository {
       .execute();
   }
 
+  /** H8: the PUBLIC roster (public Academy page, Find-an-Academy cards) —
+   *  listActiveForAcademy minus any teacher whose account has been
+   *  deleted. listActiveForAcademy itself is deliberately unchanged: the
+   *  academy's own dashboard, reports and history keep attributing past
+   *  classes to that teacher by name; only public discovery hides them. */
+  listPublicForAcademy(academyId: string) {
+    return this.db
+      .selectFrom('academy_memberships')
+      .innerJoin(
+        'profiles_tutor',
+        'profiles_tutor.user_id',
+        'academy_memberships.tutor_id',
+      )
+      .innerJoin('users', 'users.id', 'academy_memberships.tutor_id')
+      .select([
+        'academy_memberships.id as membership_id',
+        'academy_memberships.tutor_id',
+        'academy_memberships.joined_at',
+        'profiles_tutor.display_name',
+        'profiles_tutor.slug as tutor_slug',
+        'profiles_tutor.headline',
+        'profiles_tutor.avatar_object_key',
+        'profiles_tutor.years_experience',
+        'profiles_tutor.verification_status',
+      ])
+      .where('academy_memberships.academy_id', '=', academyId)
+      .where('academy_memberships.status', '=', 'active')
+      .where('users.deleted_at', 'is', null)
+      .orderBy('academy_memberships.joined_at')
+      .execute();
+  }
+
   /** Single active member with their full profile — the Academy Dashboard's
    *  Teacher Detail page (Main > Teachers > :id). Unlike listActiveForAcademy
    *  (a lean roster-card projection), this selects the whole

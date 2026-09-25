@@ -257,6 +257,36 @@ describe('HttpExceptionFilter — standard error envelope', () => {
       expect(body.code).toBe(ErrorCode.UNPROCESSABLE);
     });
 
+    it('a malformed uuid/int literal (22P02) is a 400 INVALID_INPUT_FORMAT, not a 500', () => {
+      const bad = Object.assign(
+        new Error('invalid input syntax for type uuid: "not-a-uuid"'),
+        { code: '22P02' },
+      );
+      const { status, body } = run(bad);
+      expect(status).toBe(400);
+      expect(body.code).toBe(ErrorCode.INVALID_INPUT_FORMAT);
+      expect(JSON.stringify(body)).not.toMatch(/uuid|syntax|not-a-uuid/);
+      expect(error).not.toHaveBeenCalled(); // caller-driven, not a server fault
+    });
+
+    it('a numeric overflow (22003) is a 400 VALUE_OUT_OF_RANGE, not a 500', () => {
+      const overflow = Object.assign(
+        new Error('value "3000000000" is out of range for type integer'),
+        { code: '22003' },
+      );
+      const { status, body } = run(overflow);
+      expect(status).toBe(400);
+      expect(body.code).toBe(ErrorCode.VALUE_OUT_OF_RANGE);
+      expect(JSON.stringify(body)).not.toMatch(/integer|3000000000/);
+    });
+
+    it('an invalid datetime (22007/22008) and an over-long string (22001) are 400s', () => {
+      for (const code of ['22007', '22008', '22001']) {
+        const { status } = run(Object.assign(new Error('x'), { code }));
+        expect({ code, status }).toEqual({ code, status: 400 });
+      }
+    });
+
     it('still logs the real SQLSTATE and message server-side for a constraint violation', () => {
       const dup = Object.assign(
         new Error('duplicate key value violates unique constraint "x"'),

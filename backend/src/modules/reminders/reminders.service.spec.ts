@@ -18,7 +18,7 @@ jest.mock('@nestjs/schedule', () => ({
   },
 }));
 
-import { RemindersService } from './reminders.service';
+import { RemindersService, holidayGroupDedupeKey } from './reminders.service';
 import type { SessionsRepository } from '../scheduling/sessions/sessions.repository';
 import type { BatchesRepository } from '../scheduling/batches/batches.repository';
 import type { AttendanceRepository } from '../scheduling/attendance/attendance.repository';
@@ -29,20 +29,22 @@ import type {
 import type { HolidayService } from '../holidays/holiday.service';
 import type { HolidaysRepository } from '../holidays/holidays.repository';
 
+const SCHEDULED_START = new Date('2026-09-20T10:30:00.000Z');
+
 const NORMAL_SESSION = {
   id: 'session-normal',
   batch_id: 'batch-1',
   batch_title: 'Grade 10 Physics',
+  scheduled_start_utc: SCHEDULED_START,
   substitute_display_name: null,
 };
 const SUBSTITUTE_SESSION = {
   id: 'session-substitute',
   batch_id: 'batch-2',
   batch_title: 'Grade 12 Chemistry',
+  scheduled_start_utc: SCHEDULED_START,
   substitute_display_name: 'Priya',
 };
-
-const SCHEDULED_START = new Date('2026-09-20T10:30:00.000Z');
 
 const LEAVE_CANCELLED_SESSION = {
   id: 'session-leave-cancelled',
@@ -53,6 +55,7 @@ const LEAVE_CANCELLED_SESSION = {
   cancellation_reason: 'teacher_leave' as const,
   holiday_id: null,
   teacher_leave_request_id: 'leave-1',
+  cancellation_notified_at: null,
 };
 const MANUAL_CANCELLED_SESSION = {
   id: 'session-manual-cancelled',
@@ -63,6 +66,7 @@ const MANUAL_CANCELLED_SESSION = {
   cancellation_reason: 'manual' as const, // legacy, predates the H4 reason split
   holiday_id: null,
   teacher_leave_request_id: null,
+  cancellation_notified_at: null,
 };
 // H4: cancellation_reason now says WHO cancelled — these two replace the
 // single 'manual' value going forward (see MANUAL_CANCELLED_SESSION above
@@ -76,6 +80,7 @@ const TEACHER_MANUAL_CANCELLED_SESSION = {
   cancellation_reason: 'teacher_manual' as const,
   holiday_id: null,
   teacher_leave_request_id: null,
+  cancellation_notified_at: null,
 };
 const ACADEMY_MANUAL_CANCELLED_SESSION = {
   id: 'session-academy-manual-cancelled',
@@ -86,6 +91,7 @@ const ACADEMY_MANUAL_CANCELLED_SESSION = {
   cancellation_reason: 'academy_manual' as const,
   holiday_id: null,
   teacher_leave_request_id: null,
+  cancellation_notified_at: null,
 };
 const BATCH_ARCHIVED_CANCELLED_SESSION = {
   id: 'session-batch-archived-cancelled',
@@ -96,6 +102,7 @@ const BATCH_ARCHIVED_CANCELLED_SESSION = {
   cancellation_reason: 'batch_archived' as const,
   holiday_id: null,
   teacher_leave_request_id: null,
+  cancellation_notified_at: null,
 };
 const HOLIDAY_CANCELLED_SESSION_A = {
   id: 'session-holiday-a',
@@ -106,6 +113,7 @@ const HOLIDAY_CANCELLED_SESSION_A = {
   cancellation_reason: 'government_holiday' as const,
   holiday_id: 'holiday-1',
   teacher_leave_request_id: null,
+  cancellation_notified_at: null,
 };
 const HOLIDAY_CANCELLED_SESSION_B = {
   id: 'session-holiday-b',
@@ -116,6 +124,7 @@ const HOLIDAY_CANCELLED_SESSION_B = {
   cancellation_reason: 'government_holiday' as const,
   holiday_id: 'holiday-1',
   teacher_leave_request_id: null,
+  cancellation_notified_at: null,
 };
 
 function buildService(overrides: {
@@ -127,7 +136,9 @@ function buildService(overrides: {
   notify?: jest.Mock;
   applyGovernmentHolidaysForToday?: jest.Mock;
   findHolidayById?: jest.Mock;
+  findSessionById?: jest.Mock;
 }) {
+  const markCancellationNotified = jest.fn().mockResolvedValue(undefined);
   const sessionsRepository = {
     listScheduledRemindersBetween:
       overrides.listScheduledRemindersBetween ??
@@ -135,6 +146,18 @@ function buildService(overrides: {
     listCancelledRemindersBetween:
       overrides.listCancelledRemindersBetween ??
       jest.fn().mockResolvedValue([]),
+    // The just-before-send re-check: by default the class is still
+    // scheduled at the time the sweep saw.
+    findById:
+      overrides.findSessionById ??
+      jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          id,
+          status: 'scheduled',
+          scheduled_start_utc: SCHEDULED_START,
+        }),
+      ),
+    markCancellationNotified,
   } as unknown as SessionsRepository;
 
   const batchesRepository = {
@@ -188,7 +211,13 @@ function buildService(overrides: {
     holidaysRepository,
   );
 
-  return { service, sessionsRepository, notify, listRecentForUserByType };
+  return {
+    service,
+    sessionsRepository,
+    notify,
+    listRecentForUserByType,
+    markCancellationNotified,
+  };
 }
 
 describe('RemindersService.sendUpcomingClassReminders — normal reminder', () => {
@@ -202,9 +231,57 @@ describe('RemindersService.sendUpcomingClassReminders — normal reminder', () =
       expect.objectContaining({
         type: 'class_reminder',
         body: 'Your Grade 10 Physics class starts in 10 minutes.',
-        payload: { sessionId: NORMAL_SESSION.id },
+        payload: {
+          sessionId: NORMAL_SESSION.id,
+          scheduledStartUtc: SCHEDULED_START.toISOString(),
+        },
+        dedupeKey: `reminder:${NORMAL_SESSION.id}:upcoming:${SCHEDULED_START.toISOString()}`,
       }),
     );
+  });
+
+  // H4.3: a class cancelled between the sweep's query and the send must
+  // never get an ordinary "starts in 10 minutes".
+  it('never sends a class-start reminder for a class cancelled after the sweep read it', async () => {
+    const findSessionById = jest.fn().mockResolvedValue({
+      id: NORMAL_SESSION.id,
+      status: 'cancelled',
+      scheduled_start_utc: SCHEDULED_START,
+    });
+    const { service, notify } = buildService({ findSessionById });
+
+    await service.sendUpcomingClassReminders();
+
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('skips a class that was rescheduled away after the sweep read it', async () => {
+    const findSessionById = jest.fn().mockResolvedValue({
+      id: NORMAL_SESSION.id,
+      status: 'scheduled',
+      scheduled_start_utc: new Date(SCHEDULED_START.getTime() + 86_400_000),
+    });
+    const { service, notify } = buildService({ findSessionById });
+
+    await service.sendUpcomingClassReminders();
+
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('a class rescheduled after its reminder went out is reminded again for its NEW time', async () => {
+    const listRecentForUserByType = jest.fn().mockResolvedValue([
+      {
+        payload: {
+          sessionId: NORMAL_SESSION.id,
+          scheduledStartUtc: '2026-09-19T10:30:00.000Z', // the old time
+        },
+      },
+    ]);
+    const { service, notify } = buildService({ listRecentForUserByType });
+
+    await service.sendUpcomingClassReminders();
+
+    expect(notify).toHaveBeenCalledTimes(1);
   });
 
   it('mentions the substitute teacher for a substitute-covered class', async () => {
@@ -288,8 +365,9 @@ describe('RemindersService — cancelled-class reminder (teacher leave / manual)
 
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: 'class_cancelled_reminder',
+        type: 'class_cancelled',
         body: 'Your Grade 8 English class at 4:00 PM today has been cancelled by your teacher.',
+        dedupeKey: `cancelled:${TEACHER_MANUAL_CANCELLED_SESSION.id}`,
       }),
     );
   });
@@ -308,8 +386,9 @@ describe('RemindersService — cancelled-class reminder (teacher leave / manual)
 
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: 'class_cancelled_reminder',
+        type: 'class_cancelled',
         body: 'Your Grade 7 History class at 4:00 PM today has been cancelled by the academy.',
+        dedupeKey: `cancelled:${ACADEMY_MANUAL_CANCELLED_SESSION.id}`,
       }),
     );
   });
@@ -328,8 +407,9 @@ describe('RemindersService — cancelled-class reminder (teacher leave / manual)
 
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: 'class_cancelled_reminder',
+        type: 'class_cancelled',
         body: 'Your Grade 6 Geography class at 4:00 PM today has been cancelled — this batch is no longer active.',
+        dedupeKey: `cancelled:${BATCH_ARCHIVED_CANCELLED_SESSION.id}`,
       }),
     );
   });
@@ -348,10 +428,56 @@ describe('RemindersService — cancelled-class reminder (teacher leave / manual)
 
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: 'class_cancelled_reminder',
+        type: 'class_cancelled',
         body: 'Your Grade 11 Biology class at 4:00 PM today has been cancelled.',
+        dedupeKey: `cancelled:${MANUAL_CANCELLED_SESSION.id}`,
       }),
     );
+  });
+
+  // H4.3: a teacher/academy/archive cancellation is announced the moment
+  // it happens; the sweep must not announce the same event again.
+  it('skips an actor cancellation that was already announced immediately', async () => {
+    const listScheduledRemindersBetween = jest.fn().mockResolvedValue([]);
+    const listCancelledRemindersBetween = jest.fn().mockResolvedValue([
+      {
+        ...TEACHER_MANUAL_CANCELLED_SESSION,
+        cancellation_notified_at: new Date(),
+      },
+      {
+        ...ACADEMY_MANUAL_CANCELLED_SESSION,
+        cancellation_notified_at: new Date(),
+      },
+      {
+        ...BATCH_ARCHIVED_CANCELLED_SESSION,
+        cancellation_notified_at: new Date(),
+      },
+    ]);
+    const { service, notify } = buildService({
+      listScheduledRemindersBetween,
+      listCancelledRemindersBetween,
+    });
+
+    await service.sendUpcomingClassReminders();
+
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('a fallback notice for an un-announced actor cancellation marks it announced', async () => {
+    const listScheduledRemindersBetween = jest.fn().mockResolvedValue([]);
+    const listCancelledRemindersBetween = jest
+      .fn()
+      .mockResolvedValue([TEACHER_MANUAL_CANCELLED_SESSION]);
+    const { service, markCancellationNotified } = buildService({
+      listScheduledRemindersBetween,
+      listCancelledRemindersBetween,
+    });
+
+    await service.sendUpcomingClassReminders();
+
+    expect(markCancellationNotified).toHaveBeenCalledWith([
+      TEACHER_MANUAL_CANCELLED_SESSION.id,
+    ]);
   });
 
   it('does not re-send a cancellation reminder already sent for that session', async () => {
@@ -395,6 +521,7 @@ describe('RemindersService — holiday reminder (government / academy holiday)',
         title: '🇮🇳 Holiday Reminder',
         body: 'There is no Grade 10 Physics class at 4:00 PM today because today is Pongal, a government holiday.',
         payload: { sessionIds: [HOLIDAY_CANCELLED_SESSION_A.id] },
+        dedupeKey: holidayGroupDedupeKey([HOLIDAY_CANCELLED_SESSION_A]),
       }),
     );
   });
@@ -438,6 +565,47 @@ describe('RemindersService — holiday reminder (government / academy holiday)',
     });
   });
 
+  it('never merges two DIFFERENT holidays into one message for the same recipient', async () => {
+    const listScheduledRemindersBetween = jest.fn().mockResolvedValue([]);
+    const listCancelledRemindersBetween = jest.fn().mockResolvedValue([
+      HOLIDAY_CANCELLED_SESSION_A,
+      {
+        ...HOLIDAY_CANCELLED_SESSION_B,
+        cancellation_reason: 'academy_holiday' as const,
+        holiday_id: 'holiday-2',
+      },
+    ]);
+    const notify = jest
+      .fn<Promise<void>, [NotifyInput]>()
+      .mockResolvedValue(undefined);
+    const findHolidayById = jest.fn().mockImplementation((id: string) =>
+      Promise.resolve({
+        id,
+        name: id === 'holiday-1' ? 'Pongal' : 'Founders Day',
+      }),
+    );
+    const { service } = buildService({
+      listScheduledRemindersBetween,
+      listCancelledRemindersBetween,
+      listDistinctStudentIdsForBatches: jest
+        .fn()
+        .mockResolvedValue(['student-shared']),
+      listActiveParentIdsForStudents: jest.fn().mockResolvedValue([]),
+      notify,
+      findHolidayById,
+    });
+
+    await service.sendUpcomingClassReminders();
+
+    const calls = notify.mock.calls.map((c) => c[0]);
+    expect(calls).toHaveLength(2);
+    expect(calls.map((c) => c.body)).toEqual([
+      expect.stringContaining('Pongal'),
+      expect.stringContaining('Founders Day'),
+    ]);
+    expect(new Set(calls.map((c) => c.dedupeKey)).size).toBe(2);
+  });
+
   it('does not re-send a holiday reminder for sessions already covered by a prior notification', async () => {
     const listScheduledRemindersBetween = jest.fn().mockResolvedValue([]);
     const listCancelledRemindersBetween = jest
@@ -457,5 +625,23 @@ describe('RemindersService — holiday reminder (government / academy holiday)',
     await service.sendUpcomingClassReminders();
 
     expect(notify).not.toHaveBeenCalled();
+  });
+});
+
+describe('holidayGroupDedupeKey (H7)', () => {
+  const a = { id: 'session-a', holiday_id: 'holiday-1' };
+  const b = { id: 'session-b', holiday_id: 'holiday-1' };
+  const c = { id: 'session-c', holiday_id: 'holiday-2' };
+
+  it('is deterministic and order-independent — a re-run produces the same key', () => {
+    expect(holidayGroupDedupeKey([a, b])).toBe(holidayGroupDedupeKey([b, a]));
+  });
+
+  it('different holidays / different classes never share a key', () => {
+    expect(holidayGroupDedupeKey([a])).not.toBe(holidayGroupDedupeKey([c]));
+    expect(holidayGroupDedupeKey([a])).not.toBe(holidayGroupDedupeKey([a, b]));
+    expect(
+      holidayGroupDedupeKey([{ id: 'session-a', holiday_id: 'holiday-2' }]),
+    ).not.toBe(holidayGroupDedupeKey([a]));
   });
 });

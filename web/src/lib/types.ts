@@ -151,6 +151,12 @@ export interface Session {
   cancellation_reason?: ClassCancellationReason | null;
   substitute_tutor_id?: string | null;
   substitute_display_name?: string | null;
+  /** Only on GET /sessions/me (the teacher's own schedule): the class's
+   *  own teacher, and whether the caller teaches it ('owner') or is
+   *  covering it as the assigned substitute ('substitute', H6). */
+  tutor_id?: string;
+  original_tutor_display_name?: string | null;
+  viewer_role?: 'owner' | 'substitute';
 }
 
 // --- Holiday & Teacher Leave Management (migration 0035) ---
@@ -281,6 +287,8 @@ export interface FeeTotals {
   outstandingMinor: number;
   entries: number;
   paidCount: number;
+  /** Waived entries — neither paid nor owed; see owedCount(). */
+  waivedCount: number;
   currency: string;
 }
 
@@ -321,6 +329,9 @@ export interface AttendanceRow {
   joined_at: string | null;
   method: 'join_tap' | 'manual' | null;
   display_name: string | null;
+  /** 'left' = removed from the batch since; the row is shown only because
+   *  attendance was already recorded for this class (read-only). */
+  enrollment_status?: 'active' | 'left';
 }
 
 export interface AvailabilityRule {

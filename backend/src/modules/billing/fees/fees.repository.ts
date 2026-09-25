@@ -1,8 +1,39 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { Kysely } from 'kysely';
+import { sql, type ExpressionBuilder, type Kysely } from 'kysely';
 import { KYSELY_CONNECTION } from '../../../database/database.module';
 import type { DB } from '../../../database/types';
 import { newId } from '../../../database/id';
+import { ONE_TIME_PERIOD_LABEL, periodLabelsDuringMonth } from './fee-period';
+
+const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/**
+ * Which ledger rows a period view shows. Asked for a month ('2026-08'),
+ * that's everything billed for that month, the quarter containing it
+ * ('2026-Q3'), and one-time fees generated during that month (Asia/Kolkata)
+ * — a one-time fee has no billing month of its own, so it appears in the
+ * month it was raised rather than in every month or none. Asked for any
+ * other label ('2026-Q3', 'one-time'), exactly that label.
+ */
+function periodFilter(
+  eb: ExpressionBuilder<DB, 'fee_ledger'>,
+  periodLabel: string,
+) {
+  if (!MONTH.test(periodLabel)) {
+    return eb('fee_ledger.period_label', '=', periodLabel);
+  }
+  return eb.or([
+    eb('fee_ledger.period_label', 'in', periodLabelsDuringMonth(periodLabel)),
+    eb.and([
+      eb('fee_ledger.period_label', '=', ONE_TIME_PERIOD_LABEL),
+      eb(
+        sql<string>`to_char(fee_ledger.created_at at time zone 'Asia/Kolkata', 'YYYY-MM')`,
+        '=',
+        periodLabel,
+      ),
+    ]),
+  ]);
+}
 
 export interface NewFeeEntry {
   tutorId: string;
@@ -16,8 +47,20 @@ export interface NewFeeEntry {
 export class FeesRepository {
   constructor(@Inject(KYSELY_CONNECTION) private readonly db: Kysely<DB>) {}
 
-  upsert(entry: NewFeeEntry) {
-    return this.db
+  /**
+   * Creates the row for this student + billing period, or — if it already
+   * exists — re-prices it ONLY while it is still untouched ('due'). A row
+   * that is 'partial', 'paid' or 'waived' is financial history: a payment
+   * or waiver was recorded against its expected_minor, so re-generating
+   * (e.g. after the batch fee changed) must never silently rewrite that
+   * basis — before this guard a paid ₹1,000 row could become "paid" with
+   * expected ₹2,500 and only ₹1,000 recorded. The conditional
+   * DO UPDATE ... WHERE is evaluated under the row lock, so a payment
+   * racing a regeneration can't slip between a check and the write.
+   * Returns the row as it now stands either way.
+   */
+  async upsert(entry: NewFeeEntry) {
+    const written = await this.db
       .insertInto('fee_ledger')
       .values({
         id: newId(),
@@ -30,9 +73,20 @@ export class FeesRepository {
       .onConflict((oc) =>
         oc
           .columns(['batch_id', 'student_id', 'period_label'])
-          .doUpdateSet({ expected_minor: entry.expectedMinor }),
+          .doUpdateSet({ expected_minor: entry.expectedMinor })
+          .where('fee_ledger.status', '=', 'due'),
       )
       .returningAll()
+      .executeTakeFirst();
+    if (written) return written;
+
+    // Conflict with a protected (non-'due') row: nothing was written.
+    return this.db
+      .selectFrom('fee_ledger')
+      .selectAll()
+      .where('batch_id', '=', entry.batchId)
+      .where('student_id', '=', entry.studentId)
+      .where('period_label', '=', entry.periodLabel)
       .executeTakeFirstOrThrow();
   }
 
@@ -85,7 +139,8 @@ export class FeesRepository {
   }
 
   /** Fee entries for one period IN ONE teaching context (null =
-   *  Individual, an id = that academy's), taken from the entry's batch. */
+   *  Individual, an id = that academy's), taken from the entry's batch.
+   *  See periodFilter for what a month's view covers. */
   listForPeriod(
     tutorId: string,
     academyId: string | null,
@@ -116,7 +171,7 @@ export class FeesRepository {
         'users.phone_e164',
       ])
       .where('fee_ledger.tutor_id', '=', tutorId)
-      .where('fee_ledger.period_label', '=', periodLabel);
+      .where((eb) => periodFilter(eb, periodLabel));
     query =
       academyId === null
         ? query.where('batches.academy_id', 'is', null)
@@ -205,9 +260,19 @@ export class FeesRepository {
               .end(),
           )
           .as('paid_count'),
+        eb.fn
+          .sum(
+            eb
+              .case()
+              .when('fee_ledger.status', '=', 'waived')
+              .then(1)
+              .else(0)
+              .end(),
+          )
+          .as('waived_count'),
       ])
       .where('fee_ledger.tutor_id', '=', tutorId)
-      .where('fee_ledger.period_label', '=', periodLabel);
+      .where((eb) => periodFilter(eb, periodLabel));
     query =
       academyId === null
         ? query.where('batches.academy_id', 'is', null)
@@ -226,6 +291,9 @@ export class FeesRepository {
       outstandingMinor: expectedMinor - collectedMinor,
       entries: Number(row.entries),
       paidCount: Number(row.paid_count ?? 0),
+      // Waived entries are neither paid nor owed — "N of M paid" must be
+      // out of entries - waivedCount, never out of every entry (H5).
+      waivedCount: Number(row.waived_count ?? 0),
       currency: 'INR',
     };
   }

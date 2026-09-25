@@ -15,6 +15,7 @@ import {
   type TeachingContext,
 } from '../../teaching-context/teaching-context';
 import { expandRecurrence } from './recurrence';
+import { SessionNotificationsService } from './session-notifications.service';
 import type { CreateSessionDto } from './dto/create-session.dto';
 import type { UpdateSessionDto } from './dto/update-session.dto';
 import type { RescheduleSessionDto } from './dto/reschedule-session.dto';
@@ -31,6 +32,7 @@ export class SessionsService {
     private readonly repository: SessionsRepository,
     private readonly batchesService: BatchesService,
     private readonly teachingContext: TeachingContextService,
+    private readonly notices: SessionNotificationsService,
   ) {}
 
   /** Teacher path: the tutor must own the batch AND (via the request's
@@ -134,18 +136,28 @@ export class SessionsService {
     return this.repository.listForBatch(batchId);
   }
 
-  listForTutorBetween(
+  /** H6: each row says whether the caller is its teacher ('owner') or is
+   *  covering it as the assigned substitute ('substitute') — the UI must
+   *  not offer a substitute cancel/complete/reschedule/edit (the API
+   *  rejects those with 403 anyway, see getOwnedSession), and must label
+   *  the class "Covering for <original teacher>", not "Covered by <me>". */
+  async listForTutorBetween(
     tutorId: string,
     ctx: TeachingContext,
     from: Date,
     to: Date,
   ) {
-    return this.repository.listForTutorBetween(
+    const rows = await this.repository.listForTutorBetween(
       tutorId,
       academyIdOf(ctx),
       from,
       to,
     );
+    return rows.map((row) => ({
+      ...row,
+      viewer_role:
+        row.tutor_id === tutorId ? ('owner' as const) : ('substitute' as const),
+    }));
   }
 
   async listForBatchInAcademy(academyId: string, batchId: string) {
@@ -273,12 +285,13 @@ export class SessionsService {
    *      won the race between step 1 and here, this affects zero rows —
    *      resolved the same way as step 1, against the now-current status.
    *
-   * There are no notifications or other side effects on the manual
-   * cancel/complete path today (see SCHOLAR_SYSTEM_BULLETIN.md's Flow G —
-   * a manual single-class cancellation has no immediate notification, and
-   * nothing observes a manual completion synchronously), so "only run
-   * side effects after the transition commits" reduces to this atomic
-   * update being the whole operation.
+   * Side effects run only after the transition has committed: once
+   * step 3 (and, for a series, its sibling update) succeeded, the
+   * affected students/parents are told immediately (H4, see
+   * SessionNotificationsService) — a rejected or raced cancel never
+   * announces anything, and a repeated series cancel only announces the
+   * classes it newly cancelled (none). Completion still has no side
+   * effects.
    */
   private async cancelSession(
     session: SessionRow,
@@ -305,9 +318,11 @@ export class SessionsService {
       const parentId = session.recurrence_parent_id ?? session.id;
       // Only reaches still-scheduled siblings (see cancelSeries's doc
       // comment) — a completed occurrence in the series is left alone.
-      await this.repository.cancelSeries(parentId, reason);
+      const siblings = await this.repository.cancelSeries(parentId, reason);
+      await this.notices.notifyCancelled([session.id, ...siblings], reason);
       return { cancelled: 'series' as const };
     }
+    await this.notices.notifyCancelled([session.id], reason);
     return { cancelled: 'single' as const };
   }
 
@@ -395,9 +410,12 @@ export class SessionsService {
    *      conflicts with another scheduled class for this tutor or batch
    *      (excluding this session's own current slot);
    *   4. apply with the same atomic `UPDATE ... WHERE status =
-   *      'scheduled'` pattern (rescheduleIfScheduled) — a reschedule
-   *      racing a concurrent cancel/complete resolves to exactly one
-   *      winner, just like cancel/complete racing each other.
+   *      'scheduled'` pattern (rescheduleIfScheduled), additionally
+   *      guarded on the time it read — a reschedule racing a concurrent
+   *      cancel/complete/reschedule resolves to exactly one winner;
+   *   5. only then tell the students/parents (H4). Asking for the time
+   *      the class already has is a no-op: nothing changes, nothing is
+   *      announced, so a double-submitted reschedule notifies once.
    */
   private async rescheduleSession(
     session: SessionRow,
@@ -417,6 +435,13 @@ export class SessionsService {
         code: ErrorCode.SESSION_RESCHEDULE_IN_PAST,
         message: 'The new class time must be in the future.',
       });
+    }
+
+    if (
+      newStart.getTime() === session.scheduled_start_utc.getTime() &&
+      durationMin === session.duration_min
+    ) {
+      return session;
     }
 
     const newEnd = new Date(newStart.getTime() + durationMin * 60_000);
@@ -447,12 +472,33 @@ export class SessionsService {
       session.id,
       newStart,
       durationMin,
+      {
+        scheduledStartUtc: session.scheduled_start_utc,
+        durationMin: session.duration_min,
+      },
     );
     if (!rescheduled) {
-      return this.rejectRescheduleTransition(
-        await this.currentStatus(session.id),
-      );
+      const fresh = await this.repository.findById(session.id);
+      if (!fresh) throw new NotFoundException('Session not found');
+      if (fresh.status !== 'scheduled') {
+        return this.rejectRescheduleTransition(fresh.status);
+      }
+      // A concurrent request already moved it — to exactly this time (a
+      // duplicate submit: same outcome, already announced by the winner)
+      // or somewhere else (a genuine conflict the caller must see).
+      if (
+        fresh.scheduled_start_utc.getTime() === newStart.getTime() &&
+        fresh.duration_min === durationMin
+      ) {
+        return fresh;
+      }
+      throw new ConflictException({
+        code: ErrorCode.SESSION_RESCHEDULE_CONFLICT,
+        message:
+          'This class was just changed by someone else. Refresh and try again.',
+      });
     }
+    await this.notices.notifyRescheduled(session, rescheduled);
     return rescheduled;
   }
 

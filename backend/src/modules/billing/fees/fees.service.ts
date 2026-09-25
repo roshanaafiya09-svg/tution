@@ -14,6 +14,7 @@ import {
 import { BatchesService } from '../../scheduling/batches/batches.service';
 import { ParentLinksRepository } from '../../parents/parent-links.repository';
 import type { GeneratePeriodDto } from './dto/generate-period.dto';
+import { billingPeriodLabel } from './fee-period';
 import { AnalyticsService } from '../../analytics/analytics.service';
 
 /**
@@ -30,7 +31,11 @@ export class FeesService {
     private readonly analytics: AnalyticsService,
   ) {}
 
-  /** Creates a ledger row per active student for the given period. */
+  /** Creates a ledger row per active student for the billing period that
+   *  `dto.periodLabel` (a YYYY-MM month) falls in, per the batch's own
+   *  fee_period — see fee-period.ts. Re-running it never re-prices a row
+   *  that already has a payment or waiver against it (FeesRepository.
+   *  upsert). */
   async generateForBatch(
     tutorId: string,
     batchId: string,
@@ -38,6 +43,7 @@ export class FeesService {
   ) {
     const batch = await this.batchesService.getOwnedBatch(tutorId, batchId);
     const expectedMinor = dto.expectedMinor ?? batch.fee_minor;
+    const periodLabel = billingPeriodLabel(batch.fee_period, dto.periodLabel);
 
     const studentIds = await this.repository.listActiveStudentIds(batchId);
 
@@ -47,7 +53,7 @@ export class FeesService {
           tutorId,
           studentId,
           batchId,
-          periodLabel: dto.periodLabel,
+          periodLabel,
           expectedMinor,
         }),
       ),
@@ -55,7 +61,7 @@ export class FeesService {
 
     this.analytics.capture(tutorId, 'fee_batch_generated', {
       batchId,
-      periodLabel: dto.periodLabel,
+      periodLabel,
       studentCount: studentIds.length,
     });
 
