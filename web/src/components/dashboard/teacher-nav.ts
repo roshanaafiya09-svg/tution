@@ -167,5 +167,8 @@ export function teacherNotificationHref(notification: AppNotification): string |
   if (notification.type === 'assessment_weekly_reminder') {
     return '/dashboard/assessments';
   }
+  if (notification.type === 'class_rescheduled_by_academy') {
+    return '/dashboard/calendar';
+  }
   return null;
 }

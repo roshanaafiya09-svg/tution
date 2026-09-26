@@ -845,6 +845,8 @@ describe('SessionsService.reschedule', () => {
       expect.objectContaining({
         scheduled_start_utc: new Date('2030-06-15T10:30:00Z'),
       }),
+      // A teacher moving their own class: no academy-side teacher notice.
+      { kind: 'teacher' },
     );
     expect(hasScheduledOverlapForTutor).toHaveBeenCalledWith(
       TUTOR_ID,
@@ -986,6 +988,64 @@ describe('SessionsService.reschedule', () => {
         newStartLocal: FUTURE_LOCAL,
       }),
     ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('the Academy path announces with the academy actor, resolved from the academy-owned session', async () => {
+    const session = makeSession({
+      status: 'scheduled',
+      scheduled_start_utc: FUTURE,
+    });
+    const moved = {
+      ...session,
+      scheduled_start_utc: new Date('2030-06-15T10:30:00Z'),
+    };
+    const findByIdInAcademy = jest.fn().mockResolvedValue(session);
+    const { service, notices } = buildService({
+      findByIdInAcademy,
+      rescheduleIfScheduled: jest.fn().mockResolvedValue(moved),
+    });
+
+    await service.rescheduleForAcademy('academy-1', SESSION_ID, {
+      newStartLocal: FUTURE_LOCAL,
+    });
+
+    expect(findByIdInAcademy).toHaveBeenCalledWith(SESSION_ID, 'academy-1');
+    expect(notices.notifyRescheduled).toHaveBeenCalledTimes(1);
+    expect(notices.notifyRescheduled).toHaveBeenCalledWith(session, moved, {
+      kind: 'academy',
+      academyId: 'academy-1',
+    });
+  });
+
+  it('an Academy reschedule of a class the academy does not own is a 404 and announces nothing', async () => {
+    const { service, notices } = buildService({
+      findByIdInAcademy: jest.fn().mockResolvedValue(undefined),
+    });
+
+    await expect(
+      service.rescheduleForAcademy('academy-1', SESSION_ID, {
+        newStartLocal: FUTURE_LOCAL,
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(notices.notifyRescheduled).not.toHaveBeenCalled();
+  });
+
+  it('a failed Academy reschedule (time conflict) announces nothing', async () => {
+    const session = makeSession({
+      status: 'scheduled',
+      scheduled_start_utc: FUTURE,
+    });
+    const { service, notices } = buildService({
+      findByIdInAcademy: jest.fn().mockResolvedValue(session),
+      hasScheduledOverlapForTutor: jest.fn().mockResolvedValue(true),
+    });
+
+    await expect(
+      service.rescheduleForAcademy('academy-1', SESSION_ID, {
+        newStartLocal: FUTURE_LOCAL,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(notices.notifyRescheduled).not.toHaveBeenCalled();
   });
 });
 

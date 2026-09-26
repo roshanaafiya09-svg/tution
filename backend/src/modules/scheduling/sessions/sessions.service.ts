@@ -16,7 +16,10 @@ import {
   type TeachingContext,
 } from '../../teaching-context/teaching-context';
 import { expandRecurrence } from './recurrence';
-import { SessionNotificationsService } from './session-notifications.service';
+import {
+  SessionNotificationsService,
+  type RescheduleActor,
+} from './session-notifications.service';
 import type { CreateSessionDto } from './dto/create-session.dto';
 import type { UpdateSessionDto } from './dto/update-session.dto';
 import type { RescheduleSessionDto } from './dto/reschedule-session.dto';
@@ -451,16 +454,19 @@ export class SessionsService {
     dto: RescheduleSessionDto,
   ) {
     const session = await this.getOwnedSession(tutorId, sessionId);
-    return this.rescheduleSession(session, dto);
+    return this.rescheduleSession(session, dto, { kind: 'teacher' });
   }
 
+  /** getAcademySession only returns a session of a batch this academy
+   *  owns, so the `academy` actor below is always the real owner — the
+   *  teacher notice is then resolved from that persisted session. */
   async rescheduleForAcademy(
     academyId: string,
     sessionId: string,
     dto: RescheduleSessionDto,
   ) {
     const session = await this.getAcademySession(academyId, sessionId);
-    return this.rescheduleSession(session, dto);
+    return this.rescheduleSession(session, dto, { kind: 'academy', academyId });
   }
 
   /**
@@ -476,13 +482,15 @@ export class SessionsService {
    *      'scheduled'` pattern (rescheduleIfScheduled), additionally
    *      guarded on the time it read — a reschedule racing a concurrent
    *      cancel/complete/reschedule resolves to exactly one winner;
-   *   5. only then tell the students/parents (H4). Asking for the time
+   *   5. only then tell the students/parents (H4) — and, when the ACADEMY
+   *      moved it (`actor`), the class's teacher too. Asking for the time
    *      the class already has is a no-op: nothing changes, nothing is
    *      announced, so a double-submitted reschedule notifies once.
    */
   private async rescheduleSession(
     session: SessionRow,
     dto: RescheduleSessionDto,
+    actor: RescheduleActor,
   ) {
     if (session.status !== 'scheduled') {
       return this.rejectRescheduleTransition(session.status);
@@ -561,7 +569,7 @@ export class SessionsService {
           'This class was just changed by someone else. Refresh and try again.',
       });
     }
-    await this.notices.notifyRescheduled(session, rescheduled);
+    await this.notices.notifyRescheduled(session, rescheduled, actor);
     return rescheduled;
   }
 

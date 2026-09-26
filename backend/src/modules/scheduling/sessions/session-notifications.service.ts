@@ -15,6 +15,12 @@ export type ImmediateCancellationReason =
 export const CLASS_CANCELLED_TYPE = 'class_cancelled';
 export const CLASS_RESCHEDULED_TYPE = 'class_rescheduled';
 export const CLASS_CREATED_TYPE = 'class_created';
+/** Sent to the teacher(s) of a class when their ACADEMY moved it. */
+export const CLASS_RESCHEDULED_BY_ACADEMY_TYPE = 'class_rescheduled_by_academy';
+
+/** Who moved the class. Only an academy actor adds the teacher notice. */
+export type RescheduleActor =
+  { kind: 'teacher' } | { kind: 'academy'; academyId: string };
 
 interface NoticeSession {
   id: string;
@@ -225,24 +231,108 @@ export class SessionNotificationsService {
    * same reschedule retried or raced produces one notice, while a later,
    * genuinely new reschedule of the same class (even back to an earlier
    * time) is a new event with a new key.
+   *
+   * `actor` says who moved the class. A teacher moving their own class
+   * needs no notice to themselves; when the ACADEMY moved it, the
+   * teacher(s) running that class are told too (notifyTeachersRescheduled).
+   * The two notices are independent — one failing never suppresses the
+   * other.
    */
   async notifyRescheduled(
     before: NoticeSession & { updated_at: Date; duration_min: number },
-    after: NoticeSession & { duration_min: number },
+    after: NoticeSession & {
+      duration_min: number;
+      tutor_id: string;
+      substitute_tutor_id: string | null;
+    },
+    actor: RescheduleActor = { kind: 'teacher' },
   ): Promise<void> {
     try {
       const batch = await this.batchesRepository.findById(after.batch_id);
       const recipients = await this.recipientsForBatch(after.batch_id);
-      if (!batch || recipients.length === 0) return;
+      if (batch && recipients.length > 0) {
+        await this.notificationsService.notify({
+          userIds: recipients,
+          type: CLASS_RESCHEDULED_TYPE,
+          title: '📅 Class Rescheduled',
+          body: `Your ${batch.title} class on ${when(before.scheduled_start_utc, before.timezone)} has moved to ${when(after.scheduled_start_utc, after.timezone)} (${after.duration_min} min).`,
+          payload: {
+            sessionId: after.id,
+            batchId: after.batch_id,
+            previousStartUtc: before.scheduled_start_utc.toISOString(),
+            newStartUtc: after.scheduled_start_utc.toISOString(),
+            durationMin: after.duration_min,
+          },
+          dedupeKey: `rescheduled:${after.id}:${before.updated_at.getTime()}`,
+        });
+      }
+    } catch (err) {
+      this.logger.error(
+        `Reschedule notice failed for session ${after.id}`,
+        err instanceof Error ? err.stack : err,
+      );
+    }
 
+    if (actor.kind === 'academy') {
+      await this.notifyTeachersRescheduled(before, after, actor.academyId);
+    }
+  }
+
+  /**
+   * The academy moved one of ITS classes: tell the teacher who runs it
+   * (and the substitute covering it, if one is assigned). Called only
+   * after the reschedule committed.
+   *
+   * Recipients come from the persisted session — never from the request:
+   *  - the batch must be owned by `academyId` (an Individual class, or
+   *    another academy's, yields no notice even if a caller got here);
+   *  - each teacher must still be an ACTIVE member of that academy and a
+   *    live account, so a teacher who has left the academy — whose
+   *    Individual profile is a separate identity — hears nothing about it.
+   *
+   * Same dedupe convention as the roster notice (session + pre-change
+   * version; the recipient is part of the unique index), under its own
+   * type so it can never collide with a roster row for the same user.
+   */
+  private async notifyTeachersRescheduled(
+    before: NoticeSession & { updated_at: Date; duration_min: number },
+    after: NoticeSession & {
+      duration_min: number;
+      tutor_id: string;
+      substitute_tutor_id: string | null;
+    },
+    academyId: string,
+  ): Promise<void> {
+    try {
+      const context = await this.sessionsRepository.findCreationNoticeContext(
+        after.batch_id,
+      );
+      if (!context || context.academy_id !== academyId) return;
+
+      const candidates = [
+        ...new Set(
+          [after.tutor_id, after.substitute_tutor_id].filter(
+            (id): id is string => !!id,
+          ),
+        ),
+      ];
+      const recipients =
+        await this.sessionsRepository.filterActiveAcademyTeachers(
+          academyId,
+          candidates,
+        );
+      if (recipients.length === 0) return;
+
+      const academy = context.academy_name ?? 'your academy';
       await this.notificationsService.notify({
         userIds: recipients,
-        type: CLASS_RESCHEDULED_TYPE,
-        title: '📅 Class Rescheduled',
-        body: `Your ${batch.title} class on ${when(before.scheduled_start_utc, before.timezone)} has moved to ${when(after.scheduled_start_utc, after.timezone)} (${after.duration_min} min).`,
+        type: CLASS_RESCHEDULED_BY_ACADEMY_TYPE,
+        title: '📅 Class Rescheduled by Academy',
+        body: `Your ${context.batch_title} class has been rescheduled by ${academy} from ${when(before.scheduled_start_utc, before.timezone)} to ${when(after.scheduled_start_utc, after.timezone)} (${after.duration_min} min).`,
         payload: {
           sessionId: after.id,
           batchId: after.batch_id,
+          academyId,
           previousStartUtc: before.scheduled_start_utc.toISOString(),
           newStartUtc: after.scheduled_start_utc.toISOString(),
           durationMin: after.duration_min,
@@ -251,7 +341,7 @@ export class SessionNotificationsService {
       });
     } catch (err) {
       this.logger.error(
-        `Reschedule notice failed for session ${after.id}`,
+        `Teacher reschedule notice failed for session ${after.id}`,
         err instanceof Error ? err.stack : err,
       );
     }

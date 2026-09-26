@@ -494,6 +494,27 @@ export class SessionsRepository {
     return rows.map((r) => r.id);
   }
 
+  /** Of these tutors, the ones who are currently ACTIVE members of the
+   *  academy and have a live account — who an academy-side notice about
+   *  one of its own classes may reach. A member who left is filtered out
+   *  (their Individual profile is a separate context). */
+  async filterActiveAcademyTeachers(
+    academyId: string,
+    tutorIds: string[],
+  ): Promise<string[]> {
+    if (tutorIds.length === 0) return [];
+    const rows = await this.db
+      .selectFrom('academy_memberships')
+      .innerJoin('users', 'users.id', 'academy_memberships.tutor_id')
+      .select('academy_memberships.tutor_id')
+      .where('academy_memberships.academy_id', '=', academyId)
+      .where('academy_memberships.tutor_id', 'in', tutorIds)
+      .where('academy_memberships.status', '=', 'active')
+      .where('users.deleted_at', 'is', null)
+      .execute();
+    return rows.map((r) => r.tutor_id);
+  }
+
   findByIds(ids: string[]) {
     if (ids.length === 0) return Promise.resolve([]);
     return this.db
