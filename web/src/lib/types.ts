@@ -133,6 +133,22 @@ export type ClassCancellationReason =
   | 'academy_manual'
   | 'batch_archived';
 
+/** An occurrence of a new recurring series that fell on an Academy holiday
+ *  and was therefore not created (see POST /sessions). */
+export interface SkippedHolidayOccurrence {
+  scheduled_start_utc: string;
+  /** The holiday calendar date, YYYY-MM-DD. */
+  date: string;
+  holiday_name: string;
+}
+
+/** Response of POST /sessions and POST /academy/me/batches/:id/sessions —
+ *  the created (first) class plus any holiday occurrences skipped. */
+export interface CreatedSessionResponse {
+  id: string;
+  skipped_holiday_occurrences: SkippedHolidayOccurrence[];
+}
+
 export interface Session {
   id: string;
   batch_id: string;

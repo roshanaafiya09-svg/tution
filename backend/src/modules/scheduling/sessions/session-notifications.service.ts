@@ -14,6 +14,7 @@ export type ImmediateCancellationReason =
 
 export const CLASS_CANCELLED_TYPE = 'class_cancelled';
 export const CLASS_RESCHEDULED_TYPE = 'class_rescheduled';
+export const CLASS_CREATED_TYPE = 'class_created';
 
 interface NoticeSession {
   id: string;
@@ -37,7 +38,8 @@ function shortHash(parts: string[]): string {
 
 /**
  * H4: tells a class's students (and their actively-linked parents) about
- * a cancellation or a reschedule the moment it has been COMMITTED —
+ * a new class, a cancellation or a reschedule the moment it has been
+ * COMMITTED —
  * callers only invoke this after the atomic state change succeeded, never
  * before, so a rejected/raced request never announces anything.
  *
@@ -147,6 +149,75 @@ export class SessionNotificationsService {
           ? cancellationDedupeKey(first.id)
           : `cancelled-set:${shortHash(sessions.map((s) => s.id).sort())}`,
     });
+  }
+
+  /**
+   * A class (or a recurring series) was just created — called only after
+   * SessionsRepository.createSeries committed, so a rejected creation
+   * (400/403/404/409) never announces anything.
+   *
+   * Same shape as a cancellation: one notice for a single class, one
+   * summarised notice for a series (never one per occurrence). Only
+   * occurrences still in the future are announced — a class back-filled
+   * into the past isn't "scheduled" news. Recipients are the batch's
+   * active roster and their actively-linked parents (the batch is the
+   * Individual/Academy boundary, as for every other session notice),
+   * minus deleted accounts.
+   *
+   * Dedupe key `created:<id>` is the created session (or the series'
+   * parent session) — the unique (user_id, type, dedupe_key) index makes
+   * it one row and one push per recipient however often this runs.
+   */
+  async notifyCreated(
+    parent: NoticeSession & { tutor_id: string; duration_min: number },
+    starts: Date[],
+  ): Promise<void> {
+    try {
+      const now = Date.now();
+      const upcoming = starts
+        .filter((s) => s.getTime() > now)
+        .sort((a, b) => a.getTime() - b.getTime());
+      if (upcoming.length === 0) return;
+
+      const context = await this.sessionsRepository.findCreationNoticeContext(
+        parent.batch_id,
+      );
+      if (!context) return;
+      const recipients = await this.sessionsRepository.filterLiveUserIds(
+        await this.recipientsForBatch(parent.batch_id),
+      );
+      if (recipients.length === 0) return;
+
+      const teacher = context.tutor_display_name
+        ? ` with ${context.tutor_display_name}`
+        : '';
+      const where = context.academy_name ? ` at ${context.academy_name}` : '';
+      const first = when(upcoming[0], parent.timezone);
+      const body =
+        upcoming.length === 1
+          ? `Your ${context.batch_title} class${teacher}${where} is scheduled for ${first} (${parent.duration_min} min).`
+          : `${upcoming.length} ${context.batch_title} classes${teacher}${where} have been scheduled, starting ${first} (${parent.duration_min} min each).`;
+
+      await this.notificationsService.notify({
+        userIds: recipients,
+        type: CLASS_CREATED_TYPE,
+        title: '🗓️ New class scheduled',
+        body,
+        payload: {
+          sessionId: parent.id,
+          batchId: parent.batch_id,
+          academyId: context.academy_id,
+          scheduledStartUtc: upcoming[0].toISOString(),
+          occurrenceCount: upcoming.length,
+        },
+        dedupeKey: `created:${parent.id}`,
+      });
+    } catch (err) {
+      this.logger.error(
+        `Class-created notice failed for session ${parent.id}`,
+        err instanceof Error ? err.stack : err,
+      );
+    }
   }
 
   /**

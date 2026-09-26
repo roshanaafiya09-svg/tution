@@ -126,6 +126,12 @@ const BY_CODE: Record<string, { title: string; canRetry: boolean }> = {
     title: 'Teaching profile not recognised',
     canRetry: false,
   },
+  // A 409, but not "out of date" — the date itself is closed; the server's
+  // message names the holiday.
+  [ErrorCodes.ACADEMY_HOLIDAY]: {
+    title: 'Academy holiday',
+    canRetry: false,
+  },
 };
 
 /**

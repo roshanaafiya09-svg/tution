@@ -71,6 +71,75 @@ export class HolidaysRepository {
       .execute();
   }
 
+  /**
+   * Every holiday in [from, to] (inclusive dates) that applies to one
+   * academy batch — the same applicability rules HolidayService.
+   * applyHolidayForAcademy uses to cancel classes:
+   *  - an academy-wide holiday of THIS academy;
+   *  - a batch-scoped holiday of this academy that lists this batch;
+   *  - a government holiday for the academy's own country/state (national
+   *    ones always match), but only if the academy observes them.
+   * Keyed on the batch's owning academy, never on a teacher, so another
+   * academy's holidays can never match.
+   */
+  listEffectiveForAcademyBatch(
+    academyId: string,
+    batchId: string,
+    from: string,
+    to: string,
+  ) {
+    return this.db
+      .selectFrom('holidays')
+      .selectAll('holidays')
+      .where('holidays.start_date', '<=', to)
+      .where('holidays.end_date', '>=', from)
+      .where((eb) =>
+        eb.or([
+          eb.and([
+            eb('holidays.type', '=', 'academy_holiday'),
+            eb('holidays.academy_id', '=', academyId),
+            eb.or([
+              eb('holidays.scope', '=', 'academy'),
+              eb.exists(
+                eb
+                  .selectFrom('holiday_batches')
+                  .select('holiday_batches.batch_id')
+                  .whereRef('holiday_batches.holiday_id', '=', 'holidays.id')
+                  .where('holiday_batches.batch_id', '=', batchId),
+              ),
+            ]),
+          ]),
+          eb.and([
+            eb('holidays.type', '=', 'government_holiday'),
+            eb.exists(
+              eb
+                .selectFrom('academies')
+                .select('academies.id')
+                .where('academies.id', '=', academyId)
+                .where('academies.auto_observe_govt_holidays', '=', true)
+                .whereRef(
+                  'academies.country_code',
+                  '=',
+                  'holidays.country_code',
+                )
+                .where((inner) =>
+                  inner.or([
+                    inner('holidays.state_code', 'is', null),
+                    inner(
+                      'holidays.state_code',
+                      '=',
+                      inner.ref('academies.state_code'),
+                    ),
+                  ]),
+                ),
+            ),
+          ]),
+        ]),
+      )
+      .orderBy('holidays.start_date')
+      .execute();
+  }
+
   /** Owned-lookup for delete/read — an academy can only ever touch its
    *  own academy-declared holidays, never a government one. */
   findAcademyHoliday(id: string, academyId: string) {

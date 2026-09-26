@@ -1,4 +1,4 @@
-import type { AcademyTodaySession, ClassCancellationReason, Session } from './types';
+import type { AcademyTodaySession, ClassCancellationReason, Session, SkippedHolidayOccurrence } from './types';
 
 /** Just the fields cancellationBadgeLabel/cancellationReasonLabel actually
  *  read — lets callers pass any session-shaped row (AcademyTodaySession,
@@ -94,4 +94,19 @@ export function coverageLabel(
  *  class's own teacher (the API returns 403 for them). */
 export function canManageSession(session: Pick<Session, 'viewer_role'>): boolean {
   return session.viewer_role !== 'substitute';
+}
+
+/** Toast copy for a new recurring series whose Academy-holiday occurrences
+ *  were skipped by the server (null when nothing was skipped). */
+export function skippedHolidayNote(skipped: SkippedHolidayOccurrence[]): string | null {
+  if (skipped.length === 0) return null;
+  const days = skipped
+    .map((s) =>
+      new Date(`${s.date}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }),
+    )
+    .join(', ');
+  const names = [...new Set(skipped.map((s) => s.holiday_name))].join(', ');
+  return skipped.length === 1
+    ? `No class was scheduled on ${days} — it's an Academy holiday (${names}).`
+    : `${skipped.length} classes were not scheduled (${days}) — Academy holidays (${names}).`;
 }

@@ -247,7 +247,12 @@ describe('Session notices, substitute access, student removal (e2e)', () => {
         (n.payload as any).sessionId === cancelledSid ||
         ((n.payload as any).sessionIds ?? []).includes(cancelledSid),
     );
-    expect(aboutIt.map((n) => n.type)).toEqual(['class_cancelled']);
+    // Its own creation notice, then the one immediate cancellation — no
+    // sweep re-announcement and no "starts in 10 minutes".
+    expect(aboutIt.map((n) => n.type).sort()).toEqual([
+      'class_cancelled',
+      'class_created',
+    ]);
   });
 
   it('H4.3 a scheduled class in the window gets exactly one reminder even when the sweep runs twice concurrently', async () => {

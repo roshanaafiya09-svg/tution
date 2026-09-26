@@ -464,6 +464,36 @@ export class SessionsRepository {
       .executeTakeFirstOrThrow();
   }
 
+  /** What a class-created notice names: the batch, its teacher, and (for
+   *  an Academy class) the academy that owns it. */
+  findCreationNoticeContext(batchId: string) {
+    return this.db
+      .selectFrom('batches')
+      .leftJoin('profiles_tutor', 'profiles_tutor.user_id', 'batches.tutor_id')
+      .leftJoin('academies', 'academies.id', 'batches.academy_id')
+      .select([
+        'batches.title as batch_title',
+        'batches.academy_id',
+        'profiles_tutor.display_name as tutor_display_name',
+        'academies.name as academy_name',
+      ])
+      .where('batches.id', '=', batchId)
+      .executeTakeFirst();
+  }
+
+  /** Drops soft-deleted accounts — a deleted user keeps no live session
+   *  and must not be sent new notices. */
+  async filterLiveUserIds(userIds: string[]): Promise<string[]> {
+    if (userIds.length === 0) return [];
+    const rows = await this.db
+      .selectFrom('users')
+      .select('id')
+      .where('id', 'in', userIds)
+      .where('deleted_at', 'is', null)
+      .execute();
+    return rows.map((r) => r.id);
+  }
+
   findByIds(ids: string[]) {
     if (ids.length === 0) return Promise.resolve([]);
     return this.db

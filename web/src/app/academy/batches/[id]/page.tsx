@@ -8,13 +8,14 @@ import type {
   AcademyBatchAttendance,
   AcademyManagedBatch,
   AcademyManagedSession,
+  CreatedSessionResponse,
   Curriculum,
   Enrollment,
   GradeLevel,
   Invite,
   Subject,
 } from '@/lib/types';
-import { cancellationReasonLabel } from '@/lib/session-labels';
+import { cancellationReasonLabel, skippedHolidayNote } from '@/lib/session-labels';
 import {
   Button,
   CardSkeleton,
@@ -500,7 +501,7 @@ function SessionsTab({ batchId }: { batchId: string }) {
     setCreating(true);
     try {
       const recurrenceRule = form.repeat === 'none' ? undefined : `FREQ=WEEKLY;BYDAY=${form.repeat};COUNT=${form.count}`;
-      await api.post(`/academy/me/batches/${batchId}/sessions`, {
+      const created = await api.post<CreatedSessionResponse>(`/academy/me/batches/${batchId}/sessions`, {
         batchId,
         startLocal: form.startLocal,
         durationMin: Number(form.durationMin),
@@ -509,8 +510,12 @@ function SessionsTab({ batchId }: { batchId: string }) {
       });
       await load();
       setShowForm(false);
+      const skippedNote = skippedHolidayNote(created.skipped_holiday_occurrences ?? []);
+      if (skippedNote) toast({ title: 'Holiday skipped', description: skippedNote, variant: 'info' });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not schedule the session.');
+      // An Academy holiday (409 ACADEMY_HOLIDAY) arrives with a message
+      // naming the holiday — errorMessage shows it as-is.
+      setError(errorMessage(err, 'Could not schedule the session.'));
     } finally {
       setCreating(false);
     }

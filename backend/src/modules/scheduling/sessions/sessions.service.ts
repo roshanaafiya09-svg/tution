@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { Selectable } from 'kysely';
+import { DateTime } from 'luxon';
 import { SessionsRepository } from './sessions.repository';
 import { BatchesService } from '../batches/batches.service';
 import { TeachingContextService } from '../../teaching-context/teaching-context.service';
@@ -21,8 +22,16 @@ import type { UpdateSessionDto } from './dto/update-session.dto';
 import type { RescheduleSessionDto } from './dto/reschedule-session.dto';
 import { ErrorCode } from '../../../common/http/error-codes';
 import type { ClassSessionsTable } from '../../../database/types';
+import {
+  AcademyHolidayCalendar,
+  holidayDateOf,
+} from '../../holidays/holiday-calendar';
 
 const DEFAULT_TIMEZONE = 'Asia/Kolkata';
+
+function formatHolidayDate(isoDate: string): string {
+  return DateTime.fromISO(isoDate).toFormat('ccc d LLL yyyy');
+}
 
 type SessionRow = Selectable<ClassSessionsTable>;
 
@@ -33,6 +42,7 @@ export class SessionsService {
     private readonly batchesService: BatchesService,
     private readonly teachingContext: TeachingContextService,
     private readonly notices: SessionNotificationsService,
+    private readonly holidayCalendar: AcademyHolidayCalendar,
   ) {}
 
   /** Teacher path: the tutor must own the batch AND (via the request's
@@ -42,7 +52,7 @@ export class SessionsService {
   async create(tutorId: string, dto: CreateSessionDto) {
     const batch = await this.batchesService.getOwnedBatch(tutorId, dto.batchId);
     this.assertBatchActive(batch);
-    return this.createSeries(tutorId, dto);
+    return this.createSeries(tutorId, batch, dto);
   }
 
   /** Academy path: the batch must be owned by THIS academy (not merely
@@ -55,7 +65,7 @@ export class SessionsService {
     );
     this.assertBatchActive(batch);
     await this.teachingContext.assertActiveMember(academyId, batch.tutor_id);
-    return this.createSeries(batch.tutor_id, dto);
+    return this.createSeries(batch.tutor_id, batch, dto);
   }
 
   /** H11: nothing stops a NEW session being scheduled on an archived
@@ -70,7 +80,37 @@ export class SessionsService {
     }
   }
 
-  private async createSeries(tutorId: string, dto: CreateSessionDto) {
+  /**
+   * The ONLY path that creates class_sessions rows (teacher POST /sessions,
+   * academy POST /academy/me/batches/:id/sessions, and the mobile app all
+   * land here), so the holiday rule and the class-created notice below
+   * cover every caller.
+   *
+   * Academy holidays: `batch` is the row the caller's ownership check
+   * already loaded from the database (getOwnedBatch/getAcademyBatch), so
+   * its academy_id is trusted — never a client-supplied value. An
+   * occurrence falling on a holiday of that academy batch is never
+   * created as a normal scheduled class:
+   *  - a single class on a holiday is rejected (409 ACADEMY_HOLIDAY);
+   *  - a recurring series skips its holiday occurrences and creates the
+   *    rest — the same end state the existing holiday model produces
+   *    when a holiday is declared after a series exists (only that one
+   *    occurrence stops running). The whole series is rejected only if
+   *    every occurrence is a holiday. The skipped dates are returned in
+   *    `skipped_holiday_occurrences` so the UI can say so.
+   * Unlike a teacher/batch time conflict (which rejects the whole series
+   * because the teacher can pick another time), a holiday is the
+   * academy's decision, not something the teacher can resolve.
+   *
+   * Nothing is written and nobody is notified unless every check passes;
+   * the insert itself is one transaction (SessionsRepository.createSeries)
+   * and the notice is only sent after it commits.
+   */
+  private async createSeries(
+    tutorId: string,
+    batch: { id: string; academy_id: string | null },
+    dto: CreateSessionDto,
+  ) {
     const timezone = dto.timezone ?? DEFAULT_TIMEZONE;
     const occurrences = expandRecurrence(
       dto.startLocal,
@@ -78,15 +118,35 @@ export class SessionsService {
       dto.recurrenceRule ?? null,
     );
 
-    await this.assertNoConflicts(
-      tutorId,
-      dto.batchId,
-      occurrences,
-      dto.durationMin,
-    );
+    const holidays = await this.holidayCalendar.holidaysFor(batch, occurrences);
+    const kept = occurrences.filter((_, i) => holidays[i] === null);
+    const skipped = occurrences.flatMap((start, i) => {
+      const holiday = holidays[i];
+      return holiday
+        ? [
+            {
+              scheduled_start_utc: start,
+              date: holidayDateOf(start),
+              holiday_name: holiday.name,
+            },
+          ]
+        : [];
+    });
+    if (kept.length === 0) {
+      const first = skipped[0];
+      throw new ConflictException({
+        code: ErrorCode.ACADEMY_HOLIDAY,
+        message:
+          occurrences.length === 1
+            ? `This date is an Academy holiday (${first.holiday_name}, ${formatHolidayDate(first.date)}). Classes cannot be scheduled on it.`
+            : `Every class in this series falls on an Academy holiday (from ${first.holiday_name}, ${formatHolidayDate(first.date)}). No classes were scheduled.`,
+      });
+    }
 
-    return this.repository.createSeries(
-      occurrences.map((scheduledStartUtc) => ({
+    await this.assertNoConflicts(tutorId, dto.batchId, kept, dto.durationMin);
+
+    const parent = await this.repository.createSeries(
+      kept.map((scheduledStartUtc) => ({
         batchId: dto.batchId,
         tutorId,
         scheduledStartUtc,
@@ -97,6 +157,9 @@ export class SessionsService {
         recurrenceParentId: null,
       })),
     );
+
+    await this.notices.notifyCreated(parent, kept);
+    return { ...parent, skipped_holiday_occurrences: skipped };
   }
 
   /** Checked before creating a session (or every occurrence of a

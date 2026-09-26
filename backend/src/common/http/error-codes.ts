@@ -74,6 +74,11 @@ export const ErrorCode = {
   // Archive cascade (H11) — see BatchesRepository.archive / SessionsService.assertBatchActive.
   /** A new session/series was requested on an archived batch. */
   BATCH_ARCHIVED: 'BATCH_ARCHIVED',
+  /** A new Academy class was requested on a date that is a holiday for
+   *  that academy batch (see AcademyHolidayCalendar). For a recurring
+   *  series only when EVERY occurrence is a holiday — otherwise the
+   *  holiday occurrences are skipped. */
+  ACADEMY_HOLIDAY: 'ACADEMY_HOLIDAY',
 
   // Account deletion (H8).
   /** The invite was revoked — its teacher's account was deleted. */

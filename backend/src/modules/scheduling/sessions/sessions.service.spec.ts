@@ -16,6 +16,7 @@ import type { SessionsRepository } from './sessions.repository';
 import type { BatchesService } from '../batches/batches.service';
 import type { TeachingContextService } from '../../teaching-context/teaching-context.service';
 import { ErrorCode } from '../../../common/http/error-codes';
+import type { AcademyHolidayCalendar } from '../../holidays/holiday-calendar';
 
 const TUTOR_ID = 'tutor-1';
 const BATCH_ID = 'batch-1';
@@ -35,6 +36,7 @@ function buildService(overrides: {
   cancelSeries?: jest.Mock;
   rescheduleIfScheduled?: jest.Mock;
   updateMeetingUrl?: jest.Mock;
+  holidaysFor?: jest.Mock;
 }) {
   const repository = {
     hasScheduledOverlapForTutor:
@@ -92,6 +94,16 @@ function buildService(overrides: {
   const notices = {
     notifyCancelled: jest.fn().mockResolvedValue(undefined),
     notifyRescheduled: jest.fn().mockResolvedValue(undefined),
+    notifyCreated: jest.fn().mockResolvedValue(undefined),
+  };
+
+  // Default: no holidays — one null per occurrence.
+  const holidayCalendar = {
+    holidaysFor:
+      overrides.holidaysFor ??
+      jest.fn((_batch: unknown, starts: Date[]) =>
+        Promise.resolve(starts.map(() => null)),
+      ),
   };
 
   return {
@@ -100,9 +112,11 @@ function buildService(overrides: {
       batchesService,
       teachingContext,
       notices as unknown as SessionNotificationsService,
+      holidayCalendar as unknown as AcademyHolidayCalendar,
     ),
     repository,
     notices,
+    holidayCalendar,
   };
 }
 
@@ -261,6 +275,192 @@ describe('SessionsService.create — conflict detection', () => {
       response: { code: ErrorCode.BATCH_ARCHIVED },
     });
     expect(createSeries).not.toHaveBeenCalled();
+  });
+});
+
+describe('SessionsService.create — academy holidays + class-created notice', () => {
+  const HOLIDAY = { id: 'h-1', name: 'Founders Day' };
+  const ACADEMY_BATCH = {
+    id: BATCH_ID,
+    tutor_id: TUTOR_ID,
+    status: 'active',
+    academy_id: 'academy-1',
+  };
+
+  it('notifies after a successful single-class creation, with the created row and its start', async () => {
+    const parent = { id: 'session-1', batch_id: BATCH_ID };
+    const createSeries = jest.fn().mockResolvedValue(parent);
+    const { service, notices } = buildService({ createSeries });
+
+    const result = await service.create(TUTOR_ID, {
+      batchId: BATCH_ID,
+      startLocal: '2030-09-21T16:00',
+      durationMin: 60,
+    });
+
+    expect(notices.notifyCreated).toHaveBeenCalledTimes(1);
+    const [notifiedParent, starts] = notices.notifyCreated.mock.calls[0] as [
+      unknown,
+      Date[],
+    ];
+    expect(notifiedParent).toBe(parent);
+    expect(starts).toHaveLength(1);
+    expect(result).toMatchObject({
+      id: 'session-1',
+      skipped_holiday_occurrences: [],
+    });
+  });
+
+  it('a recurring series is ONE notifyCreated call carrying every created occurrence', async () => {
+    const { service, notices } = buildService({
+      createSeries: jest
+        .fn()
+        .mockResolvedValue({ id: 'p', batch_id: BATCH_ID }),
+    });
+    await service.create(TUTOR_ID, {
+      batchId: BATCH_ID,
+      startLocal: '2030-09-21T16:00',
+      durationMin: 60,
+      recurrenceRule: 'FREQ=WEEKLY;COUNT=4',
+    });
+    expect(notices.notifyCreated).toHaveBeenCalledTimes(1);
+    expect(
+      (notices.notifyCreated.mock.calls[0] as [unknown, Date[]])[1],
+    ).toHaveLength(4);
+  });
+
+  it('a failed creation (conflict) never notifies', async () => {
+    const { service, notices } = buildService({
+      hasScheduledOverlapForTutor: jest.fn().mockResolvedValue(true),
+    });
+    await expect(
+      service.create(TUTOR_ID, {
+        batchId: BATCH_ID,
+        startLocal: '2030-09-21T16:00',
+        durationMin: 60,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(notices.notifyCreated).not.toHaveBeenCalled();
+  });
+
+  it('a failed insert never notifies', async () => {
+    const { service, notices } = buildService({
+      createSeries: jest.fn().mockRejectedValue(new Error('db down')),
+    });
+    await expect(
+      service.create(TUTOR_ID, {
+        batchId: BATCH_ID,
+        startLocal: '2030-09-21T16:00',
+        durationMin: 60,
+      }),
+    ).rejects.toThrow('db down');
+    expect(notices.notifyCreated).not.toHaveBeenCalled();
+  });
+
+  it('rejects a single academy class on a holiday with 409 ACADEMY_HOLIDAY — no insert, no notice, no conflict query', async () => {
+    const createSeries = jest.fn();
+    const hasScheduledOverlapForTutor = jest.fn();
+    const { service, notices } = buildService({
+      createSeries,
+      hasScheduledOverlapForTutor,
+      getAcademyBatch: jest.fn().mockResolvedValue(ACADEMY_BATCH),
+      holidaysFor: jest.fn().mockResolvedValue([HOLIDAY]),
+    });
+
+    await expect(
+      service.createForAcademy('academy-1', {
+        batchId: BATCH_ID,
+        startLocal: '2030-09-21T16:00',
+        durationMin: 60,
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: ErrorCode.ACADEMY_HOLIDAY },
+    });
+    expect(createSeries).not.toHaveBeenCalled();
+    expect(hasScheduledOverlapForTutor).not.toHaveBeenCalled();
+    expect(notices.notifyCreated).not.toHaveBeenCalled();
+  });
+
+  it('the teacher path checks holidays against the batch row loaded by the ownership check (trusted academy_id)', async () => {
+    const holidaysFor = jest.fn().mockResolvedValue([HOLIDAY]);
+    const { service } = buildService({
+      getOwnedBatch: jest.fn().mockResolvedValue(ACADEMY_BATCH),
+      holidaysFor,
+    });
+    await expect(
+      service.create(TUTOR_ID, {
+        batchId: BATCH_ID,
+        startLocal: '2030-09-21T16:00',
+        durationMin: 60,
+      }),
+    ).rejects.toMatchObject({ response: { code: ErrorCode.ACADEMY_HOLIDAY } });
+    expect((holidaysFor.mock.calls as unknown[][])[0][0]).toBe(ACADEMY_BATCH);
+  });
+
+  it('recurring series: skips the holiday occurrence, creates and announces the rest, reports what was skipped', async () => {
+    const createSeries = jest
+      .fn()
+      .mockResolvedValue({ id: 'p', batch_id: BATCH_ID });
+    const hasScheduledOverlapForTutor = jest.fn().mockResolvedValue(false);
+    const { service, notices } = buildService({
+      createSeries,
+      hasScheduledOverlapForTutor,
+      getOwnedBatch: jest.fn().mockResolvedValue(ACADEMY_BATCH),
+      // 2nd of 4 weekly occurrences is a holiday.
+      holidaysFor: jest.fn().mockResolvedValue([null, HOLIDAY, null, null]),
+    });
+
+    const result = await service.create(TUTOR_ID, {
+      batchId: BATCH_ID,
+      startLocal: '2030-09-21T16:00',
+      durationMin: 60,
+      timezone: 'Asia/Kolkata',
+      recurrenceRule: 'FREQ=WEEKLY;COUNT=4',
+    });
+
+    const inserted = (createSeries.mock.calls as unknown[][])[0][0] as Array<{
+      scheduledStartUtc: Date;
+    }>;
+    expect(inserted).toHaveLength(3);
+    // The holiday week (2030-09-28) is not among the inserted rows.
+    expect(
+      inserted.map((r) => r.scheduledStartUtc.toISOString()),
+    ).not.toContain('2030-09-28T10:30:00.000Z');
+    // Conflicts are only checked for occurrences that will be created.
+    expect(hasScheduledOverlapForTutor).toHaveBeenCalledTimes(3);
+    expect(
+      (notices.notifyCreated.mock.calls[0] as [unknown, Date[]])[1],
+    ).toHaveLength(3);
+    expect(result.skipped_holiday_occurrences).toEqual([
+      {
+        scheduled_start_utc: new Date('2030-09-28T10:30:00.000Z'),
+        date: '2030-09-28',
+        holiday_name: 'Founders Day',
+      },
+    ]);
+  });
+
+  it('recurring series where EVERY occurrence is a holiday is rejected outright', async () => {
+    const createSeries = jest.fn();
+    const { service, notices } = buildService({
+      createSeries,
+      getOwnedBatch: jest.fn().mockResolvedValue(ACADEMY_BATCH),
+      holidaysFor: jest.fn().mockResolvedValue([HOLIDAY, HOLIDAY]),
+    });
+    await expect(
+      service.create(TUTOR_ID, {
+        batchId: BATCH_ID,
+        startLocal: '2030-09-21T16:00',
+        durationMin: 60,
+        recurrenceRule: 'FREQ=DAILY;COUNT=2',
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: ErrorCode.ACADEMY_HOLIDAY },
+    });
+    expect(createSeries).not.toHaveBeenCalled();
+    expect(notices.notifyCreated).not.toHaveBeenCalled();
   });
 });
 

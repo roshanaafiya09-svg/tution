@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { IdentityModule } from '../identity/identity.module';
 import { SubscriptionsModule } from '../billing/subscriptions/subscriptions.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { HolidayCalendarModule } from '../holidays/holiday-calendar.module';
 import { BatchesController } from './batches/batches.controller';
 import { BatchesService } from './batches/batches.service';
 import { BatchesRepository } from './batches/batches.repository';
@@ -34,9 +35,17 @@ import { TeacherAttendanceRepository } from './attendance/teacher-attendance.rep
  * module (AttendanceParentModule) instead, the same shape ProgressModule
  * already uses to safely compose SchedulingModule + ParentsModule as
  * siblings.
+ * HolidayCalendarModule (read-only holiday lookup) is imported so class
+ * creation can refuse an academy holiday — it does not import this
+ * module back, unlike HolidaysModule.
  */
 @Module({
-  imports: [IdentityModule, SubscriptionsModule, NotificationsModule],
+  imports: [
+    IdentityModule,
+    SubscriptionsModule,
+    NotificationsModule,
+    HolidayCalendarModule,
+  ],
   controllers: [
     BatchesController,
     InvitesController,

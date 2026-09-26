@@ -27,11 +27,13 @@ import type {
   AttendanceBatchHistoryEntry,
   Assignment,
   Batch,
+  CreatedSessionResponse,
   Enrollment,
   Invite,
   Material,
   Session,
 } from '@/lib/types';
+import { skippedHolidayNote } from '@/lib/session-labels';
 import {
   CardTitle,
   StatusBadge,
@@ -309,7 +311,7 @@ function SessionsTab({ batchId }: { batchId: string }) {
           ? undefined
           : `FREQ=WEEKLY;BYDAY=${form.repeat};COUNT=${form.count}`;
 
-      await api.post('/sessions', {
+      const created = await api.post<CreatedSessionResponse>('/sessions', {
         batchId,
         startLocal: form.startLocal,
         durationMin: Number(form.durationMin),
@@ -319,8 +321,12 @@ function SessionsTab({ batchId }: { batchId: string }) {
       await load();
       setShowForm(false);
       toast({ title: 'Session scheduled', variant: 'success' });
+      const skippedNote = skippedHolidayNote(created.skipped_holiday_occurrences ?? []);
+      if (skippedNote) toast({ title: 'Holiday skipped', description: skippedNote, variant: 'info' });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not schedule the session.');
+      // An Academy holiday (409 ACADEMY_HOLIDAY) arrives with a message
+      // naming the holiday — errorMessage shows it as-is.
+      setError(errorMessage(err, 'Could not schedule the session.'));
     } finally {
       setCreating(false);
     }

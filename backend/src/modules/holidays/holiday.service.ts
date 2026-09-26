@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { HolidaysRepository } from './holidays.repository';
+import { HOLIDAY_TIMEZONE, holidayDayRangeUtc } from './holiday-calendar';
 import { AcademiesRepository } from '../marketplace/academies/academies.repository';
 import { AcademyMembershipsRepository } from '../marketplace/academy-memberships/academy-memberships.repository';
 import { BatchesRepository } from '../scheduling/batches/batches.repository';
@@ -18,14 +19,10 @@ import type {
   UserRole,
 } from '../../database/types';
 
-// V1 only ever schedules classes in this zone (see DEFAULT_TIMEZONE
-// elsewhere in the codebase, e.g. sessions.service.ts) — holiday dates
-// are plain calendar dates, so they need one IANA zone to resolve to a
-// UTC instant range. Not extracted to a shared constant: every other
-// occurrence of this string in the codebase is already its own local
-// copy (see the plan's "Known limitations"); adding a fifth one here
-// isn't a new problem this feature introduces.
-const DEFAULT_TIMEZONE = 'Asia/Kolkata';
+// Holiday dates resolve in HOLIDAY_TIMEZONE — shared with class creation
+// (see holiday-calendar.ts), so declaring a holiday and scheduling a class
+// always agree on which day a class falls on.
+const DEFAULT_TIMEZONE = HOLIDAY_TIMEZONE;
 
 export interface CreateAcademyHolidayInput {
   name: string;
@@ -36,17 +33,7 @@ export interface CreateAcademyHolidayInput {
   description?: string | null;
 }
 
-function dayRangeUtc(startDate: string, endDate: string) {
-  const from = DateTime.fromISO(startDate, { zone: DEFAULT_TIMEZONE })
-    .startOf('day')
-    .toUTC()
-    .toJSDate();
-  const to = DateTime.fromISO(endDate, { zone: DEFAULT_TIMEZONE })
-    .endOf('day')
-    .toUTC()
-    .toJSDate();
-  return { from, to };
-}
+const dayRangeUtc = holidayDayRangeUtc;
 
 /**
  * The spec's `HolidayService` — reusable across government and academy

@@ -110,9 +110,14 @@ describe('Holiday reminder dedupe (H7, e2e)', () => {
       ),
     );
     expect(ours).toHaveLength(2);
-    const bodies = ours.map((n) => (n.payload as any).body as string).sort();
-    expect(bodies[0]).toContain(`Holiday One ${h.MARKER}`);
-    expect(bodies[1]).toContain(`Holiday Two ${h.MARKER}`);
+    // Each body starts with a batch title carrying a random suffix, so a
+    // plain sort doesn't order them by holiday — match each holiday to
+    // exactly one notice instead.
+    const bodies = ours.map((n) => (n.payload as any).body as string);
+    for (const name of ['Holiday One', 'Holiday Two']) {
+      const matching = bodies.filter((b) => b.includes(`${name} ${h.MARKER}`));
+      expect(matching).toHaveLength(1);
+    }
     expect(new Set(ours.map((n) => n.dedupe_key)).size).toBe(2);
     // A cancelled class never gets the ordinary "starts in 10 minutes".
     expect(

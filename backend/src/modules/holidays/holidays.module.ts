@@ -4,7 +4,7 @@ import { SchedulingModule } from '../scheduling/scheduling.module';
 import { AcademiesModule } from '../marketplace/academies/academies.module';
 import { AcademyMembershipsModule } from '../marketplace/academy-memberships/academy-memberships.module';
 import { NotificationsModule } from '../notifications/notifications.module';
-import { HolidaysRepository } from './holidays.repository';
+import { HolidayCalendarModule } from './holiday-calendar.module';
 import { HolidayService } from './holiday.service';
 import { HolidaysController } from './holidays.controller';
 import { TeacherLeaveRepository } from './teacher-leave.repository';
@@ -37,16 +37,12 @@ import { TeacherLeaveController } from './teacher-leave.controller';
     AcademiesModule,
     AcademyMembershipsModule,
     NotificationsModule,
+    HolidayCalendarModule,
   ],
   controllers: [TeacherLeaveController, HolidaysController],
-  providers: [
-    HolidaysRepository,
-    HolidayService,
-    TeacherLeaveRepository,
-    TeacherLeaveService,
-  ],
+  providers: [HolidayService, TeacherLeaveRepository, TeacherLeaveService],
   exports: [
-    HolidaysRepository,
+    HolidayCalendarModule,
     HolidayService,
     TeacherLeaveRepository,
     TeacherLeaveService,
