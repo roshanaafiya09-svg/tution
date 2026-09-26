@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { IdentityModule } from '../identity/identity.module';
 import { DeliveryModule } from '../delivery/delivery.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { VerificationsController } from './verifications/verifications.controller';
 import { VerificationsService } from './verifications/verifications.service';
 import { VerificationsRepository } from './verifications/verifications.repository';
@@ -24,7 +25,7 @@ import { AuditLogRepository } from './audit/audit-log.repository';
  * not worth a second storage seam for one more document type.
  */
 @Module({
-  imports: [IdentityModule, DeliveryModule],
+  imports: [IdentityModule, DeliveryModule, NotificationsModule],
   controllers: [VerificationsController, ConsentController, AuditLogController],
   providers: [
     VerificationsRepository,

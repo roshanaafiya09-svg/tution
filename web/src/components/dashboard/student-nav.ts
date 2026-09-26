@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { isPortalNavItemActive, type PortalNavGroup, type PortalNavItem } from './portal-sidebar';
 import type { AppNotification } from '@/lib/types';
+import { isScheduleNotification } from './notification-types';
 
 /** The Student Portal's information architecture, in sidebar order — see
  *  the Student Dashboard Side Navigation & UX Redesign spec §1/§20. */
@@ -95,6 +96,7 @@ export function studentPageTitle(pathname: string): string {
  *  `quizzes.service.ts`, `announcements.service.ts`). */
 export function studentNotificationHref(notification: AppNotification): string | null {
   const payload = notification.payload;
+  if (isScheduleNotification(notification.type)) return '/student/schedule';
   switch (notification.type) {
     case 'assignment_created':
     case 'submission_graded':

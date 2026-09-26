@@ -64,3 +64,43 @@ describe('ScheduleList — Join class', () => {
     expect(screen.getAllByRole('link', { name: /join class/i })).toHaveLength(1);
   });
 });
+
+describe('ScheduleList — holidays and timezone', () => {
+  const holiday = (over: Record<string, unknown> = {}) =>
+    ({
+      id: 'h1',
+      type: 'academy_holiday',
+      name: 'Founders Day',
+      start_date: '2026-10-01',
+      end_date: '2026-10-01',
+      academy_name: 'Bright Academy',
+      ...over,
+    }) as never;
+
+  it('shows an Academy holiday on a day with no class', () => {
+    render(
+      <ScheduleList
+        sessions={[]}
+        batches={[]}
+        subjects={[]}
+        holidayDays={[{ key: '2026-10-01', holidays: [holiday()] }]}
+      />,
+    );
+    expect(screen.getByText('Founders Day')).toBeTruthy();
+    expect(screen.getByText(/Bright Academy holiday/)).toBeTruthy();
+  });
+
+  it('a class at 23:30 IST stays on its IST day (the class timezone, not the browser)', () => {
+    // 2026-10-01 23:30 IST == 18:00 UTC the same day.
+    render(
+      <ScheduleList
+        sessions={[session({ scheduled_start_utc: '2026-10-01T18:00:00.000Z' })]}
+        batches={[]}
+        subjects={[]}
+        holidayDays={[{ key: '2026-10-01', holidays: [holiday()] }]}
+      />,
+    );
+    // The holiday and the class share ONE day group (a single date heading).
+    expect(screen.getAllByText(/^Thu, 1 Oct$/)).toHaveLength(1);
+  });
+});

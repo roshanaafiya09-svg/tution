@@ -164,6 +164,11 @@ export function academyNotificationHref(notification: AppNotification): string |
       return '/academy/leave-requests';
     case 'academy_contact_request_received':
       return '/academy/contact-requests';
+    case 'academy_teacher_left':
+      return '/academy/teachers';
+    case 'academy_verification_approved':
+    case 'academy_verification_rejected':
+      return '/academy/verification';
     default:
       return null;
   }

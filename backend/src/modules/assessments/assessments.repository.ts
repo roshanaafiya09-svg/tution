@@ -385,6 +385,24 @@ export class AssessmentsRepository {
       .then((row) => Number(row.count));
   }
 
+  /** How many of the given students have a result. Completion must be
+   *  judged against the CURRENT required roster only — a removed
+   *  student's kept result (history) must not count towards someone
+   *  else's outstanding submission. */
+  async countResultsForStudents(
+    assessmentId: string,
+    studentIds: string[],
+  ): Promise<number> {
+    if (studentIds.length === 0) return 0;
+    const row = await this.db
+      .selectFrom('assessment_results')
+      .select((eb) => eb.fn.count('student_id').distinct().as('count'))
+      .where('assessment_id', '=', assessmentId)
+      .where('student_id', 'in', studentIds)
+      .executeTakeFirstOrThrow();
+    return Number(row.count);
+  }
+
   /** All-or-nothing offline scorecard import (spec §15/§47): every
    *  student result, the success audit row, and the assessment's
    *  completed/completed_late transition happen in one transaction — a

@@ -46,7 +46,7 @@ export class MessagesService {
     studentId: string,
     body: string,
   ) {
-    const role = await this.resolveAccess(user, batchId, studentId);
+    const role = await this.resolveAccess(user, batchId, studentId, 'write');
     const message = await this.repository.create(
       batchId,
       studentId,
@@ -103,7 +103,7 @@ export class MessagesService {
     studentId: string,
     params: { limit?: number; before?: string } = {},
   ) {
-    await this.resolveAccess(user, batchId, studentId);
+    await this.resolveAccess(user, batchId, studentId, 'read');
     const limit = Math.min(
       params.limit && params.limit > 0
         ? params.limit
@@ -158,11 +158,19 @@ export class MessagesService {
   }
 
   /** The one access-control gate for the whole module: who may this
-   *  caller act as in the (batchId, studentId) thread, if anyone. */
+   *  caller act as in the (batchId, studentId) thread, if anyone.
+   *
+   *  Enrollment STATUS matters: a removed student's enrollment row is kept
+   *  (attendance / class history hangs off it) but it is no longer an
+   *  active membership, so the student — and a parent acting for them —
+   *  lose the thread, and nobody can post into it. The batch's own tutor
+   *  keeps read access to the kept history but cannot write to a student
+   *  who is no longer in the batch. */
   private async resolveAccess(
     user: AccessTokenPayload,
     batchId: string,
     studentId: string,
+    mode: 'read' | 'write',
   ): Promise<SenderRole> {
     if (user.roles.includes('tutor')) {
       const batch = await this.batchesRepository.findById(batchId);
@@ -180,7 +188,9 @@ export class MessagesService {
           batchId,
           studentId,
         );
-        if (enrollment) return 'tutor';
+        if (enrollment && (mode === 'read' || enrollment.status === 'active')) {
+          return 'tutor';
+        }
       }
     }
 
@@ -189,7 +199,7 @@ export class MessagesService {
         batchId,
         studentId,
       );
-      if (enrollment) return 'student';
+      if (enrollment?.status === 'active') return 'student';
     }
 
     if (user.roles.includes('parent')) {
@@ -202,7 +212,7 @@ export class MessagesService {
           batchId,
           studentId,
         );
-        if (enrollment) return 'parent';
+        if (enrollment?.status === 'active') return 'parent';
       }
     }
 

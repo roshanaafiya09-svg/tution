@@ -2,12 +2,14 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { AcademyVerificationRepository } from './academy-verification.repository';
 import { AcademiesRepository } from '../academies/academies.repository';
 import { ConsentService } from '../../trust/consent/consent.service';
 import { AuditLogService } from '../../trust/audit/audit-log.service';
+import { NotificationsService } from '../../notifications/notifications.service';
 import {
   KYC_PROVIDER,
   type KycProvider,
@@ -35,11 +37,14 @@ const PAN_CHECK_REASON =
  */
 @Injectable()
 export class AcademyVerificationService {
+  private readonly logger = new Logger(AcademyVerificationService.name);
+
   constructor(
     private readonly repository: AcademyVerificationRepository,
     private readonly academiesRepository: AcademiesRepository,
     private readonly consentService: ConsentService,
     private readonly auditLog: AuditLogService,
+    private readonly notificationsService: NotificationsService,
     @Inject(KYC_PROVIDER) private readonly kycProvider: KycProvider,
   ) {}
 
@@ -243,8 +248,50 @@ export class AcademyVerificationService {
         existing.academy_id,
         dto.status,
       );
+      await this.notifyOwnerOfOutcome(
+        existing.academy_id,
+        id,
+        dto.status,
+        dto.reason ?? null,
+      );
     }
 
     return updated;
+  }
+
+  /** Terminal reviewer outcomes (verified / rejected) are told to the
+   *  academy owner. under_review / needs_manual_review are internal queue
+   *  states and stay silent. Best-effort — the review is already saved. */
+  private async notifyOwnerOfOutcome(
+    academyId: string,
+    submissionId: string,
+    status: 'verified' | 'rejected',
+    reason: string | null,
+  ): Promise<void> {
+    try {
+      const academy = await this.academiesRepository.findById(academyId);
+      if (!academy?.owner_user_id) return;
+      const verified = status === 'verified';
+      await this.notificationsService.notify({
+        userIds: [academy.owner_user_id],
+        type: verified
+          ? 'academy_verification_approved'
+          : 'academy_verification_rejected',
+        title: verified
+          ? 'Your academy is verified'
+          : 'Your academy verification was not approved',
+        body: verified
+          ? 'Your identity check is complete and your academy now shows as verified.'
+          : reason
+            ? `Reviewer note: ${reason}`
+            : 'You can review the details and resubmit from your verification page.',
+        payload: { academyId, submissionId, status },
+        dedupeKey: `academy-verification:${submissionId}:${status}`,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Could not notify academy owner of verification outcome ${submissionId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 }

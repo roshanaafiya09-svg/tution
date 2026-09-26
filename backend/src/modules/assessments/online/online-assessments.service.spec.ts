@@ -52,7 +52,7 @@ function buildService(overrides: {
   listBatchIds?: jest.Mock;
   findResult?: jest.Mock;
   insertResult?: jest.Mock;
-  countResultsForAssessment?: jest.Mock;
+  countResultsForStudents?: jest.Mock;
   updateStatus?: jest.Mock;
   requiredStudentIds?: jest.Mock;
   assertEnrolledInAny?: jest.Mock;
@@ -80,8 +80,8 @@ function buildService(overrides: {
     insertResult:
       overrides.insertResult ??
       jest.fn().mockResolvedValue({ id: 'result-1', submitted_at: new Date() }),
-    countResultsForAssessment:
-      overrides.countResultsForAssessment ?? jest.fn().mockResolvedValue(1),
+    countResultsForStudents:
+      overrides.countResultsForStudents ?? jest.fn().mockResolvedValue(1),
     updateStatus: overrides.updateStatus ?? jest.fn().mockResolvedValue({}),
     listForTutorsAcrossBatches:
       overrides.listForTutorsAcrossBatches ?? jest.fn().mockResolvedValue([]),
@@ -242,7 +242,7 @@ describe('OnlineAssessmentsService.submit', () => {
     const updateStatus = jest.fn().mockResolvedValue({});
     const notify = jest.fn().mockResolvedValue(undefined);
     const { service } = buildService({
-      countResultsForAssessment: jest.fn().mockResolvedValue(3),
+      countResultsForStudents: jest.fn().mockResolvedValue(3),
       requiredStudentIds: jest
         .fn()
         .mockResolvedValue(['student-1', 'student-2', 'student-3']),
@@ -265,7 +265,7 @@ describe('OnlineAssessmentsService.submit', () => {
   it('does not complete while students from other selected batches still have not submitted', async () => {
     const updateStatus = jest.fn().mockResolvedValue({});
     const { service } = buildService({
-      countResultsForAssessment: jest.fn().mockResolvedValue(1),
+      countResultsForStudents: jest.fn().mockResolvedValue(1),
       requiredStudentIds: jest
         .fn()
         .mockResolvedValue(['student-1', 'student-2', 'student-3']),
@@ -274,6 +274,26 @@ describe('OnlineAssessmentsService.submit', () => {
 
     await service.submit(STUDENT_ID, ASSESSMENT_ID, [1, 3]);
 
+    expect(updateStatus).not.toHaveBeenCalled();
+  });
+
+  it("counts results against the current required roster only, so a removed student's kept result cannot complete it early", async () => {
+    const countResultsForStudents = jest.fn().mockResolvedValue(1);
+    const updateStatus = jest.fn().mockResolvedValue({});
+    // S1 submitted then was removed; S2 (submitting now) and S3 (joined
+    // later) are the required roster.
+    const { service } = buildService({
+      countResultsForStudents,
+      requiredStudentIds: jest.fn().mockResolvedValue(['s2', 's3']),
+      updateStatus,
+    });
+
+    await service.submit('s2', ASSESSMENT_ID, [1, 3]);
+
+    expect(countResultsForStudents).toHaveBeenCalledWith(ASSESSMENT_ID, [
+      's2',
+      's3',
+    ]);
     expect(updateStatus).not.toHaveBeenCalled();
   });
 });

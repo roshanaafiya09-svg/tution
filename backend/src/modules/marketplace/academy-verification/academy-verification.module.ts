@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { IdentityModule } from '../../identity/identity.module';
 import { AcademiesModule } from '../academies/academies.module';
 import { TrustModule } from '../../trust/trust.module';
+import { NotificationsModule } from '../../notifications/notifications.module';
 import { AcademyVerificationController } from './academy-verification.controller';
 import { AcademyAdminVerificationController } from './academy-admin-verification.controller';
 import { AcademyVerificationService } from './academy-verification.service';
@@ -27,7 +28,7 @@ const kycLogger = new Logger('KYC provider');
  * never imports back, so there's no cycle.
  */
 @Module({
-  imports: [IdentityModule, AcademiesModule, TrustModule],
+  imports: [IdentityModule, AcademiesModule, TrustModule, NotificationsModule],
   controllers: [
     AcademyVerificationController,
     AcademyAdminVerificationController,

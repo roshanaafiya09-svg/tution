@@ -17,6 +17,7 @@ import type { AcademyVerificationRepository } from './academy-verification.repos
 import type { AcademiesRepository } from '../academies/academies.repository';
 import type { ConsentService } from '../../trust/consent/consent.service';
 import type { AuditLogService } from '../../trust/audit/audit-log.service';
+import type { NotificationsService } from '../../notifications/notifications.service';
 import type { KycProvider } from './providers/kyc-provider.interface';
 
 /**
@@ -123,6 +124,9 @@ function buildService(overrides: {
     academiesRepository,
     consentService,
     auditLog,
+    {
+      notify: jest.fn().mockResolvedValue([]),
+    } as unknown as NotificationsService,
     kycProvider,
   );
 

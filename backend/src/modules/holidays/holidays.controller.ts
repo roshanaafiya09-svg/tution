@@ -6,6 +6,9 @@ import { RolesGuard } from '../identity/auth/guards/roles.guard';
 import { Roles } from '../identity/auth/decorators/roles.decorator';
 import { CurrentUser } from '../identity/auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../identity/auth/tokens.service';
+import { TeachingContextScope } from '../teaching-context/teaching-context.guard';
+import { CurrentTeachingContext } from '../teaching-context/current-teaching-context.decorator';
+import type { TeachingContext } from '../teaching-context/teaching-context';
 
 const DEFAULT_TIMEZONE = 'Asia/Kolkata';
 const DEFAULT_LOOKAHEAD_DAYS = 90;
@@ -17,6 +20,7 @@ const DEFAULT_LOOKAHEAD_DAYS = 90;
  * cancellation has actually run.
  */
 @Controller('holidays')
+@TeachingContextScope()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('tutor', 'student', 'parent')
 export class HolidaysController {
@@ -25,10 +29,10 @@ export class HolidaysController {
   @Get('me')
   async listMine(
     @CurrentUser() user: AccessTokenPayload,
+    @CurrentTeachingContext() ctx: TeachingContext,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    const academyIds = await this.holidayService.resolveAcademyIdsForRole(user);
     const rangeFrom =
       from ?? DateTime.now().setZone(DEFAULT_TIMEZONE).toISODate()!;
     const rangeTo =
@@ -36,10 +40,6 @@ export class HolidaysController {
       DateTime.fromISO(rangeFrom)
         .plus({ days: DEFAULT_LOOKAHEAD_DAYS })
         .toISODate()!;
-    return this.holidayService.listEffectiveForAcademies(
-      academyIds,
-      rangeFrom,
-      rangeTo,
-    );
+    return this.holidayService.listForViewer(user, ctx, rangeFrom, rangeTo);
   }
 }

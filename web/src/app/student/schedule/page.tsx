@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { api, apiGetPublic } from '@/lib/api';
-import type { Batch, Session, Subject } from '@/lib/types';
+import type { Batch, Session, Subject, ViewerHoliday } from '@/lib/types';
+import { holidayDaysInRange, localDateKey } from '@/lib/calendar';
 import { EmptyState, CardSkeleton, ErrorState, Field, Select } from '@/components/ui';
 import { PageIntro, ScheduleList } from '@/components/student';
 import { TabNav, type TabItem } from '@/components/dashboard/tab-nav';
@@ -43,6 +44,7 @@ export default function StudentSchedulePage() {
   const [sessions, setSessions] = useState<Session[] | null>(null);
   const [batches, setBatches] = useState<Batch[] | null>(null);
   const [subjects, setSubjects] = useState<Subject[] | null>(null);
+  const [holidays, setHolidays] = useState<ViewerHoliday[]>([]);
   const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(() => {
@@ -55,11 +57,15 @@ export default function StudentSchedulePage() {
       api.get<Session[]>(`/sessions/upcoming?from=${from.toISOString()}&to=${to.toISOString()}`),
       api.get<Batch[]>('/batches/enrolled'),
       apiGetPublic<Subject[]>('/catalog/subjects'),
+      // Only the academies whose own batches this student is in, and only
+      // holidays that touch them — resolved server-side.
+      api.get<ViewerHoliday[]>(`/holidays/me?from=${localDateKey(from)}&to=${localDateKey(to)}`),
     ])
-      .then(([s, b, subs]) => {
+      .then(([s, b, subs, hols]) => {
         setSessions(s);
         setBatches(b);
         setSubjects(subs);
+        setHolidays(hols);
       })
       .catch((err: unknown) => setLoadError(err ?? true));
   }, [range]);
@@ -69,6 +75,11 @@ export default function StudentSchedulePage() {
   }, [load]);
 
   const loading = sessions === null || batches === null || subjects === null;
+
+  const holidayDays = useMemo(() => {
+    const { from, to } = rangeFor(range);
+    return holidayDaysInRange(holidays, localDateKey(from), localDateKey(to));
+  }, [holidays, range]);
 
   const visibleSessions = useMemo(
     () => (sessions ?? []).filter((s) => !batchFilter || s.batch_id === batchFilter),
@@ -105,14 +116,19 @@ export default function StudentSchedulePage() {
         </div>
       ) : loadError ? (
         <ErrorState error={loadError} what="your schedule" onRetry={load} />
-      ) : visibleSessions.length === 0 ? (
+      ) : visibleSessions.length === 0 && holidayDays.length === 0 ? (
         <EmptyState
           icon={CalendarDays}
           title="No upcoming classes"
           description="Your tutor hasn't scheduled a class yet."
         />
       ) : (
-        <ScheduleList sessions={visibleSessions} batches={batches!} subjects={subjects!} />
+        <ScheduleList
+          sessions={visibleSessions}
+          batches={batches!}
+          subjects={subjects!}
+          holidayDays={holidayDays}
+        />
       )}
     </div>
   );

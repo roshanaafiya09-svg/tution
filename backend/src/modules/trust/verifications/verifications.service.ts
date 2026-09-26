@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { VerificationsRepository } from './verifications.repository';
@@ -11,6 +12,7 @@ import { STORAGE_PROVIDER } from '../../../common/storage/storage-provider.inter
 import type { StorageProvider } from '../../../common/storage/storage-provider.interface';
 import { ProfilesService } from '../../identity/profiles/profiles.service';
 import { AuditLogService } from '../audit/audit-log.service';
+import { NotificationsService } from '../../notifications/notifications.service';
 import {
   CreateVerificationUploadDto,
   MAX_VERIFICATION_BYTES,
@@ -26,11 +28,14 @@ const MIME_EXTENSIONS: Record<string, string> = {
 
 @Injectable()
 export class VerificationsService {
+  private readonly logger = new Logger(VerificationsService.name);
+
   constructor(
     private readonly repository: VerificationsRepository,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
     private readonly profilesService: ProfilesService,
     private readonly auditLog: AuditLogService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   /**
@@ -105,6 +110,7 @@ export class VerificationsService {
       diff: { status: dto.status, note: dto.note ?? null },
     });
 
+    let nowVerified = false;
     if (dto.status === 'approved') {
       // Blueprint §4: "ID + qualification upload" — both document types
       // need an approved submission before the badge flips on.
@@ -117,6 +123,7 @@ export class VerificationsService {
           existing.tutor_id,
           'verified',
         );
+        nowVerified = true;
       }
     } else {
       // A rejected resubmission never revokes an already-verified badge —
@@ -133,6 +140,45 @@ export class VerificationsService {
       }
     }
 
+    await this.notifyOutcome(existing, dto, nowVerified);
+
     return updated;
+  }
+
+  /** Tells the tutor the reviewer's decision on one of their documents.
+   *  Best-effort: the review is already saved, so a delivery failure must
+   *  not fail it. The dedupe key makes a repeated call a no-op. */
+  private async notifyOutcome(
+    existing: { id: string; tutor_id: string; type: string },
+    dto: ReviewVerificationDto,
+    nowVerified: boolean,
+  ): Promise<void> {
+    const document =
+      existing.type === 'id_proof' ? 'ID proof' : 'qualification document';
+    const approved = dto.status === 'approved';
+    try {
+      await this.notificationsService.notify({
+        userIds: [existing.tutor_id],
+        type: approved ? 'verification_approved' : 'verification_rejected',
+        title: nowVerified
+          ? "You're verified"
+          : approved
+            ? `Your ${document} was approved`
+            : `Your ${document} was not approved`,
+        body: nowVerified
+          ? 'Your documents have been approved and your profile now shows the verified badge.'
+          : approved
+            ? 'It has been approved. Any remaining documents are still being reviewed.'
+            : dto.note
+              ? `Reviewer note: ${dto.note}`
+              : 'You can upload a new document from your verification page.',
+        payload: { verificationId: existing.id, status: dto.status },
+        dedupeKey: `verification:${existing.id}:${dto.status}`,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Could not notify tutor of verification outcome ${existing.id}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 }

@@ -6,9 +6,11 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { ParentPremiumModule } from './parent-premium/parent-premium.module';
 import { BookingsModule } from '../marketplace/bookings/bookings.module';
 import { ParentsModule } from '../parents/parents.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { FeesController } from './fees/fees.controller';
 import { FeesService } from './fees/fees.service';
 import { FeesRepository } from './fees/fees.repository';
+import { FeeNotificationsService } from './fees/fee-notifications.service';
 import { RecapController } from './recap/recap.controller';
 import { RecapService } from './recap/recap.service';
 import { PaymentsController } from './payments/payments.controller';
@@ -54,6 +56,7 @@ const paymentsLogger = new Logger('BillingModule');
     ParentPremiumModule,
     BookingsModule,
     ParentsModule,
+    NotificationsModule,
   ],
   controllers: [
     FeesController,
@@ -64,6 +67,7 @@ const paymentsLogger = new Logger('BillingModule');
   providers: [
     FeesService,
     FeesRepository,
+    FeeNotificationsService,
     RecapService,
     PaymentsService,
     PaymentsRepository,

@@ -121,7 +121,9 @@ export class MessagesRepository {
       .execute();
   }
 
-  /** The student's own inbox — one row per batch thread they're in.
+  /** The student's own inbox — one row per batch thread they're still
+   *  ACTIVELY in: a removed student's old threads drop out of the inbox
+   *  (the messages themselves are kept as history).
    *  Includes student_id even though it's constant (always the caller's
    *  own id) — callers share the same ThreadSummary shape as
    *  listThreadsForTutor's, which needs it to disambiguate between
@@ -131,6 +133,12 @@ export class MessagesRepository {
     return this.db
       .selectFrom('messages')
       .innerJoin('batches', 'batches.id', 'messages.batch_id')
+      .innerJoin('enrollments', (join) =>
+        join
+          .onRef('enrollments.batch_id', '=', 'messages.batch_id')
+          .onRef('enrollments.student_id', '=', 'messages.student_id')
+          .on('enrollments.status', '=', 'active'),
+      )
       .select((eb) => [
         'messages.batch_id',
         'messages.student_id',
@@ -154,6 +162,12 @@ export class MessagesRepository {
     return this.db
       .selectFrom('messages')
       .innerJoin('batches', 'batches.id', 'messages.batch_id')
+      .innerJoin('enrollments', (join) =>
+        join
+          .onRef('enrollments.batch_id', '=', 'messages.batch_id')
+          .onRef('enrollments.student_id', '=', 'messages.student_id')
+          .on('enrollments.status', '=', 'active'),
+      )
       .leftJoin(
         'profiles_student',
         'profiles_student.user_id',

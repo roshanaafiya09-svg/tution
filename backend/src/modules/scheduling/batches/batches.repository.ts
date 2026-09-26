@@ -590,6 +590,45 @@ export class BatchesRepository {
   /** Distinct academies (ids) whose batches a student is currently
    *  enrolled in — a student's/parent's "which academies' holidays are
    *  relevant to me" resolution. Individual batches contribute nothing. */
+  /** The (student, batch, academy) triples for students' ACTIVE
+   *  enrollments in ACADEMY-owned batches — a student's Individual batches
+   *  never appear. Backs the holiday calendar's "which of these holidays
+   *  touches this student" filter. */
+  async listActiveAcademyEnrollmentsForStudents(
+    studentIds: string[],
+  ): Promise<
+    Array<{ student_id: string; batch_id: string; academy_id: string }>
+  > {
+    if (studentIds.length === 0) return [];
+    const rows = await this.db
+      .selectFrom('enrollments')
+      .innerJoin('batches', 'batches.id', 'enrollments.batch_id')
+      .select([
+        'enrollments.student_id',
+        'enrollments.batch_id',
+        'batches.academy_id',
+      ])
+      .where('enrollments.student_id', 'in', studentIds)
+      .where('enrollments.status', '=', 'active')
+      .where('batches.academy_id', 'is not', null)
+      .execute();
+    return rows.map((r) => ({ ...r, academy_id: r.academy_id as string }));
+  }
+
+  /** Ids of the batches a tutor teaches inside one academy. */
+  async listBatchIdsForTutorInAcademy(
+    tutorId: string,
+    academyId: string,
+  ): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom('batches')
+      .select('id')
+      .where('tutor_id', '=', tutorId)
+      .where('academy_id', '=', academyId)
+      .execute();
+    return rows.map((r) => r.id);
+  }
+
   async listAcademyIdsForStudents(studentIds: string[]): Promise<string[]> {
     if (studentIds.length === 0) return [];
     const rows = await this.db

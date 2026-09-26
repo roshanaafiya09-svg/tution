@@ -1,13 +1,17 @@
-import { Building2, CircleUser, Home, Megaphone, MessagesSquare, Search, Settings, Sparkles, User, UserPlus } from 'lucide-react';
+import { Building2, CalendarDays, CircleUser, Home, Megaphone, MessagesSquare, Search, Settings, Sparkles, User, UserPlus } from 'lucide-react';
 import { isPortalNavItemActive, type PortalNavGroup, type PortalNavItem } from './portal-sidebar';
 import type { AppNotification } from '@/lib/types';
+import { isScheduleNotification } from './notification-types';
 
 /** The Parent Portal's information architecture, in sidebar order — mirrors
  *  academy-nav.ts's ACADEMY_NAV shape, with Parent's own nav items. */
 export const PARENT_NAV: PortalNavGroup[] = [
   {
     label: 'Main',
-    items: [{ href: '/parent', label: 'Today', icon: Home, exact: true }],
+    items: [
+      { href: '/parent', label: 'Today', icon: Home, exact: true },
+      { href: '/parent/calendar', label: 'Calendar', icon: CalendarDays },
+    ],
   },
   {
     label: 'Discover',
@@ -74,5 +78,20 @@ export function parentNotificationHref(notification: AppNotification): string | 
     const id = notification.payload.announcementId;
     return typeof id === 'string' ? `/parent/announcements/${id}` : null;
   }
-  return null;
+  // Schedule changes (and holidays) for the child's classes -> the parent's
+  // own calendar, which shows each linked child's schedule.
+  if (isScheduleNotification(notification.type)) return '/parent/calendar';
+  switch (notification.type) {
+    case 'fee_raised':
+    case 'fee_payment_recorded':
+    case 'fee_waived':
+    case 'attendance_absence_alert': {
+      const studentId = notification.payload.studentId;
+      return typeof studentId === 'string' ? `/parent/child/${studentId}` : null;
+    }
+    case 'new_message':
+      return '/parent/messages';
+    default:
+      return null;
+  }
 }

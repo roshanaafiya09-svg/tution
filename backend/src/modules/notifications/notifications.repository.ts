@@ -27,6 +27,16 @@ export class NotificationsRepository {
   async createMany(notifications: NewNotification[]): Promise<string[]> {
     if (notifications.length === 0) return [];
 
+    // Recipient eligibility, enforced at the one choke point every
+    // notification goes through: a deleted (or otherwise no-longer-live)
+    // account must not receive anything new, whichever module raised the
+    // event. Rows already written stay — this only gates NEW ones.
+    const eligible = await this.filterEligibleRecipients(
+      notifications.map((n) => n.userId),
+    );
+    notifications = notifications.filter((n) => eligible.has(n.userId));
+    if (notifications.length === 0) return [];
+
     const rows = await this.db
       .insertInto('notifications')
       .values(
@@ -50,6 +60,21 @@ export class NotificationsRepository {
       .returning('user_id')
       .execute();
     return rows.map((r) => r.user_id);
+  }
+
+  /** The subset of `userIds` whose account is still live — not
+   *  soft-deleted (users.deleted_at) and not status 'deleted'. */
+  private async filterEligibleRecipients(
+    userIds: string[],
+  ): Promise<Set<string>> {
+    const rows = await this.db
+      .selectFrom('users')
+      .select('id')
+      .where('id', 'in', [...new Set(userIds)])
+      .where('deleted_at', 'is', null)
+      .where('status', '<>', 'deleted')
+      .execute();
+    return new Set(rows.map((r) => r.id));
   }
 
   /** Bounded lookback used by callers (e.g. the attendance module's

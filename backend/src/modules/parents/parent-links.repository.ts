@@ -56,6 +56,23 @@ export class ParentLinksRepository {
       .execute();
   }
 
+  /** Distinct parents holding an ACTIVE (consented) link to any of the
+   *  given students — the audience for "tell the family" notifications.
+   *  Pending/revoked links never receive anything. */
+  async listActiveParentIdsForStudents(
+    studentIds: string[],
+  ): Promise<string[]> {
+    if (studentIds.length === 0) return [];
+    const rows = await this.db
+      .selectFrom('parent_child_links')
+      .select('parent_id')
+      .distinct()
+      .where('student_id', 'in', studentIds)
+      .where('status', '=', 'active')
+      .execute();
+    return rows.map((r) => r.parent_id);
+  }
+
   listForStudent(studentId: string) {
     return this.db
       .selectFrom('parent_child_links')

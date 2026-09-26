@@ -8,6 +8,7 @@ jest.mock('../../database/database.module', () => ({
   KYSELY_CONNECTION: 'KYSELY_CONNECTION',
 }));
 
+import { ForbiddenException } from '@nestjs/common';
 import { MessagesService } from './messages.service';
 import type { MessagesRepository } from './messages.repository';
 import type { BatchesRepository } from '../scheduling/batches/batches.repository';
@@ -119,5 +120,105 @@ describe('MessagesService.listThread — pagination (SEC-03)', () => {
     const result = await service.listThread(tutorUser, 'batch-1', 'student-1');
 
     expect(result.map((m) => m.id)).toEqual(['msg-1', 'msg-2', 'msg-3']);
+  });
+});
+
+/**
+ * Removed-student access: a `left` enrollment row is kept as history but
+ * is not an active membership — the student (and their parent) must lose
+ * the thread and nobody may post into it, while the batch's own tutor can
+ * still read the kept history.
+ */
+describe('MessagesService — enrollment status gate', () => {
+  function build(enrollmentStatus: 'active' | 'left') {
+    const create = jest.fn().mockResolvedValue({ id: 'msg-new' });
+    const listForThread = jest.fn().mockResolvedValue([]);
+    const repository = {
+      create,
+      listForThread,
+    } as unknown as MessagesRepository;
+    const batchesRepository = {
+      findById: jest
+        .fn()
+        .mockResolvedValue({ id: 'batch-1', tutor_id: 'tutor-1', title: 'B' }),
+      findEnrollment: jest
+        .fn()
+        .mockResolvedValue({ id: 'e-1', status: enrollmentStatus }),
+    } as unknown as BatchesRepository;
+    const parentLinksRepository = {
+      findByParentAndStudent: jest.fn().mockResolvedValue({ status: 'active' }),
+      listForStudent: jest.fn().mockResolvedValue([]),
+    } as unknown as ParentLinksRepository;
+    const notify = jest.fn().mockResolvedValue([]);
+    const service = new MessagesService(
+      repository,
+      batchesRepository,
+      parentLinksRepository,
+      { capture: jest.fn() } as unknown as AnalyticsService,
+      { notify } as unknown as NotificationsService,
+      {
+        assertActiveMember: jest.fn(),
+      } as unknown as TeachingContextService,
+    );
+    return { service, create, listForThread, notify };
+  }
+
+  const student: AccessTokenPayload = { sub: 'student-1', roles: ['student'] };
+  const parent: AccessTokenPayload = { sub: 'parent-1', roles: ['parent'] };
+  const tutor: AccessTokenPayload = { sub: 'tutor-1', roles: ['tutor'] };
+
+  it('lets an actively enrolled student read and post', async () => {
+    const { service, create } = build('active');
+    await expect(
+      service.listThread(student, 'batch-1', 'student-1'),
+    ).resolves.toEqual([]);
+    await service.send(student, 'batch-1', 'student-1', 'hi');
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a removed student reading the thread', async () => {
+    const { service, listForThread } = build('left');
+    await expect(
+      service.listThread(student, 'batch-1', 'student-1'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(listForThread).not.toHaveBeenCalled();
+  });
+
+  it('rejects a removed student posting, and writes no message row', async () => {
+    const { service, create, notify } = build('left');
+    await expect(
+      service.send(student, 'batch-1', 'student-1', 'hi'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(create).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("rejects the removed student's parent too", async () => {
+    const { service, create } = build('left');
+    await expect(
+      service.listThread(parent, 'batch-1', 'student-1'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      service.send(parent, 'batch-1', 'student-1', 'hi'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('keeps the batch tutor able to READ the kept history but not to post', async () => {
+    const { service, create } = build('left');
+    await expect(
+      service.listThread(tutor, 'batch-1', 'student-1'),
+    ).resolves.toEqual([]);
+    await expect(
+      service.send(tutor, 'batch-1', 'student-1', 'hi'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a student using another student's id even if enrolled", async () => {
+    const { service } = build('active');
+    await expect(
+      service.listThread(student, 'batch-1', 'student-2'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

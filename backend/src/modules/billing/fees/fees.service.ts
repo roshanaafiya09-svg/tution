@@ -16,6 +16,7 @@ import { ParentLinksRepository } from '../../parents/parent-links.repository';
 import type { GeneratePeriodDto } from './dto/generate-period.dto';
 import { billingPeriodLabel } from './fee-period';
 import { AnalyticsService } from '../../analytics/analytics.service';
+import { FeeNotificationsService } from './fee-notifications.service';
 
 /**
  * Phase 1 is fee *tracking* only — the tutor records what they expect
@@ -29,6 +30,7 @@ export class FeesService {
     private readonly batchesService: BatchesService,
     private readonly parentLinksRepository: ParentLinksRepository,
     private readonly analytics: AnalyticsService,
+    private readonly feeNotifications: FeeNotificationsService,
   ) {}
 
   /** Creates a ledger row per active student for the billing period that
@@ -64,6 +66,8 @@ export class FeesService {
       periodLabel,
       studentCount: studentIds.length,
     });
+
+    await this.feeNotifications.notifyRaised(result);
 
     return result;
   }
@@ -132,6 +136,10 @@ export class FeesService {
       status,
     });
 
+    await this.feeNotifications.notifyPaymentRecorded(result, {
+      source: 'teacher',
+    });
+
     return result;
   }
 
@@ -144,6 +152,7 @@ export class FeesService {
     if (!result) {
       return this.rejectFeeTransition(await this.currentStatus(entryId));
     }
+    await this.feeNotifications.notifyWaived(result);
     return result;
   }
 

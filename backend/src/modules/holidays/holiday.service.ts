@@ -13,6 +13,10 @@ import { SessionsRepository } from '../scheduling/sessions/sessions.repository';
 import { AttendanceRepository } from '../scheduling/attendance/attendance.repository';
 import { NotificationsService } from '../notifications/notifications.service';
 import type { Selectable } from 'kysely';
+import {
+  academyIdOf,
+  type TeachingContext,
+} from '../teaching-context/teaching-context';
 import type {
   HolidayScope,
   HolidaysTable,
@@ -24,6 +28,19 @@ import type {
 // always agree on which day a class falls on.
 const DEFAULT_TIMEZONE = HOLIDAY_TIMEZONE;
 
+/** A holiday as a teacher/student/parent's calendar sees it. `batch_ids`
+ *  is the batch scope (empty = academy-wide / government); `student_ids`
+ *  (student/parent viewers only) is which of the viewer's students it
+ *  actually touches. `applies_to_academy_id` / `academy_name` say which
+ *  academy the viewer meets it through (a government holiday's own
+ *  academy_id is null). */
+export type ViewerHoliday = Selectable<HolidaysTable> & {
+  applies_to_academy_id: string;
+  academy_name: string;
+  batch_ids: string[];
+  student_ids: string[];
+};
+
 export interface CreateAcademyHolidayInput {
   name: string;
   startDate: string;
@@ -34,6 +51,12 @@ export interface CreateAcademyHolidayInput {
 }
 
 const dayRangeUtc = holidayDayRangeUtc;
+
+function sortHolidays(list: ViewerHoliday[]): ViewerHoliday[] {
+  return list.sort((a, b) =>
+    a.start_date < b.start_date ? -1 : a.start_date > b.start_date ? 1 : 0,
+  );
+}
 
 /**
  * The spec's `HolidayService` — reusable across government and academy
@@ -98,6 +121,108 @@ export class HolidayService {
     return [...seen.values()].sort((a, b) =>
       a.start_date < b.start_date ? -1 : a.start_date > b.start_date ? 1 : 0,
     );
+  }
+
+  /**
+   * The read-only holiday feed behind teacher / student / parent
+   * calendars, scoped strictly by who is asking:
+   *  - teacher in an ACADEMY context: that academy's holidays, minus
+   *    batch-scoped ones that touch none of the teacher's own batches;
+   *  - teacher in the INDIVIDUAL context: nothing — an Academy holiday
+   *    never disturbs a teacher's private business;
+   *  - student / parent: holidays of the academies whose OWN batches the
+   *    student (or one of the parent's consented children) is actively in,
+   *    and only those that touch that student (a batch-scoped holiday of
+   *    another batch does not).
+   */
+  async listForViewer(
+    user: { sub: string; roles: UserRole[] },
+    ctx: TeachingContext,
+    from: string,
+    to: string,
+  ): Promise<ViewerHoliday[]> {
+    const out: ViewerHoliday[] = [];
+
+    if (user.roles.includes('tutor')) {
+      const academyId = academyIdOf(ctx);
+      if (!academyId) return [];
+      const ownBatchIds = new Set(
+        await this.batchesRepository.listBatchIdsForTutorInAcademy(
+          user.sub,
+          academyId,
+        ),
+      );
+      const academy = await this.academiesRepository.findById(academyId);
+      if (!academy) return [];
+      const { governmentHolidays, academyHolidays } =
+        await this.listEffectiveForAcademy(academyId, from, to);
+      for (const h of [...governmentHolidays, ...academyHolidays]) {
+        const batchIds =
+          h.scope === 'batches'
+            ? await this.repository.listBatchIdsForHoliday(h.id)
+            : [];
+        if (
+          h.scope === 'batches' &&
+          !batchIds.some((b) => ownBatchIds.has(b))
+        ) {
+          continue;
+        }
+        out.push({
+          ...h,
+          applies_to_academy_id: academyId,
+          academy_name: academy.name,
+          batch_ids: batchIds,
+          student_ids: [],
+        });
+      }
+      return sortHolidays(out);
+    }
+
+    let studentIds: string[] = [];
+    if (user.roles.includes('student')) {
+      studentIds = [user.sub];
+    } else if (user.roles.includes('parent')) {
+      studentIds = await this.attendanceRepository.listActiveChildIdsForParent(
+        user.sub,
+      );
+    }
+    const enrollments =
+      await this.batchesRepository.listActiveAcademyEnrollmentsForStudents(
+        studentIds,
+      );
+    const byAcademy = new Map<string, typeof enrollments>();
+    for (const e of enrollments) {
+      byAcademy.set(e.academy_id, [...(byAcademy.get(e.academy_id) ?? []), e]);
+    }
+
+    for (const [academyId, rows] of byAcademy) {
+      const academy = await this.academiesRepository.findById(academyId);
+      if (!academy) continue;
+      const { governmentHolidays, academyHolidays } =
+        await this.listEffectiveForAcademy(academyId, from, to);
+      for (const h of [...governmentHolidays, ...academyHolidays]) {
+        const batchIds =
+          h.scope === 'batches'
+            ? await this.repository.listBatchIdsForHoliday(h.id)
+            : [];
+        const touched = new Set(
+          rows
+            .filter(
+              (r) => h.scope !== 'batches' || batchIds.includes(r.batch_id),
+            )
+            .map((r) => r.student_id),
+        );
+        if (touched.size === 0) continue;
+        out.push({
+          ...h,
+          applies_to_academy_id: academyId,
+          academy_name: academy.name,
+          batch_ids: batchIds,
+          student_ids: [...touched],
+        });
+      }
+    }
+    return sortHolidays(out);
   }
 
   async createAcademyHoliday(
@@ -226,8 +351,13 @@ export class HolidayService {
     // academy" for a batch-scoped one, matching the spec's recipient
     // rules exactly.
     const academy = await this.academiesRepository.findById(academyId);
+    // A teacher who has since left the academy keeps their old batch but
+    // no longer holds Academy permissions — never tell them about it.
+    const activeTutorIdSet = new Set(allTutorIds);
     const teacherIds = batchIds
-      ? await this.batchesRepository.listDistinctTutorIdsForBatches(batchIds)
+      ? (
+          await this.batchesRepository.listDistinctTutorIdsForBatches(batchIds)
+        ).filter((id) => activeTutorIdSet.has(id))
       : allTutorIds;
     const studentIds = batchIds
       ? await this.batchesRepository.listDistinctStudentIdsForBatches(batchIds)

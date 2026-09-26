@@ -41,6 +41,21 @@ export class AnnouncementsRepository {
       .execute();
   }
 
+  /** Parents holding an ACTIVE (consented) link to any of these students.
+   *  Queried here rather than via ParentLinksRepository because ParentsModule
+   *  imports TrustModule, which imports this module — a cycle. */
+  async listActiveParentIdsForStudents(studentIds: string[]) {
+    if (studentIds.length === 0) return [];
+    const rows = await this.db
+      .selectFrom('parent_child_links')
+      .select('parent_id')
+      .distinct()
+      .where('student_id', 'in', studentIds)
+      .where('status', '=', 'active')
+      .execute();
+    return rows.map((r) => r.parent_id);
+  }
+
   /** Active student IDs for a batch — the notification fan-out target. */
   listBatchStudentIds(batchId: string) {
     return this.db

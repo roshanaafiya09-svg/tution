@@ -410,17 +410,27 @@ export class OnlineAssessmentsService {
 
   /** System-controlled completion only (§39) — never a manual "Mark
    *  Completed". Completed when every actively-enrolled student across
-   *  ALL selected batches has a result (§8). Also invoked by the
+   *  ALL selected batches has a result (§8). The roster is the live active
+   *  membership (a joiner is expected until completion, a leaver stops
+   *  being expected) and only results of CURRENTLY required students are
+   *  counted. Also invoked by the
    *  scheduler sweep for the `available_until` deadline case. */
   async checkOnlineCompletion(assessmentId: string): Promise<void> {
     const assessment = await this.repository.findById(assessmentId);
     if (!assessment || assessment.status !== 'published') return;
 
     const batchIds = await this.repository.listBatchIds(assessmentId);
-    const [requiredStudentIds, submittedCount] = await Promise.all([
-      this.assessments.requiredStudentIds(batchIds),
-      this.repository.countResultsForAssessment(assessmentId),
-    ]);
+    const requiredStudentIds =
+      await this.assessments.requiredStudentIds(batchIds);
+    // Only results from students who are STILL required count: a student
+    // who submitted and was later removed keeps their result as history
+    // but no longer fills a seat in the required roster, so counting it
+    // would complete the assessment while an enrolled student is yet to
+    // submit — and lock them out (submit rejects a non-published one).
+    const submittedCount = await this.repository.countResultsForStudents(
+      assessmentId,
+      requiredStudentIds,
+    );
 
     const deadlinePassed =
       assessment.available_until !== null &&

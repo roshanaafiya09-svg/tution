@@ -198,6 +198,21 @@ export interface Holiday {
   updated_at: string;
 }
 
+/** A holiday as GET /holidays/me returns it to a teacher / student / parent
+ *  calendar. The server has already applied who may see it (a teacher's
+ *  Individual profile gets none; a student/parent only the academies whose
+ *  own batches they are in, and only holidays that touch them):
+ *   - `applies_to_academy_id` / `academy_name`: the academy it is met through;
+ *   - `batch_ids`: the batch scope (empty = academy-wide / government);
+ *   - `student_ids`: which of the viewer's students it touches (student and
+ *     parent viewers; empty for a teacher). */
+export interface ViewerHoliday extends Holiday {
+  applies_to_academy_id: string;
+  academy_name: string;
+  batch_ids: string[];
+  student_ids: string[];
+}
+
 export interface EffectiveHolidays {
   governmentHolidays: Holiday[];
   academyHolidays: Holiday[];

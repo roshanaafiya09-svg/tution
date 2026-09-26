@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PaymentsRepository } from './payments.repository';
 import { FeesRepository } from '../fees/fees.repository';
+import { FeeNotificationsService } from '../fees/fee-notifications.service';
 import { ParentLinksRepository } from '../../parents/parent-links.repository';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { SUBSCRIPTION_PLANS, isPlanId } from '../subscriptions/plans';
@@ -55,6 +56,7 @@ export class PaymentsService {
     private readonly parentPremiumService: ParentPremiumService,
     private readonly bookingsService: BookingsService,
     private readonly analytics: AnalyticsService,
+    private readonly feeNotifications: FeeNotificationsService,
     private readonly config: ConfigService,
     @Inject(PAYMENTS_PROVIDER) private readonly provider: PaymentsProvider,
   ) {}
@@ -318,6 +320,7 @@ export class PaymentsService {
         payment.amount_minor,
         captured.provider,
         payment.id,
+        captured.payer_id,
       );
     } else if (
       payment.subscription_id &&
@@ -364,18 +367,25 @@ export class PaymentsService {
     amountMinor: number,
     provider: string,
     paymentId: string,
+    payerId: string,
   ) {
     const fee = await this.feesRepository.findById(feeLedgerId);
     if (!fee) return;
 
     const newRecordedMinor = (fee.recorded_paid_minor ?? 0) + amountMinor;
     const status = newRecordedMinor >= fee.expected_minor ? 'paid' : 'partial';
-    await this.feesRepository.recordPayment(
+    const updated = await this.feesRepository.recordPayment(
       feeLedgerId,
       newRecordedMinor,
       status,
       `Paid online via ${provider} (payment ${paymentId})`,
     );
+    if (updated) {
+      await this.feeNotifications.notifyPaymentRecorded(updated, {
+        source: 'online',
+        payerId,
+      });
+    }
   }
 
   /** Extends from whichever is later, now or the existing

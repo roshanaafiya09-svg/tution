@@ -6,6 +6,7 @@ import { CalendarOff, CalendarRange, ChevronLeft, ChevronRight, GraduationCap, P
 import { api } from '@/lib/api';
 import type { AcademyActiveTeacher, AcademyManagedBatch, AcademyTodaySession, EffectiveHolidays } from '@/lib/types';
 import { cancellationReasonLabel, sessionTime } from '@/lib/session-labels';
+import { apiDateKey, dayKeyIn, daysBetween, localDateKey } from '@/lib/calendar';
 import { CardSkeleton, ErrorState, Select, StatusBadge } from '@/components/ui';
 import { AcademyCard, AcademyPageIntro, AcademySetupBanner } from '@/components/academy';
 import { useAcademyDashboard } from '@/components/academy-shell';
@@ -16,7 +17,11 @@ type ItemKind = 'class' | 'holiday' | 'cancellation';
 
 interface CalendarItem {
   id: string;
+  /** Sort instant (classes: the start; a holiday day: that day's start in UTC). */
   date: Date;
+  /** The calendar day it sits on — a class's day is read in the class's own
+   *  timezone (lib/calendar.ts), so it matches every other dashboard. */
+  dayKey: string;
   kind: ItemKind;
   title: string;
   subtitle: string | null;
@@ -41,6 +46,14 @@ function startOfWeek(d: Date): Date {
 }
 function sameDay(a: Date, b: Date): boolean {
   return a.toDateString() === b.toDateString();
+}
+function dayKeyLabel(key: string): string {
+  return new Date(`${key}T00:00:00Z`).toLocaleDateString('en-IN', {
+    timeZone: 'UTC',
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  });
 }
 
 export default function AcademyCalendarPage() {
@@ -86,7 +99,7 @@ export default function AcademyCalendarPage() {
           `/academy/me/sessions?from=${range.from.toISOString()}&to=${range.to.toISOString()}`,
         ),
         api.get<EffectiveHolidays>(
-          `/academy/me/holidays?from=${range.from.toISOString().slice(0, 10)}&to=${range.to.toISOString().slice(0, 10)}`,
+          `/academy/me/holidays?from=${localDateKey(range.from)}&to=${localDateKey(range.to)}`,
         ),
         api.get<AcademyActiveTeacher[]>('/academy/me/teachers/active'),
         api.get<AcademyManagedBatch[]>('/academy/me/batches'),
@@ -113,6 +126,7 @@ export default function AcademyCalendarPage() {
       result.push({
         id: s.id,
         date: new Date(s.scheduledStartUtc),
+        dayKey: dayKeyIn(s.scheduledStartUtc, s.timezone),
         kind: isCancelled ? 'cancellation' : 'class',
         title: s.batchTitle,
         subtitle: isCancelled
@@ -123,22 +137,31 @@ export default function AcademyCalendarPage() {
         batchId: s.batchId,
       });
     }
+    // A multi-day holiday sits on EVERY day it covers (clamped to the shown
+    // range), not just its first.
+    const fromKey = localDateKey(range.from);
+    const toKey = localDateKey(new Date(range.to.getTime() - 1));
     for (const h of [...holidays.governmentHolidays, ...holidays.academyHolidays]) {
-      result.push({
-        id: h.id,
-        date: new Date(h.start_date),
-        kind: 'holiday',
-        title: h.name,
-        subtitle: h.type === 'government_holiday' ? 'Tamil Nadu Government Holiday' : 'Academy Holiday',
-        href: '/academy/holidays',
-        tutorId: null,
-        batchId: null,
-      });
+      const start = apiDateKey(h.start_date);
+      const end = apiDateKey(h.end_date);
+      for (const day of daysBetween(start > fromKey ? start : fromKey, end < toKey ? end : toKey)) {
+        result.push({
+          id: `${h.id}-${day}`,
+          date: new Date(`${day}T00:00:00Z`),
+          dayKey: day,
+          kind: 'holiday',
+          title: h.name,
+          subtitle: h.type === 'government_holiday' ? 'Tamil Nadu Government Holiday' : 'Academy Holiday',
+          href: '/academy/holidays',
+          tutorId: null,
+          batchId: null,
+        });
+      }
     }
     return result
       .filter((i) => typeFilter === 'all' || (typeFilter === 'classes' && i.kind === 'class') || (typeFilter === 'holidays' && i.kind === 'holiday') || (typeFilter === 'cancellations' && i.kind === 'cancellation'))
-      .sort((a, b) => a.date.getTime() - b.date.getTime());
-  }, [sessions, holidays, tutorId, batchId, typeFilter]);
+      .sort((a, b) => a.dayKey.localeCompare(b.dayKey) || a.date.getTime() - b.date.getTime());
+  }, [sessions, holidays, tutorId, batchId, typeFilter, range]);
 
   function itemIcon(kind: ItemKind) {
     if (kind === 'holiday') return PartyPopper;
@@ -253,7 +276,8 @@ export default function AcademyCalendarPage() {
               </div>
             ))}
             {monthCells.map((cellDate) => {
-              const dayItems = items.filter((i) => sameDay(i.date, cellDate));
+              const cellKey = localDateKey(cellDate);
+              const dayItems = items.filter((i) => i.dayKey === cellKey);
               const inMonth = cellDate.getMonth() === anchor.getMonth();
               return (
                 <div
@@ -296,7 +320,7 @@ export default function AcademyCalendarPage() {
                   <Icon className="h-4 w-4 shrink-0 text-neutral-400" aria-hidden />
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
-                      {item.date.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
+                      {dayKeyLabel(item.dayKey)}
                     </p>
                     <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">{item.title}</p>
                     {item.subtitle && <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">{item.subtitle}</p>}

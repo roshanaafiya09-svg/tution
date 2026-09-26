@@ -26,6 +26,24 @@ export class AnnouncementsService {
       payload: { batchId, announcementId: announcement.id },
     });
 
+    // The families of exactly those students: parents with an ACTIVE
+    // consented link to a student currently in this batch. Same scope as
+    // the student audience above, so a removed student's parent (and any
+    // unrelated parent) is never told.
+    const parentIds =
+      await this.repository.listActiveParentIdsForStudents(studentIds);
+    await this.notificationsService.notify({
+      userIds: parentIds,
+      type: 'announcement',
+      title: batch.title,
+      body,
+      payload: {
+        batchId,
+        announcementId: announcement.id,
+        audience: 'parent',
+      },
+    });
+
     return announcement;
   }
 

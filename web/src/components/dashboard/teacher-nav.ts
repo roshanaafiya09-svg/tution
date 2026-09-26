@@ -23,6 +23,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { AppNotification } from '@/lib/types';
+import { isScheduleNotification } from './notification-types';
 
 export interface TeacherNavItem {
   href: string;
@@ -167,8 +168,27 @@ export function teacherNotificationHref(notification: AppNotification): string |
   if (notification.type === 'assessment_weekly_reminder') {
     return '/dashboard/assessments';
   }
-  if (notification.type === 'class_rescheduled_by_academy') {
+  // Class created / moved / cancelled / substitute-assigned / reminders and
+  // holidays all land on the calendar of the profile the teacher is
+  // currently in (an Academy class shows under the Academy profile).
+  if (isScheduleNotification(notification.type)) {
     return '/dashboard/calendar';
   }
-  return null;
+  switch (notification.type) {
+    case 'teacher_leave_approved':
+    case 'teacher_leave_rejected':
+      return '/dashboard/leave';
+    case 'fee_payment_recorded':
+      return '/dashboard/fees';
+    case 'verification_approved':
+    case 'verification_rejected':
+      return '/dashboard/verification';
+    case 'new_message':
+      return '/dashboard/messages';
+    case 'academy_join_accepted':
+    case 'academy_join_rejected':
+      return '/dashboard/find-an-academy';
+    default:
+      return null;
+  }
 }

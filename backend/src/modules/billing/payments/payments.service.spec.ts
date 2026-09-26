@@ -22,6 +22,7 @@ jest.mock('kysely', () => ({
 import { PaymentsService } from './payments.service';
 import type { PaymentsRepository } from './payments.repository';
 import type { FeesRepository } from '../fees/fees.repository';
+import type { FeeNotificationsService } from '../fees/fee-notifications.service';
 import type { ParentLinksRepository } from '../../parents/parent-links.repository';
 import type { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import type { ParentPremiumService } from '../parent-premium/parent-premium.service';
@@ -108,6 +109,9 @@ function buildService(overrides: {
   // handleWebhook doesn't call it at all, but simulateCapture-adjacent
   // tests elsewhere would need this to resolve to a non-prod value.
   const config = { get: () => 'test' } as unknown as ConfigService;
+  const feeNotifications = {
+    notifyPaymentRecorded: jest.fn().mockResolvedValue(undefined),
+  } as unknown as FeeNotificationsService;
 
   const service = new PaymentsService(
     repository,
@@ -117,6 +121,7 @@ function buildService(overrides: {
     parentPremiumService,
     bookingsService,
     analytics,
+    feeNotifications,
     config,
     provider,
   );

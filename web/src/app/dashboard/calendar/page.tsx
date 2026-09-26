@@ -8,18 +8,21 @@ import {
   ChevronRight,
   Clock,
   ExternalLink,
+  PartyPopper,
   RefreshCw,
   Users,
 } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
 import { safeHref } from '@/lib/safe-url';
 import { coverageLabel } from '@/lib/session-labels';
+import { dayKeyIn, holidaysOnDay, holidaySource, localDateKey, timeIn } from '@/lib/calendar';
 import type {
   AvailabilityException,
   AvailabilityRule,
   Booking,
   Session,
   Subject,
+  ViewerHoliday,
 } from '@/lib/types';
 import { Button, buttonVariants, CardSkeleton, ErrorState, StatusBadge } from '@/components/ui';
 import { TeacherPageHeader, AcademicCard, TeacherEmptyState } from '@/components/dashboard';
@@ -41,6 +44,11 @@ interface CalendarEvent {
   title: string;
   meta: string;
   start: Date;
+  /** The calendar day this sits on and its wall-clock time, both read in the
+   *  class's OWN timezone (see lib/calendar.ts) — never the browser's, so the
+   *  teacher, student, parent and academy all see the same day and time. */
+  dayKey: string;
+  time: string;
   durationMin: number;
   status: string;
   href: string;
@@ -80,10 +88,6 @@ function sameDay(a: Date, b: Date): boolean {
   return (
     a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
   );
-}
-
-function timeLabel(date: Date): string {
-  return date.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
 }
 
 function isoDate(date: Date): string {
@@ -129,7 +133,7 @@ function EventChip({ event, compact = false }: { event: CalendarEvent; compact?:
   return (
     <Link
       href={event.href}
-      title={`${timeLabel(event.start)} · ${event.title}${event.coverage ? ` · ${event.coverage}` : ''}`}
+      title={`${event.time} · ${event.title}${event.coverage ? ` · ${event.coverage}` : ''}`}
       className={cn(
         'block truncate rounded-md border-l-2 px-1.5 py-1 text-left text-[11px] font-medium transition-colors',
         compact ? 'leading-tight' : 'text-xs',
@@ -140,7 +144,7 @@ function EventChip({ event, compact = false }: { event: CalendarEvent; compact?:
             : 'border-brand-500 bg-brand-50 text-brand-700 hover:bg-brand-100 dark:bg-brand-500/10 dark:text-brand-200 dark:hover:bg-brand-500/20',
       )}
     >
-      {timeLabel(event.start)} {event.title}
+      {event.time} {event.title}
       {event.covering && <span className="font-normal opacity-80"> · covering</span>}
     </Link>
   );
@@ -157,7 +161,7 @@ function EventRow({ event }: { event: CalendarEvent }) {
             : 'text-neutral-900 dark:text-neutral-50',
         )}
       >
-        {timeLabel(event.start)}
+        {event.time}
       </span>
       <span
         className={cn(
@@ -220,6 +224,40 @@ function EventRow({ event }: { event: CalendarEvent }) {
   );
 }
 
+/** An Academy / government holiday on a calendar day. Only ever fed by GET
+ *  /holidays/me, which returns nothing for the Individual profile. */
+function HolidayChip({ holiday, compact = false }: { holiday: ViewerHoliday; compact?: boolean }) {
+  return (
+    <span
+      title={`${holiday.name} · ${holidaySource(holiday)}`}
+      className={cn(
+        'flex items-center gap-1 truncate rounded-md border-l-2 border-info bg-info-bg px-1.5 py-1 text-left text-[11px] font-medium text-info dark:bg-info/15 dark:text-info-dark',
+        !compact && 'text-xs',
+      )}
+    >
+      <PartyPopper className="h-3 w-3 shrink-0" aria-hidden />
+      <span className="truncate">{holiday.name}</span>
+    </span>
+  );
+}
+
+function HolidayBanner({ holidays }: { holidays: ViewerHoliday[] }) {
+  if (holidays.length === 0) return null;
+  return (
+    <ul className="space-y-1.5 border-b border-neutral-100 px-4 py-3 sm:px-5 dark:border-neutral-800">
+      {holidays.map((holiday) => (
+        <li key={holiday.id} className="flex items-center gap-2 text-sm text-info dark:text-info-dark">
+          <PartyPopper className="h-4 w-4 shrink-0" aria-hidden />
+          <span className="font-medium">{holiday.name}</span>
+          <span className="text-xs text-neutral-500 dark:text-neutral-400">
+            {holidaySource(holiday)} — classes are cancelled
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function CalendarPage() {
   const [view, setView] = useState<View>('week');
   const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
@@ -229,6 +267,7 @@ export default function CalendarPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [rules, setRules] = useState<AvailabilityRule[]>([]);
   const [exceptions, setExceptions] = useState<AvailabilityException[]>([]);
+  const [holidays, setHolidays] = useState<ViewerHoliday[]>([]);
   const [loadError, setLoadError] = useState<unknown>(null);
 
   const { rangeStart, rangeEnd } = useMemo(() => {
@@ -241,19 +280,28 @@ export default function CalendarPage() {
   const load = useCallback(() => {
     setLoadError(null);
     setSessions(null);
+    // A day either side: a class is bucketed by ITS timezone's day, so one
+    // near a grid edge can belong to a visible cell even when its UTC instant
+    // falls just outside the browser-zone range.
+    const fetchFrom = addDays(rangeStart, -1);
+    const fetchTo = addDays(rangeEnd, 1);
     Promise.all([
-      api.get<Session[]>(`/sessions/me?from=${rangeStart.toISOString()}&to=${rangeEnd.toISOString()}`),
+      api.get<Session[]>(`/sessions/me?from=${fetchFrom.toISOString()}&to=${fetchTo.toISOString()}`),
       api.get<Booking[]>('/marketplace/bookings/tutor'),
       api.get<Subject[]>('/catalog/subjects'),
       api.get<AvailabilityRule[]>('/availability/me'),
       api.get<AvailabilityException[]>('/availability/exceptions/me'),
+      // Server-scoped to the profile in use: an Academy profile gets that
+      // academy's holidays; the Individual profile gets none.
+      api.get<ViewerHoliday[]>(`/holidays/me?from=${localDateKey(rangeStart)}&to=${localDateKey(rangeEnd)}`),
     ])
-      .then(([sessionRows, bookingRows, subjectRows, ruleRows, exceptionRows]) => {
+      .then(([sessionRows, bookingRows, subjectRows, ruleRows, exceptionRows, holidayRows]) => {
         setSessions(sessionRows);
         setBookings(bookingRows);
         setSubjects(subjectRows);
         setRules(ruleRows);
         setExceptions(exceptionRows);
+        setHolidays(holidayRows);
       })
       .catch((err: unknown) => setLoadError(err ?? true));
   }, [rangeStart, rangeEnd]);
@@ -270,6 +318,8 @@ export default function CalendarPage() {
       title: session.batch_title,
       meta: 'Batch class',
       start: new Date(session.scheduled_start_utc),
+      dayKey: dayKeyIn(session.scheduled_start_utc, session.timezone),
+      time: timeIn(session.scheduled_start_utc, session.timezone),
       durationMin: session.duration_min,
       status: session.status,
       href: `/dashboard/sessions/${session.id}`,
@@ -290,6 +340,8 @@ export default function CalendarPage() {
         title: subjectName(booking.subject_id),
         meta: `${formatMinor(booking.amount_minor, booking.currency)} · marketplace booking`,
         start: new Date(booking.scheduled_start_utc),
+        dayKey: dayKeyIn(booking.scheduled_start_utc, booking.timezone),
+        time: timeIn(booking.scheduled_start_utc, booking.timezone),
         durationMin: booking.duration_min,
         status: booking.status,
         href: '/dashboard/marketplace',
@@ -303,9 +355,13 @@ export default function CalendarPage() {
   }, [sessions, bookings, subjects, rangeStart, rangeEnd]);
 
   const eventsOn = useCallback(
-    (date: Date) => events.filter((event) => sameDay(event.start, date)),
+    (date: Date) => {
+      const key = localDateKey(date);
+      return events.filter((event) => event.dayKey === key);
+    },
     [events],
   );
+  const holidaysOn = useCallback((date: Date) => holidaysOnDay(holidays, localDateKey(date)), [holidays]);
 
   function shift(direction: 1 | -1) {
     if (view === 'day') setAnchor((current) => addDays(current, direction));
@@ -338,7 +394,11 @@ export default function CalendarPage() {
     [anchor],
   );
 
+  const weekKeys = new Set(weekDays.map(localDateKey));
+  const weekEvents = events.filter((event) => weekKeys.has(event.dayKey));
   const dayEvents = eventsOn(view === 'month' ? selectedDay : anchor);
+  const dayHolidays = holidaysOn(view === 'month' ? selectedDay : anchor);
+  const weekHolidays = weekDays.flatMap((day) => holidaysOn(day).map((holiday) => ({ day, holiday })));
   const dayAvailability = availabilityForDay(view === 'month' ? selectedDay : anchor, rules, exceptions);
   const weekAvailableDays = weekDays.filter((day) => availabilityForDay(day, rules, exceptions).available).length;
   const today = startOfDay(new Date());
@@ -416,6 +476,7 @@ export default function CalendarPage() {
                 {monthDays.map((day) => {
                   const inMonth = day.getMonth() === anchor.getMonth();
                   const dayItems = eventsOn(day);
+                  const dayHols = holidaysOn(day);
                   const availability = availabilityForDay(day, rules, exceptions);
                   const isToday = sameDay(day, today);
                   const isSelected = sameDay(day, selectedDay);
@@ -453,6 +514,9 @@ export default function CalendarPage() {
                         )}
                       </span>
                       <span className="mt-1 flex flex-col gap-0.5">
+                        {dayHols.slice(0, 1).map((holiday) => (
+                          <HolidayChip key={holiday.id} holiday={holiday} compact />
+                        ))}
                         {dayItems.slice(0, 2).map((event) => (
                           <EventChip key={event.id} event={event} compact />
                         ))}
@@ -473,6 +537,7 @@ export default function CalendarPage() {
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-7 lg:gap-2">
               {weekDays.map((day) => {
                 const dayItems = eventsOn(day);
+                const dayHols = holidaysOn(day);
                 const availability = availabilityForDay(day, rules, exceptions);
                 const isToday = sameDay(day, today);
                 return (
@@ -502,6 +567,9 @@ export default function CalendarPage() {
                       {availability.available ? availability.windows.join(', ') : 'Not available'}
                     </p>
                     <div className="mt-2 flex flex-col gap-1">
+                      {dayHols.map((holiday) => (
+                        <HolidayChip key={holiday.id} holiday={holiday} compact />
+                      ))}
                       {dayItems.length === 0 ? (
                         <span className="text-[11px] text-neutral-300 dark:text-neutral-600">No classes</span>
                       ) : (
@@ -551,7 +619,15 @@ export default function CalendarPage() {
             </div>
 
             {view === 'week' ? (
-              events.length === 0 ? (
+              weekHolidays.length === 0 ? null : (
+                <HolidayBanner holidays={[...new Map(weekHolidays.map(({ holiday }) => [holiday.id, holiday])).values()]} />
+              )
+            ) : (
+              <HolidayBanner holidays={dayHolidays} />
+            )}
+
+            {view === 'week' ? (
+              weekEvents.length === 0 ? (
                 <div className="p-4 sm:p-5">
                   <TeacherEmptyState
                     icon={CalendarDays}
@@ -566,7 +642,7 @@ export default function CalendarPage() {
                 </div>
               ) : (
                 <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
-                  {events.map((event) => (
+                  {weekEvents.map((event) => (
                     <EventRow key={event.id} event={event} />
                   ))}
                 </ul>
