@@ -79,6 +79,10 @@ export const ErrorCode = {
    *  series only when EVERY occurrence is a holiday — otherwise the
    *  holiday occurrences are skipped. */
   ACADEMY_HOLIDAY: 'ACADEMY_HOLIDAY',
+  /** A new Academy class was requested for a teacher during an APPROVED
+   *  leave of theirs at that academy (see TeacherLeaveCalendar). Never
+   *  raised for an Individual class or another academy's. */
+  TEACHER_ON_APPROVED_LEAVE: 'TEACHER_ON_APPROVED_LEAVE',
 
   // Account deletion (H8).
   /** The invite was revoked — its teacher's account was deleted. */

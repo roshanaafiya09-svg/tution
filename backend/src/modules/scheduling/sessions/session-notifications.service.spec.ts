@@ -8,6 +8,8 @@ jest.mock('kysely', () => ({
 }));
 
 import {
+  CLASS_CANCELLED_BY_ACADEMY_TYPE,
+  CLASS_CANCELLED_TYPE,
   CLASS_RESCHEDULED_BY_ACADEMY_TYPE,
   CLASS_RESCHEDULED_TYPE,
   SessionNotificationsService,
@@ -247,5 +249,202 @@ describe('SessionNotificationsService.notifyRescheduled — teacher notice', () 
       academyId: ACADEMY_ID,
     });
     expect(teacherCalls(notify)).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Academy cancel -> teacher notice
+// ---------------------------------------------------------------------------
+describe('SessionNotificationsService.notifyCancelled — teacher notice', () => {
+  const cancelled = (id: string, hoursFromBase: number) => ({
+    id,
+    batch_id: 'batch-1',
+    tutor_id: 'teacher-1',
+    substitute_tutor_id: null as string | null,
+    status: 'cancelled' as const,
+    scheduled_start_utc: new Date(
+      new Date('2030-06-17T11:30:00Z').getTime() + hoursFromBase * 3600_000,
+    ),
+    timezone: 'Asia/Kolkata',
+  });
+
+  function buildCancel(
+    opts: {
+      rows?: ReturnType<typeof cancelled>[];
+      context?: {
+        academy_id: string | null;
+        academy_name: string | null;
+      } | null;
+      activeTeachers?: string[];
+    } = {},
+  ) {
+    const rows = opts.rows ?? [cancelled('session-1', 0)];
+    const context =
+      opts.context === undefined
+        ? { academy_id: ACADEMY_ID, academy_name: 'Academy A' }
+        : opts.context && opts.context;
+    const sessionsRepository = {
+      findByIds: jest.fn().mockResolvedValue(rows),
+      markCancellationNotified: jest.fn().mockResolvedValue(undefined),
+      findCreationNoticeContext: jest
+        .fn()
+        .mockResolvedValue(
+          context && { batch_title: 'Mathematics', ...context },
+        ),
+      filterActiveAcademyTeachers: jest
+        .fn()
+        .mockImplementation((_a: string, ids: string[]) =>
+          Promise.resolve(opts.activeTeachers ?? ids),
+        ),
+    };
+    const batchesRepository = {
+      findById: jest
+        .fn()
+        .mockResolvedValue({ id: 'batch-1', title: 'Mathematics' }),
+      listDistinctStudentIdsForBatches: jest
+        .fn()
+        .mockResolvedValue(['student-1']),
+    };
+    const attendanceRepository = {
+      listActiveParentIdsForStudents: jest.fn().mockResolvedValue(['parent-1']),
+    };
+    const notify = jest.fn().mockResolvedValue([]);
+    const service = new SessionNotificationsService(
+      sessionsRepository as unknown as SessionsRepository,
+      batchesRepository as unknown as BatchesRepository,
+      attendanceRepository as unknown as AttendanceRepository,
+      { notify } as unknown as NotificationsService,
+    );
+    return { service, notify, sessionsRepository };
+  }
+  const byType = (notify: jest.Mock, type: string) =>
+    sentOf(notify).filter((n) => n.type === type);
+
+  it('academy cancel: teacher gets one notice (class, date/time, academy) AND the student/parent notice is unchanged', async () => {
+    const { service, notify } = buildCancel();
+    await service.notifyCancelled(['session-1'], 'academy_manual', ACADEMY_ID);
+
+    const teacher = byType(notify, CLASS_CANCELLED_BY_ACADEMY_TYPE);
+    expect(teacher).toHaveLength(1);
+    expect(teacher[0].userIds).toEqual(['teacher-1']);
+    expect(teacher[0].body).toBe(
+      'Your Mathematics class on Mon 17 Jun, 5:00 PM was cancelled by Academy A.',
+    );
+    expect(teacher[0].payload).toMatchObject({
+      sessionId: 'session-1',
+      academyId: ACADEMY_ID,
+      reason: 'academy_manual',
+    });
+    // Same dedupe key as the student notice -> one per recipient per event.
+    expect(teacher[0].dedupeKey).toBe('cancelled:session-1');
+
+    const roster = byType(notify, CLASS_CANCELLED_TYPE);
+    expect(roster).toHaveLength(1);
+    expect(roster[0].userIds.sort()).toEqual(['parent-1', 'student-1']);
+    expect(roster[0].body).toMatch(/cancelled by the academy/);
+    expect(roster[0].userIds).not.toContain('teacher-1');
+  });
+
+  it('a series cancel is ONE summarised teacher notice, keyed on the set of classes', async () => {
+    const rows = [
+      cancelled('s1', 0),
+      cancelled('s2', 168),
+      cancelled('s3', 336),
+    ];
+    const { service, notify } = buildCancel({ rows });
+    await service.notifyCancelled(
+      ['s1', 's2', 's3'],
+      'academy_manual',
+      ACADEMY_ID,
+    );
+
+    const teacher = byType(notify, CLASS_CANCELLED_BY_ACADEMY_TYPE);
+    expect(teacher).toHaveLength(1);
+    expect(teacher[0].body).toMatch(
+      /^3 upcoming Mathematics classes \(from .+\) were cancelled by Academy A\.$/,
+    );
+    expect(teacher[0].dedupeKey).toMatch(/^cancelled-set:/);
+  });
+
+  it('teacher_manual cancel: NO teacher notice, roster notice unchanged', async () => {
+    const { service, notify, sessionsRepository } = buildCancel();
+    await service.notifyCancelled(['session-1'], 'teacher_manual');
+    expect(byType(notify, CLASS_CANCELLED_BY_ACADEMY_TYPE)).toHaveLength(0);
+    expect(byType(notify, CLASS_CANCELLED_TYPE)).toHaveLength(1);
+    expect(
+      sessionsRepository.filterActiveAcademyTeachers,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('batch_archived cancel: NO teacher notice', async () => {
+    const { service, notify } = buildCancel();
+    await service.notifyCancelled(['session-1'], 'batch_archived', ACADEMY_ID);
+    expect(byType(notify, CLASS_CANCELLED_BY_ACADEMY_TYPE)).toHaveLength(0);
+  });
+
+  it('academy_manual without an owning academy id notifies no teacher (never guessed)', async () => {
+    const { service, notify } = buildCancel();
+    await service.notifyCancelled(['session-1'], 'academy_manual');
+    expect(byType(notify, CLASS_CANCELLED_BY_ACADEMY_TYPE)).toHaveLength(0);
+  });
+
+  it('never notifies when the batch is not owned by the acting academy (Individual / other academy)', async () => {
+    for (const context of [
+      { academy_id: null, academy_name: null },
+      { academy_id: 'academy-B', academy_name: 'Academy B' },
+    ]) {
+      const { service, notify } = buildCancel({ context });
+      await service.notifyCancelled(
+        ['session-1'],
+        'academy_manual',
+        ACADEMY_ID,
+      );
+      expect(byType(notify, CLASS_CANCELLED_BY_ACADEMY_TYPE)).toHaveLength(0);
+    }
+  });
+
+  it('teacher who left the academy is not notified; substitute is, when active', async () => {
+    const withSub = [
+      { ...cancelled('session-1', 0), substitute_tutor_id: 'teacher-2' },
+    ];
+    const both = buildCancel({ rows: withSub });
+    await both.service.notifyCancelled(
+      ['session-1'],
+      'academy_manual',
+      ACADEMY_ID,
+    );
+    expect(
+      byType(both.notify, CLASS_CANCELLED_BY_ACADEMY_TYPE)[0].userIds.sort(),
+    ).toEqual(['teacher-1', 'teacher-2']);
+
+    const left = buildCancel({ rows: withSub, activeTeachers: ['teacher-2'] });
+    await left.service.notifyCancelled(
+      ['session-1'],
+      'academy_manual',
+      ACADEMY_ID,
+    );
+    expect(
+      byType(left.notify, CLASS_CANCELLED_BY_ACADEMY_TYPE)[0].userIds,
+    ).toEqual(['teacher-2']);
+  });
+
+  it('a failing teacher notice never blocks the student/parent notice or the notified-marker', async () => {
+    const { service, notify, sessionsRepository } = buildCancel();
+    notify.mockImplementation((n: { type: string }) =>
+      n.type === CLASS_CANCELLED_BY_ACADEMY_TYPE
+        ? Promise.reject(new Error('push down'))
+        : Promise.resolve([]),
+    );
+    await service.notifyCancelled(['session-1'], 'academy_manual', ACADEMY_ID);
+    expect(byType(notify, CLASS_CANCELLED_TYPE)).toHaveLength(1);
+    expect(sessionsRepository.markCancellationNotified).toHaveBeenCalled();
+  });
+
+  it('nothing is sent when no session is actually cancelled (failed / raced cancel)', async () => {
+    const { service, notify } = buildCancel({
+      rows: [{ ...cancelled('session-1', 0), status: 'scheduled' as never }],
+    });
+    await service.notifyCancelled(['session-1'], 'academy_manual', ACADEMY_ID);
+    expect(notify).not.toHaveBeenCalled();
   });
 });

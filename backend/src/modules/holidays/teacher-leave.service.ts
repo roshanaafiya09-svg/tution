@@ -16,6 +16,12 @@ import { BatchesRepository } from '../scheduling/batches/batches.repository';
 import { AttendanceRepository } from '../scheduling/attendance/attendance.repository';
 import { NotificationsService } from '../notifications/notifications.service';
 import type { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
+import {
+  classSubject,
+  classWhen,
+} from '../scheduling/sessions/class-day-phrase';
+
+export const CLASS_SUBSTITUTE_ASSIGNED_TYPE = 'class_substitute_assigned';
 
 const DEFAULT_TIMEZONE = 'Asia/Kolkata'; // see holiday.service.ts's identical constant
 
@@ -322,6 +328,15 @@ export class TeacherLeaveService {
       substituteTutorId ?? null,
       id,
     );
+    if (substituteTutorId) {
+      await this.notifySubstituteAssigned(
+        academyId,
+        result.request.tutor_id,
+        substituteTutorId,
+        result.sessions,
+        id,
+      );
+    }
     return result.request;
   }
 
@@ -356,6 +371,13 @@ export class TeacherLeaveService {
       academyId,
       sessions,
       substituteTutorId,
+      id,
+    );
+    await this.notifySubstituteAssigned(
+      academyId,
+      request.tutor_id,
+      substituteTutorId,
+      sessions,
       id,
     );
     return { ok: true };
@@ -456,12 +478,14 @@ export class TeacherLeaveService {
     }
 
     for (const session of sessions) {
-      const time = DateTime.fromJSDate(session.scheduled_start_utc, {
-        zone: 'utc',
-      })
-        .setZone(session.timezone)
-        .toFormat('h:mm a');
       const batchTitle = batchTitleById.get(session.batch_id) ?? 'class';
+      // "Today's" only when the class really is today in ITS timezone — a
+      // class days away reads "Your ... class on Monday, 28 September ...".
+      const subject = classSubject(
+        batchTitle,
+        session.scheduled_start_utc,
+        session.timezone,
+      );
 
       const studentIds =
         await this.batchesRepository.listDistinctStudentIdsForBatches([
@@ -475,8 +499,8 @@ export class TeacherLeaveService {
       if (recipientIds.length === 0) continue;
 
       const body = substituteTutorId
-        ? `Today's ${batchTitle} class at ${time} will be conducted by ${substituteName ?? 'a substitute teacher'} instead of the usual teacher.`
-        : `Today's ${batchTitle} class at ${time} has been cancelled because your teacher is on approved leave.`;
+        ? `${subject} will be conducted by ${substituteName ?? 'a substitute teacher'} instead of the usual teacher.`
+        : `${subject} has been cancelled because your teacher is on approved leave.`;
 
       await this.notificationsService.notify({
         userIds: recipientIds,
@@ -489,6 +513,72 @@ export class TeacherLeaveService {
           substituteTutorId,
         },
       });
+    }
+  }
+
+  /**
+   * Tells the substitute they've been given a class to cover — the one
+   * person this assignment is FOR (students/parents get their own notice
+   * from notifyAffectedClasses). Called only after the assignment was
+   * committed (approve's decide transaction / assignSubstituteToSessions),
+   * and validateSubstitute has already required the substitute to be an
+   * active member of THIS academy. One notice per upcoming class; a class
+   * whose time already passed needs no "you're covering" alert. Names,
+   * class, date/time (in the class's own timezone) and the academy all
+   * come from the records; the dedupe key (session + leave request, the
+   * recipient being part of the unique index) makes a repeated assignment
+   * of the same teacher a no-op, while a different substitute is a
+   * different recipient. Best-effort: a delivery failure never undoes an
+   * assignment that already happened.
+   */
+  private async notifySubstituteAssigned(
+    academyId: string,
+    originalTutorId: string,
+    substituteTutorId: string,
+    sessions: Array<{
+      id: string;
+      batch_id: string;
+      scheduled_start_utc: Date;
+      timezone: string;
+    }>,
+    leaveRequestId: string,
+  ) {
+    const now = Date.now();
+    const upcoming = sessions.filter(
+      (s) => s.scheduled_start_utc.getTime() > now,
+    );
+    if (upcoming.length === 0) return;
+    try {
+      const [academy, names] = await Promise.all([
+        this.academiesRepository.findById(academyId),
+        this.sessionsRepository.findTutorDisplayNames([originalTutorId]),
+      ]);
+      const original = names.get(originalTutorId) ?? 'the teacher on leave';
+      const at = academy?.name ? ` at ${academy.name}` : '';
+
+      for (const session of upcoming) {
+        const batch = await this.batchesRepository.findById(session.batch_id);
+        const when = classWhen(session.scheduled_start_utc, session.timezone);
+        await this.notificationsService.notify({
+          userIds: [substituteTutorId],
+          type: CLASS_SUBSTITUTE_ASSIGNED_TYPE,
+          title: '📌 Substitute class assigned',
+          body: `You have been assigned to cover ${original}'s ${batch?.title ?? 'class'} class ${when}${at}.`,
+          payload: {
+            sessionId: session.id,
+            batchId: session.batch_id,
+            academyId,
+            leaveRequestId,
+            originalTutorId,
+            scheduledStartUtc: session.scheduled_start_utc.toISOString(),
+          },
+          dedupeKey: `substitute-assigned:${session.id}:${leaveRequestId}`,
+        });
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Failed to notify substitute ${substituteTutorId} of leave request ${leaveRequestId}: ${err}`,
+      );
     }
   }
 

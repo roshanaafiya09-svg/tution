@@ -17,6 +17,8 @@ export const CLASS_RESCHEDULED_TYPE = 'class_rescheduled';
 export const CLASS_CREATED_TYPE = 'class_created';
 /** Sent to the teacher(s) of a class when their ACADEMY moved it. */
 export const CLASS_RESCHEDULED_BY_ACADEMY_TYPE = 'class_rescheduled_by_academy';
+/** Sent to the teacher(s) of a class when their ACADEMY cancelled it. */
+export const CLASS_CANCELLED_BY_ACADEMY_TYPE = 'class_cancelled_by_academy';
 
 /** Who moved the class. Only an academy actor adds the teacher notice. */
 export type RescheduleActor =
@@ -92,6 +94,7 @@ export class SessionNotificationsService {
   async notifyCancelled(
     sessionIds: string[],
     reason: ImmediateCancellationReason,
+    academyId?: string,
   ): Promise<void> {
     if (sessionIds.length === 0) return;
     try {
@@ -106,6 +109,11 @@ export class SessionNotificationsService {
       const batchIds = [...new Set(sessions.map((s) => s.batch_id))];
       for (const batchId of batchIds) {
         const batchSessions = sessions.filter((s) => s.batch_id === batchId);
+        // The academy cancelled its own class: the class's teacher is
+        // told too (never for a teacher's own cancel or an archive).
+        if (reason === 'academy_manual' && academyId) {
+          await this.notifyTeachersCancelled(batchId, batchSessions, academyId);
+        }
         await this.notifyBatchCancelled(batchId, batchSessions, reason);
       }
       await this.sessionsRepository.markCancellationNotified(
@@ -117,6 +125,101 @@ export class SessionNotificationsService {
         err instanceof Error ? err.stack : err,
       );
     }
+  }
+
+  /**
+   * The academy cancelled one of ITS classes (or a series): tell the
+   * teacher who runs it (and the assigned substitute, if any). Called only
+   * after the cancellation committed. Same recipient rules as the
+   * reschedule notice (academyTeacherRecipients) and the same dedupe keys
+   * as the student notice, under its own type — one notice per teacher
+   * per cancellation event, and a repeated cancel (rejected by the
+   * lifecycle guard before this is reached) announces nothing.
+   * Best-effort and isolated: a failure here never blocks the student/
+   * parent notice.
+   */
+  private async notifyTeachersCancelled(
+    batchId: string,
+    sessions: Array<
+      NoticeSession & { tutor_id: string; substitute_tutor_id: string | null }
+    >,
+    academyId: string,
+  ): Promise<void> {
+    try {
+      const target = await this.academyTeacherRecipients(
+        batchId,
+        academyId,
+        sessions.flatMap((s) => [s.tutor_id, s.substitute_tutor_id]),
+      );
+      if (!target) return;
+
+      const first = sessions[0];
+      const academy = target.academyName ?? 'your academy';
+      const body =
+        sessions.length === 1
+          ? `Your ${target.batchTitle} class on ${when(first.scheduled_start_utc, first.timezone)} was cancelled by ${academy}.`
+          : `${sessions.length} upcoming ${target.batchTitle} classes (from ${when(first.scheduled_start_utc, first.timezone)}) were cancelled by ${academy}.`;
+
+      await this.notificationsService.notify({
+        userIds: target.recipients,
+        type: CLASS_CANCELLED_BY_ACADEMY_TYPE,
+        title: '🔔 Class Cancelled by Academy',
+        body,
+        payload: {
+          sessionIds: sessions.map((s) => s.id),
+          ...(sessions.length === 1 ? { sessionId: first.id } : {}),
+          batchId,
+          academyId,
+          reason: 'academy_manual',
+        },
+        dedupeKey:
+          sessions.length === 1
+            ? cancellationDedupeKey(first.id)
+            : `cancelled-set:${shortHash(sessions.map((s) => s.id).sort())}`,
+      });
+    } catch (err) {
+      this.logger.error(
+        `Teacher cancellation notice failed for batch ${batchId}`,
+        err instanceof Error ? err.stack : err,
+      );
+    }
+  }
+
+  /**
+   * Who an academy-side notice about one of its own classes may reach:
+   * the given teachers, but only if the batch really is owned by
+   * `academyId` (an Individual class, or another academy's, yields
+   * null) and each is still an ACTIVE member of that academy with a live
+   * account (a teacher who left — whose Individual profile is a separate
+   * identity — is never told). Shared by the reschedule and cancel
+   * notices so they can never drift apart.
+   */
+  private async academyTeacherRecipients(
+    batchId: string,
+    academyId: string,
+    tutorIds: Array<string | null>,
+  ): Promise<{
+    recipients: string[];
+    batchTitle: string;
+    academyName: string | null;
+  } | null> {
+    const context =
+      await this.sessionsRepository.findCreationNoticeContext(batchId);
+    if (!context || context.academy_id !== academyId) return null;
+    const candidates = [
+      ...new Set(tutorIds.filter((id): id is string => !!id)),
+    ];
+    const recipients =
+      await this.sessionsRepository.filterActiveAcademyTeachers(
+        academyId,
+        candidates,
+      );
+    if (recipients.length === 0) return null;
+    return {
+      recipients,
+      batchTitle: context.batch_title,
+      academyName: context.academy_name,
+    };
   }
 
   private async notifyBatchCancelled(
@@ -304,31 +407,19 @@ export class SessionNotificationsService {
     academyId: string,
   ): Promise<void> {
     try {
-      const context = await this.sessionsRepository.findCreationNoticeContext(
+      const target = await this.academyTeacherRecipients(
         after.batch_id,
+        academyId,
+        [after.tutor_id, after.substitute_tutor_id],
       );
-      if (!context || context.academy_id !== academyId) return;
+      if (!target) return;
 
-      const candidates = [
-        ...new Set(
-          [after.tutor_id, after.substitute_tutor_id].filter(
-            (id): id is string => !!id,
-          ),
-        ),
-      ];
-      const recipients =
-        await this.sessionsRepository.filterActiveAcademyTeachers(
-          academyId,
-          candidates,
-        );
-      if (recipients.length === 0) return;
-
-      const academy = context.academy_name ?? 'your academy';
+      const academy = target.academyName ?? 'your academy';
       await this.notificationsService.notify({
-        userIds: recipients,
+        userIds: target.recipients,
         type: CLASS_RESCHEDULED_BY_ACADEMY_TYPE,
         title: '📅 Class Rescheduled by Academy',
-        body: `Your ${context.batch_title} class has been rescheduled by ${academy} from ${when(before.scheduled_start_utc, before.timezone)} to ${when(after.scheduled_start_utc, after.timezone)} (${after.duration_min} min).`,
+        body: `Your ${target.batchTitle} class has been rescheduled by ${academy} from ${when(before.scheduled_start_utc, before.timezone)} to ${when(after.scheduled_start_utc, after.timezone)} (${after.duration_min} min).`,
         payload: {
           sessionId: after.id,
           batchId: after.batch_id,

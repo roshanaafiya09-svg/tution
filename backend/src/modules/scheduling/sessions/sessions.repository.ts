@@ -481,6 +481,17 @@ export class SessionsRepository {
       .executeTakeFirst();
   }
 
+  /** Display names of tutors, for notice copy. */
+  async findTutorDisplayNames(ids: string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.db
+      .selectFrom('profiles_tutor')
+      .select(['user_id', 'display_name'])
+      .where('user_id', 'in', ids)
+      .execute();
+    return new Map(rows.map((r) => [r.user_id, r.display_name]));
+  }
+
   /** Drops soft-deleted accounts — a deleted user keeps no live session
    *  and must not be sent new notices. */
   async filterLiveUserIds(userIds: string[]): Promise<string[]> {

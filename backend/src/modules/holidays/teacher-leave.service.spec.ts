@@ -574,3 +574,236 @@ describe('TeacherLeaveService.withdraw', () => {
     );
   });
 });
+
+describe('TeacherLeaveService — notice wording uses the real class date', () => {
+  const NOW = new Date('2026-09-26T05:30:00Z'); // Sat 26 Sep 2026, 11:00 IST
+
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(NOW);
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  async function rosterBodyFor(startUtc: string, substitute?: string) {
+    const session = { ...SESSION, scheduled_start_utc: new Date(startUtc) };
+    const decide = jest.fn().mockResolvedValue({
+      request: { ...PENDING_REQUEST, status: 'approved' as const },
+      sessions: [session],
+    });
+    const { service, notify } = buildService({
+      findForAcademy: jest.fn().mockResolvedValue({ ...PENDING_REQUEST }),
+      decide,
+    });
+    await service.approve(ACADEMY_ID, REQUEST_ID, 'admin-1', substitute);
+    const roster = (notify.mock.calls as unknown[][])
+      .map((c) => c[0] as NotifyInput)
+      .find(
+        (n) => n.type.startsWith('class_') && n.userIds.includes('student-1'),
+      );
+    return roster!.body;
+  }
+
+  it("same-day class -> Today's (leave, no substitute)", async () => {
+    expect(await rosterBodyFor('2026-09-26T11:30:00Z')).toBe(
+      "Today's Grade 10 Physics class at 5:00 PM has been cancelled because your teacher is on approved leave.",
+    );
+  });
+
+  it("tomorrow -> Tomorrow's", async () => {
+    expect(await rosterBodyFor('2026-09-27T11:30:00Z')).toBe(
+      "Tomorrow's Grade 10 Physics class at 5:00 PM has been cancelled because your teacher is on approved leave.",
+    );
+  });
+
+  it("a class days away names its actual date - never Today's", async () => {
+    const body = await rosterBodyFor('2026-09-28T11:30:00Z');
+    expect(body).toBe(
+      'Your Grade 10 Physics class on Monday, 28 September at 5:00 PM has been cancelled because your teacher is on approved leave.',
+    );
+    expect(body).not.toMatch(/Today/);
+  });
+
+  it('the substitute wording is date-aware too, in the class timezone', async () => {
+    // 02:00 IST on the 27th (= 20:30 UTC on the 26th) is TOMORROW for the class.
+    const body = await rosterBodyFor('2026-09-26T20:30:00Z', 'sub-1');
+    expect(body).toMatch(
+      /^Tomorrow's Grade 10 Physics class at 2:00 AM will be conducted by /,
+    );
+  });
+});
+
+describe('TeacherLeaveService — substitute assignment notice', () => {
+  const NOW = new Date('2026-09-26T05:30:00Z');
+  const SUB = 'substitute-1';
+  const future = {
+    ...SESSION,
+    id: 'session-future',
+    scheduled_start_utc: new Date('2026-09-28T11:30:00Z'),
+  };
+
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(NOW);
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  function build(over: Parameters<typeof buildService>[0] = {}) {
+    const built = buildService({
+      findAcademyById: jest.fn().mockResolvedValue({
+        id: ACADEMY_ID,
+        name: 'Academy A',
+        owner_user_id: 'o',
+      }),
+      ...over,
+    });
+    (
+      built.sessionsRepository as unknown as Record<string, jest.Mock>
+    ).findTutorDisplayNames = jest
+      .fn()
+      .mockResolvedValue(new Map([[TUTOR_ID, 'Asha Raman']]));
+    return built;
+  }
+  const substituteNotices = (notify: jest.Mock) =>
+    (notify.mock.calls as unknown[][])
+      .map((c) => c[0] as NotifyInput)
+      .filter((n) => n.type === 'class_substitute_assigned');
+
+  it('approve with a substitute notifies ONLY the substitute, naming original teacher, class, date, time and academy', async () => {
+    const decide = jest.fn().mockResolvedValue({
+      request: { ...PENDING_REQUEST, status: 'approved' as const },
+      sessions: [future],
+    });
+    const { service, notify } = build({
+      findForAcademy: jest.fn().mockResolvedValue({ ...PENDING_REQUEST }),
+      decide,
+    });
+
+    await service.approve(ACADEMY_ID, REQUEST_ID, 'admin-1', SUB);
+
+    const [n] = substituteNotices(notify);
+    expect(substituteNotices(notify)).toHaveLength(1);
+    expect(n.userIds).toEqual([SUB]);
+    expect(n.body).toBe(
+      "You have been assigned to cover Asha Raman's Grade 10 Physics class on Monday, 28 September at 5:00 PM at Academy A.",
+    );
+    expect(n.payload).toMatchObject({
+      sessionId: 'session-future',
+      academyId: ACADEMY_ID,
+      leaveRequestId: REQUEST_ID,
+      originalTutorId: TUTOR_ID,
+    });
+    expect(n.dedupeKey).toBe(
+      `substitute-assigned:session-future:${REQUEST_ID}`,
+    );
+    // Students/parents keep their own (unchanged) notice, never the substitute one.
+    const roster = (notify.mock.calls as unknown[][])
+      .map((c) => c[0] as NotifyInput)
+      .find((x) => x.type === 'class_substitute')!;
+    expect(roster.userIds).toEqual(
+      expect.arrayContaining(['student-1', 'parent-1']),
+    );
+    expect(roster.userIds).not.toContain(SUB);
+  });
+
+  it('approve WITHOUT a substitute sends no substitute notice', async () => {
+    const { service, notify } = build({
+      findForAcademy: jest.fn().mockResolvedValue({ ...PENDING_REQUEST }),
+    });
+    await service.approve(ACADEMY_ID, REQUEST_ID, 'admin-1');
+    expect(substituteNotices(notify)).toHaveLength(0);
+  });
+
+  it('a failed approval (lost race / non-member substitute) sends no substitute notice', async () => {
+    const lostRace = build({
+      findForAcademy: jest.fn().mockResolvedValue({ ...PENDING_REQUEST }),
+      decide: jest.fn().mockResolvedValue(undefined),
+    });
+    await expect(
+      lostRace.service.approve(ACADEMY_ID, REQUEST_ID, 'admin-1', SUB),
+    ).rejects.toThrow(ConflictException);
+    expect(substituteNotices(lostRace.notify)).toHaveLength(0);
+
+    const notMember = build({
+      findForAcademy: jest.fn().mockResolvedValue({ ...PENDING_REQUEST }),
+      // the teacher on leave is a member; the substitute is NOT
+      findActiveMembership: jest
+        .fn()
+        .mockImplementation((_a: string, tutor: string) =>
+          Promise.resolve(tutor === TUTOR_ID ? { id: 'm' } : undefined),
+        ),
+    });
+    await expect(
+      notMember.service.approve(ACADEMY_ID, REQUEST_ID, 'admin-1', SUB),
+    ).rejects.toThrow(BadRequestException);
+    expect(substituteNotices(notMember.notify)).toHaveLength(0);
+  });
+
+  it('assigning a substitute to an already-approved leave notifies the substitute, scoped to that academy', async () => {
+    const findForAcademy = jest
+      .fn()
+      .mockResolvedValue({ ...PENDING_REQUEST, status: 'approved' });
+    const findByIdsInAcademy = jest.fn().mockResolvedValue([future]);
+    const assignSubstitute = jest.fn().mockResolvedValue(undefined);
+    const { service, notify } = build({
+      findForAcademy,
+      findByIdsInAcademy,
+      assignSubstitute,
+    });
+
+    await service.assignSubstitute(ACADEMY_ID, REQUEST_ID, SUB);
+
+    expect(findByIdsInAcademy).toHaveBeenCalledWith(
+      expect.any(Array),
+      ACADEMY_ID,
+    );
+    expect(substituteNotices(notify)).toHaveLength(1);
+    expect(substituteNotices(notify)[0].userIds).toEqual([SUB]);
+  });
+
+  it("another academy can't assign (or notify) - the request isn't theirs", async () => {
+    const { service, notify } = build({
+      findForAcademy: jest.fn().mockResolvedValue(undefined),
+    });
+    await expect(
+      service.assignSubstitute(OTHER_ACADEMY_ID, REQUEST_ID, SUB),
+    ).rejects.toThrow(NotFoundException);
+    expect(substituteNotices(notify)).toHaveLength(0);
+  });
+
+  it('a class whose time already passed needs no "you are covering" alert', async () => {
+    const past = {
+      ...future,
+      scheduled_start_utc: new Date('2026-09-20T11:30:00Z'),
+    };
+    const { service, notify } = build({
+      findForAcademy: jest
+        .fn()
+        .mockResolvedValue({ ...PENDING_REQUEST, status: 'approved' }),
+      findByIdsInAcademy: jest.fn().mockResolvedValue([past]),
+    });
+    await service.assignSubstitute(ACADEMY_ID, REQUEST_ID, SUB);
+    expect(substituteNotices(notify)).toHaveLength(0);
+  });
+
+  it('a delivery failure never undoes the assignment (best-effort)', async () => {
+    const notify = jest
+      .fn()
+      .mockImplementation((n: NotifyInput) =>
+        n.type === 'class_substitute_assigned'
+          ? Promise.reject(new Error('push down'))
+          : Promise.resolve([]),
+      );
+    const { service } = build({
+      findForAcademy: jest
+        .fn()
+        .mockResolvedValue({ ...PENDING_REQUEST, status: 'approved' }),
+      findByIdsInAcademy: jest.fn().mockResolvedValue([future]),
+      notify,
+    });
+    await expect(
+      service.assignSubstitute(ACADEMY_ID, REQUEST_ID, SUB),
+    ).resolves.toEqual({ ok: true });
+  });
+});

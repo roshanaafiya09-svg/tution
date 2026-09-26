@@ -17,6 +17,7 @@ import type { BatchesService } from '../batches/batches.service';
 import type { TeachingContextService } from '../../teaching-context/teaching-context.service';
 import { ErrorCode } from '../../../common/http/error-codes';
 import type { AcademyHolidayCalendar } from '../../holidays/holiday-calendar';
+import type { TeacherLeaveCalendar } from '../../holidays/teacher-leave-calendar';
 
 const TUTOR_ID = 'tutor-1';
 const BATCH_ID = 'batch-1';
@@ -37,6 +38,7 @@ function buildService(overrides: {
   rescheduleIfScheduled?: jest.Mock;
   updateMeetingUrl?: jest.Mock;
   holidaysFor?: jest.Mock;
+  conflictsFor?: jest.Mock;
 }) {
   const repository = {
     hasScheduledOverlapForTutor:
@@ -106,6 +108,15 @@ function buildService(overrides: {
       ),
   };
 
+  // Default: no approved leave — one null per interval.
+  const leaveCalendar = {
+    conflictsFor:
+      overrides.conflictsFor ??
+      jest.fn((_academy: unknown, _tutor: unknown, intervals: unknown[]) =>
+        Promise.resolve(intervals.map(() => null)),
+      ),
+  };
+
   return {
     service: new SessionsService(
       repository,
@@ -113,10 +124,12 @@ function buildService(overrides: {
       teachingContext,
       notices as unknown as SessionNotificationsService,
       holidayCalendar as unknown as AcademyHolidayCalendar,
+      leaveCalendar as unknown as TeacherLeaveCalendar,
     ),
     repository,
     notices,
     holidayCalendar,
+    leaveCalendar,
   };
 }
 
@@ -699,6 +712,7 @@ describe('SessionsService.cancel — H2 lifecycle guards', () => {
     expect(notices.notifyCancelled).toHaveBeenCalledWith(
       [SESSION_ID, 'sibling-1'],
       'teacher_manual',
+      undefined, // a teacher's own cancel carries no academy actor
     );
     expect(cancelIfScheduled).toHaveBeenCalledWith(
       SESSION_ID,
@@ -1199,6 +1213,7 @@ describe('SessionsService — H4 immediate notices only after a committed change
     expect(notices.notifyCancelled).toHaveBeenCalledWith(
       [SESSION_ID],
       'teacher_manual',
+      undefined, // a teacher's own cancel carries no academy actor
     );
   });
 
@@ -1219,6 +1234,7 @@ describe('SessionsService — H4 immediate notices only after a committed change
     expect(notices.notifyCancelled).toHaveBeenCalledWith(
       [SESSION_ID],
       'academy_manual',
+      'academy-1', // the owning academy, so the teacher notice is scoped to it
     );
   });
 
@@ -1330,5 +1346,135 @@ describe('SessionsService — H4 immediate notices only after a committed change
       response: { code: ErrorCode.SESSION_RESCHEDULE_CONFLICT },
     });
     expect(notices.notifyRescheduled).not.toHaveBeenCalled();
+  });
+});
+
+describe('SessionsService.create — approved teacher leave guard', () => {
+  const ACADEMY_BATCH = {
+    id: BATCH_ID,
+    tutor_id: TUTOR_ID,
+    status: 'active',
+    academy_id: 'academy-1',
+  };
+  const INDIVIDUAL_BATCH = { ...ACADEMY_BATCH, academy_id: null };
+  const DTO = {
+    batchId: BATCH_ID,
+    startLocal: '2030-09-21T16:00',
+    durationMin: 60,
+  };
+  const CONFLICT = { leaveRequestId: 'leave-1', leaveType: 'full_day' };
+
+  it('rejects an Academy class that collides with approved leave: 409 TEACHER_ON_APPROVED_LEAVE, nothing created or announced', async () => {
+    const createSeries = jest.fn();
+    const conflictsFor = jest.fn().mockResolvedValue([CONFLICT]);
+    const { service, notices } = buildService({
+      createSeries,
+      conflictsFor,
+      getAcademyBatch: jest.fn().mockResolvedValue(ACADEMY_BATCH),
+    });
+
+    await expect(
+      service.createForAcademy('academy-1', DTO),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: ErrorCode.TEACHER_ON_APPROVED_LEAVE },
+    });
+    expect(createSeries).not.toHaveBeenCalled();
+    expect(notices.notifyCreated).not.toHaveBeenCalled();
+  });
+
+  it('checks the ACADEMY of the batch row and the batch teacher — never a client-supplied id', async () => {
+    const conflictsFor = jest.fn().mockResolvedValue([null]);
+    const { service } = buildService({
+      conflictsFor,
+      createSeries: jest
+        .fn()
+        .mockResolvedValue({ id: 's', batch_id: BATCH_ID }),
+      getAcademyBatch: jest.fn().mockResolvedValue(ACADEMY_BATCH),
+    });
+    await service.createForAcademy('academy-1', DTO);
+
+    expect(conflictsFor).toHaveBeenCalledTimes(1);
+    const [academyId, tutorId, intervals] = conflictsFor.mock.calls[0] as [
+      string,
+      string,
+      Array<{ start: Date; end: Date }>,
+    ];
+    expect(academyId).toBe('academy-1');
+    expect(tutorId).toBe(TUTOR_ID);
+    expect(intervals).toHaveLength(1);
+    expect(intervals[0].end.getTime() - intervals[0].start.getTime()).toBe(
+      60 * 60_000,
+    );
+  });
+
+  it('the teacher-created Academy-profile path is guarded too', async () => {
+    const createSeries = jest.fn();
+    const { service } = buildService({
+      createSeries,
+      conflictsFor: jest.fn().mockResolvedValue([CONFLICT]),
+      getOwnedBatch: jest.fn().mockResolvedValue(ACADEMY_BATCH),
+    });
+    await expect(service.create(TUTOR_ID, DTO)).rejects.toMatchObject({
+      status: 409,
+      response: { code: ErrorCode.TEACHER_ON_APPROVED_LEAVE },
+    });
+    expect(createSeries).not.toHaveBeenCalled();
+  });
+
+  it('an INDIVIDUAL class never consults Academy leave', async () => {
+    const conflictsFor = jest.fn().mockResolvedValue([CONFLICT]);
+    const createSeries = jest
+      .fn()
+      .mockResolvedValue({ id: 's', batch_id: BATCH_ID });
+    const { service } = buildService({
+      conflictsFor,
+      createSeries,
+      getOwnedBatch: jest.fn().mockResolvedValue(INDIVIDUAL_BATCH),
+    });
+
+    await service.create(TUTOR_ID, DTO);
+
+    expect(conflictsFor).not.toHaveBeenCalled();
+    expect(createSeries).toHaveBeenCalledTimes(1);
+  });
+
+  it('a recurring series checks EVERY occurrence; one colliding week rejects the whole series', async () => {
+    const createSeries = jest.fn();
+    const conflictsFor = jest
+      .fn()
+      .mockImplementation((_a: string, _t: string, intervals: unknown[]) =>
+        Promise.resolve(intervals.map((_, i) => (i === 2 ? CONFLICT : null))),
+      );
+    const { service } = buildService({
+      createSeries,
+      conflictsFor,
+      getAcademyBatch: jest.fn().mockResolvedValue(ACADEMY_BATCH),
+    });
+
+    await expect(
+      service.createForAcademy('academy-1', {
+        ...DTO,
+        recurrenceRule: 'FREQ=WEEKLY;COUNT=4',
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: ErrorCode.TEACHER_ON_APPROVED_LEAVE },
+    });
+    expect(
+      (conflictsFor.mock.calls[0] as [string, string, unknown[]])[2],
+    ).toHaveLength(4);
+    expect(createSeries).not.toHaveBeenCalled();
+  });
+
+  it('no conflict: creates normally and announces', async () => {
+    const parent = { id: 's', batch_id: BATCH_ID };
+    const { service, notices } = buildService({
+      conflictsFor: jest.fn().mockResolvedValue([null]),
+      createSeries: jest.fn().mockResolvedValue(parent),
+      getAcademyBatch: jest.fn().mockResolvedValue(ACADEMY_BATCH),
+    });
+    await service.createForAcademy('academy-1', DTO);
+    expect(notices.notifyCreated).toHaveBeenCalledTimes(1);
   });
 });

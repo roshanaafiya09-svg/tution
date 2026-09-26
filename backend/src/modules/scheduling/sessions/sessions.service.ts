@@ -29,6 +29,7 @@ import {
   AcademyHolidayCalendar,
   holidayDateOf,
 } from '../../holidays/holiday-calendar';
+import { TeacherLeaveCalendar } from '../../holidays/teacher-leave-calendar';
 
 const DEFAULT_TIMEZONE = 'Asia/Kolkata';
 
@@ -46,6 +47,7 @@ export class SessionsService {
     private readonly teachingContext: TeachingContextService,
     private readonly notices: SessionNotificationsService,
     private readonly holidayCalendar: AcademyHolidayCalendar,
+    private readonly leaveCalendar: TeacherLeaveCalendar,
   ) {}
 
   /** Teacher path: the tutor must own the batch AND (via the request's
@@ -146,6 +148,7 @@ export class SessionsService {
       });
     }
 
+    await this.assertNoApprovedLeave(batch, tutorId, kept, dto.durationMin);
     await this.assertNoConflicts(tutorId, dto.batchId, kept, dto.durationMin);
 
     const parent = await this.repository.createSeries(
@@ -163,6 +166,45 @@ export class SessionsService {
 
     await this.notices.notifyCreated(parent, kept);
     return { ...parent, skipped_holiday_occurrences: skipped };
+  }
+
+  /**
+   * Approved-leave guard for NEW classes. Runs only after the teaching
+   * context has been resolved to an Academy batch (`batch.academy_id` is
+   * the row's own value, never client-supplied): an Individual batch has
+   * no academy and so no academy leave, and the lookup is keyed by
+   * (this academy, this teacher), so another academy's leave or another
+   * teacher's leave can never block anything here. Every occurrence of a
+   * recurring series is checked — one colliding occurrence rejects the
+   * whole series (same as a teacher time conflict), so a series can't
+   * smuggle a class into leave. This is the only place class_sessions
+   * are created from, so teacher, academy-admin and mobile callers are
+   * all covered.
+   */
+  private async assertNoApprovedLeave(
+    batch: { academy_id: string | null },
+    tutorId: string,
+    occurrences: Date[],
+    durationMin: number,
+  ): Promise<void> {
+    if (batch.academy_id === null) return;
+    const conflicts = await this.leaveCalendar.conflictsFor(
+      batch.academy_id,
+      tutorId,
+      occurrences.map((start) => ({
+        start,
+        end: new Date(start.getTime() + durationMin * 60_000),
+      })),
+    );
+    const at = conflicts.findIndex((c) => c !== null);
+    if (at === -1) return;
+    throw new ConflictException({
+      code: ErrorCode.TEACHER_ON_APPROVED_LEAVE,
+      message:
+        occurrences.length === 1
+          ? `This teacher is on approved leave during this time (${formatHolidayDate(holidayDateOf(occurrences[at]))}).`
+          : `This teacher is on approved leave during one of these classes (${formatHolidayDate(holidayDateOf(occurrences[at]))}). No classes were scheduled.`,
+    });
   }
 
   /** Checked before creating a session (or every occurrence of a
@@ -331,7 +373,12 @@ export class SessionsService {
     wholeSeries: boolean,
   ) {
     const session = await this.getAcademySession(academyId, sessionId);
-    return this.cancelSession(session, wholeSeries, 'academy_manual');
+    return this.cancelSession(
+      session,
+      wholeSeries,
+      'academy_manual',
+      academyId,
+    );
   }
 
   /**
@@ -353,7 +400,8 @@ export class SessionsService {
    *
    * Side effects run only after the transition has committed: once
    * step 3 (and, for a series, its sibling update) succeeded, the
-   * affected students/parents are told immediately (H4, see
+   * affected students/parents — and, when the ACADEMY cancelled, the
+   * class's teacher — are told immediately (H4, see
    * SessionNotificationsService) — a rejected or raced cancel never
    * announces anything, and a repeated series cancel only announces the
    * classes it newly cancelled (none). Completion still has no side
@@ -363,6 +411,7 @@ export class SessionsService {
     session: SessionRow,
     wholeSeries: boolean,
     reason: 'teacher_manual' | 'academy_manual' | 'batch_archived',
+    academyId?: string,
   ) {
     if (session.status !== 'scheduled') {
       return this.rejectTransition(session.status, 'cancelled');
@@ -385,10 +434,14 @@ export class SessionsService {
       // Only reaches still-scheduled siblings (see cancelSeries's doc
       // comment) — a completed occurrence in the series is left alone.
       const siblings = await this.repository.cancelSeries(parentId, reason);
-      await this.notices.notifyCancelled([session.id, ...siblings], reason);
+      await this.notices.notifyCancelled(
+        [session.id, ...siblings],
+        reason,
+        academyId,
+      );
       return { cancelled: 'series' as const };
     }
-    await this.notices.notifyCancelled([session.id], reason);
+    await this.notices.notifyCancelled([session.id], reason, academyId);
     return { cancelled: 'single' as const };
   }
 

@@ -4,6 +4,7 @@ import { StatusBadge, buttonVariants } from '@/components/ui';
 import { AcademicCard, TimelineNode, TimelineDot } from '@/components/student';
 import { cn } from '@/lib/cn';
 import { safeHref } from '@/lib/safe-url';
+import { cancellationReasonLabel } from '@/lib/session-labels';
 
 function formatTime(session: Session): string {
   return new Date(session.scheduled_start_utc).toLocaleString('en-IN', {
@@ -67,12 +68,16 @@ export function ScheduleList({ sessions, batches, subjects }: { sessions: Sessio
             {group.sessions.map((session, i) => {
               const subject = subjectFor(session);
               const isNext = session.id === nextSession?.id;
+              // The backend's status is the source of truth: a cancelled class is
+              // never joinable (the join endpoint rejects it too).
+              const cancelled = session.status === 'cancelled';
               return (
                 <TimelineNode key={session.id} isLast={i === group.sessions.length - 1} marker={<TimelineDot active={isNext} />}>
                   <AcademicCard
                     className={cn(
                       'flex flex-wrap items-center justify-between gap-3',
                       isNext && 'border-brand-300 bg-brand-50/40 dark:border-brand-500/30 dark:bg-brand-500/5',
+                      cancelled && 'opacity-70',
                     )}
                   >
                     <div>
@@ -83,10 +88,17 @@ export function ScheduleList({ sessions, batches, subjects }: { sessions: Sessio
                         {subject ? `${session.batch_title} · ` : ''}
                         {formatTime(session)} · {session.duration_min} min
                       </p>
+                      {cancelled && (
+                        <p className="mt-1 text-sm font-medium text-error dark:text-error-dark">
+                          {cancellationReasonLabel({ status: session.status, cancellationReason: session.cancellation_reason }) ??
+                            'Cancelled'}
+                          {' — '}this class won&apos;t take place.
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <StatusBadge status={session.status} />
-                      {safeHref(session.meeting_url) && (
+                      {!cancelled && safeHref(session.meeting_url) && (
                         <a
                           href={safeHref(session.meeting_url)}
                           target="_blank"

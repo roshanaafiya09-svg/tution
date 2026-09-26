@@ -32,7 +32,7 @@ describe('Academy reschedule → teacher notification (e2e)', () => {
   let bBatch: string; // T3's Academy-B batch
 
   const inHours = (n: number) => new Date(Date.now() + n * 3600_000);
-  const local = (d: Date) => d.toISOString().slice(0, 16);
+  const local = (d: Date) => d.toISOString().slice(0, 19);
 
   const rescheduleAsAcademy = (
     owner: Actor,
@@ -98,7 +98,7 @@ describe('Academy reschedule → teacher notification (e2e)', () => {
 
     // class_sessions updated.
     expect((await sessionRow(sid)).scheduled_start_utc.toISOString()).toBe(
-      new Date(local(newStart) + ':00Z').toISOString(),
+      new Date(local(newStart) + 'Z').toISOString(),
     );
 
     // Teacher: exactly one, with the change spelled out.
@@ -110,15 +110,13 @@ describe('Academy reschedule → teacher notification (e2e)', () => {
       /^Your Batch .+ class has been rescheduled by Academy a .+ from .+ to .+\(30 min\)\.$/,
     );
     expect(p.previousStartUtc).toBe(start.toISOString().slice(0, 19) + '.000Z');
-    expect(p.newStartUtc).toBe(
-      new Date(local(newStart) + ':00Z').toISOString(),
-    );
+    expect(p.newStartUtc).toBe(new Date(local(newStart) + 'Z').toISOString());
     expect(p.academyId).toBe(A.id);
     // Old and new time, in Scholar's notice format (session tz = UTC).
     const fmt = (d: Date) =>
       DateTime.fromJSDate(d, { zone: 'utc' }).toFormat('ccc d LLL, h:mm a');
     expect(p.body).toContain(
-      `from ${fmt(new Date(start.toISOString().slice(0, 19) + 'Z'))} to ${fmt(new Date(local(newStart) + ':00Z'))}`,
+      `from ${fmt(new Date(start.toISOString().slice(0, 19) + 'Z'))} to ${fmt(new Date(local(newStart) + 'Z'))}`,
     );
 
     // Student + parent: the existing notice, still exactly once each.
@@ -150,11 +148,11 @@ describe('Academy reschedule → teacher notification (e2e)', () => {
     });
     expect(
       (cal.body as any[]).find((s) => s.id === sid).scheduled_start_utc,
-    ).toBe(new Date(local(newStart) + ':00Z').toISOString());
+    ).toBe(new Date(local(newStart) + 'Z').toISOString());
     const stu = await h.api('GET', `/sessions/upcoming?${window}`, sAcad.token);
     expect(
       (stu.body as any[]).find((s) => s.id === sid).scheduled_start_utc,
-    ).toBe(new Date(local(newStart) + ':00Z').toISOString());
+    ).toBe(new Date(local(newStart) + 'Z').toISOString());
     const par = await h.api(
       'GET',
       `/sessions/student/${sAcad.id}?${window}`,
@@ -162,7 +160,7 @@ describe('Academy reschedule → teacher notification (e2e)', () => {
     );
     expect(
       (par.body as any[]).find((s) => s.id === sid).scheduled_start_utc,
-    ).toBe(new Date(local(newStart) + ':00Z').toISOString());
+    ).toBe(new Date(local(newStart) + 'Z').toISOString());
   });
 
   it('duplicate / simultaneous identical reschedules → one teacher notice; a later genuine reschedule → a second', async () => {
