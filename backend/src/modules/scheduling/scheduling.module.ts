@@ -17,6 +17,8 @@ import { AttendanceController } from './attendance/attendance.controller';
 import { AttendanceService } from './attendance/attendance.service';
 import { AttendanceRepository } from './attendance/attendance.repository';
 import { TeacherAttendanceRepository } from './attendance/teacher-attendance.repository';
+import { TeacherDepartureService } from './departure/teacher-departure.service';
+import { AcademyMembershipsModule } from '../marketplace/academy-memberships/academy-memberships.module';
 
 /**
  * Bounded context: batches, enrollments, invite links, class sessions
@@ -45,6 +47,8 @@ import { TeacherAttendanceRepository } from './attendance/teacher-attendance.rep
     SubscriptionsModule,
     NotificationsModule,
     HolidayCalendarModule,
+    // Leaf module (no imports of its own) — see AcademyMembershipsModule.
+    AcademyMembershipsModule,
   ],
   controllers: [
     BatchesController,
@@ -63,6 +67,7 @@ import { TeacherAttendanceRepository } from './attendance/teacher-attendance.rep
     AttendanceService,
     AttendanceRepository,
     TeacherAttendanceRepository,
+    TeacherDepartureService,
   ],
   exports: [
     BatchesService,
@@ -74,6 +79,7 @@ import { TeacherAttendanceRepository } from './attendance/teacher-attendance.rep
     SessionNotificationsService,
     AttendanceRepository,
     TeacherAttendanceRepository,
+    TeacherDepartureService,
   ],
 })
 export class SchedulingModule {}

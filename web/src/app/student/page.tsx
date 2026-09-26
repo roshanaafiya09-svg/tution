@@ -15,6 +15,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { api, apiGetPublic } from '@/lib/api';
+import { countClassesToday } from '@/lib/calendar';
 import { safeHref } from '@/lib/safe-url';
 import { GREETING, dayPeriod, todayLabel } from '@/lib/greeting';
 import { useCachedFetch } from '@/lib/use-cached-fetch';
@@ -58,13 +59,16 @@ function studentContextLine(
 ): string {
   if (sessions === null || assignments === null) return '';
   const now = new Date();
-  const classesToday = sessions.filter((s) => new Date(s.scheduled_start_utc).toDateString() === now.toDateString()).length;
+  const { happening: classesToday, cancelled: classesCancelledToday } = countClassesToday(sessions, now);
   const assignmentsDueToday = assignments.filter(
     (a) => !a.submission_id && new Date(a.due_at_utc).toDateString() === now.toDateString(),
   ).length;
 
   const parts: string[] = [];
   if (classesToday > 0) parts.push(`${classesToday} class${classesToday === 1 ? '' : 'es'} today`);
+  if (classesCancelledToday > 0) {
+    parts.push(`${classesCancelledToday} class${classesCancelledToday === 1 ? "" : "es"} cancelled`);
+  }
   if (assignmentsDueToday > 0) {
     parts.push(`${assignmentsDueToday} assignment${assignmentsDueToday === 1 ? '' : 's'} due today`);
   }

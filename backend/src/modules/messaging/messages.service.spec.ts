@@ -9,6 +9,10 @@ jest.mock('../../database/database.module', () => ({
 }));
 
 import { ForbiddenException } from '@nestjs/common';
+import {
+  INDIVIDUAL_CONTEXT,
+  type TeachingContext,
+} from '../teaching-context/teaching-context';
 import { MessagesService } from './messages.service';
 import type { MessagesRepository } from './messages.repository';
 import type { BatchesRepository } from '../scheduling/batches/batches.repository';
@@ -62,7 +66,12 @@ describe('MessagesService.listThread — pagination (SEC-03)', () => {
   it('defaults to a bounded page size when the caller passes none', async () => {
     const { service, listForThread, tutorUser } = buildService({});
 
-    await service.listThread(tutorUser, 'batch-1', 'student-1');
+    await service.listThread(
+      tutorUser,
+      INDIVIDUAL_CONTEXT,
+      'batch-1',
+      'student-1',
+    );
 
     expect(listForThread).toHaveBeenCalledWith('batch-1', 'student-1', {
       limit: 50,
@@ -73,9 +82,15 @@ describe('MessagesService.listThread — pagination (SEC-03)', () => {
   it('clamps a caller-requested limit above the server max instead of trusting it', async () => {
     const { service, listForThread, tutorUser } = buildService({});
 
-    await service.listThread(tutorUser, 'batch-1', 'student-1', {
-      limit: 100000,
-    });
+    await service.listThread(
+      tutorUser,
+      INDIVIDUAL_CONTEXT,
+      'batch-1',
+      'student-1',
+      {
+        limit: 100000,
+      },
+    );
 
     expect(listForThread).toHaveBeenCalledWith(
       'batch-1',
@@ -87,7 +102,13 @@ describe('MessagesService.listThread — pagination (SEC-03)', () => {
   it('ignores a zero/negative requested limit and falls back to the default', async () => {
     const { service, listForThread, tutorUser } = buildService({});
 
-    await service.listThread(tutorUser, 'batch-1', 'student-1', { limit: -5 });
+    await service.listThread(
+      tutorUser,
+      INDIVIDUAL_CONTEXT,
+      'batch-1',
+      'student-1',
+      { limit: -5 },
+    );
 
     expect(listForThread).toHaveBeenCalledWith(
       'batch-1',
@@ -99,9 +120,15 @@ describe('MessagesService.listThread — pagination (SEC-03)', () => {
   it('passes the before cursor straight through for the next older page', async () => {
     const { service, listForThread, tutorUser } = buildService({});
 
-    await service.listThread(tutorUser, 'batch-1', 'student-1', {
-      before: 'msg-cursor',
-    });
+    await service.listThread(
+      tutorUser,
+      INDIVIDUAL_CONTEXT,
+      'batch-1',
+      'student-1',
+      {
+        before: 'msg-cursor',
+      },
+    );
 
     expect(listForThread).toHaveBeenCalledWith(
       'batch-1',
@@ -117,7 +144,12 @@ describe('MessagesService.listThread — pagination (SEC-03)', () => {
         .mockResolvedValue([{ id: 'msg-3' }, { id: 'msg-2' }, { id: 'msg-1' }]),
     });
 
-    const result = await service.listThread(tutorUser, 'batch-1', 'student-1');
+    const result = await service.listThread(
+      tutorUser,
+      INDIVIDUAL_CONTEXT,
+      'batch-1',
+      'student-1',
+    );
 
     expect(result.map((m) => m.id)).toEqual(['msg-1', 'msg-2', 'msg-3']);
   });
@@ -170,16 +202,22 @@ describe('MessagesService — enrollment status gate', () => {
   it('lets an actively enrolled student read and post', async () => {
     const { service, create } = build('active');
     await expect(
-      service.listThread(student, 'batch-1', 'student-1'),
+      service.listThread(student, INDIVIDUAL_CONTEXT, 'batch-1', 'student-1'),
     ).resolves.toEqual([]);
-    await service.send(student, 'batch-1', 'student-1', 'hi');
+    await service.send(
+      student,
+      INDIVIDUAL_CONTEXT,
+      'batch-1',
+      'student-1',
+      'hi',
+    );
     expect(create).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a removed student reading the thread', async () => {
     const { service, listForThread } = build('left');
     await expect(
-      service.listThread(student, 'batch-1', 'student-1'),
+      service.listThread(student, INDIVIDUAL_CONTEXT, 'batch-1', 'student-1'),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(listForThread).not.toHaveBeenCalled();
   });
@@ -187,7 +225,7 @@ describe('MessagesService — enrollment status gate', () => {
   it('rejects a removed student posting, and writes no message row', async () => {
     const { service, create, notify } = build('left');
     await expect(
-      service.send(student, 'batch-1', 'student-1', 'hi'),
+      service.send(student, INDIVIDUAL_CONTEXT, 'batch-1', 'student-1', 'hi'),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(create).not.toHaveBeenCalled();
     expect(notify).not.toHaveBeenCalled();
@@ -196,10 +234,10 @@ describe('MessagesService — enrollment status gate', () => {
   it("rejects the removed student's parent too", async () => {
     const { service, create } = build('left');
     await expect(
-      service.listThread(parent, 'batch-1', 'student-1'),
+      service.listThread(parent, INDIVIDUAL_CONTEXT, 'batch-1', 'student-1'),
     ).rejects.toBeInstanceOf(ForbiddenException);
     await expect(
-      service.send(parent, 'batch-1', 'student-1', 'hi'),
+      service.send(parent, INDIVIDUAL_CONTEXT, 'batch-1', 'student-1', 'hi'),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(create).not.toHaveBeenCalled();
   });
@@ -207,10 +245,10 @@ describe('MessagesService — enrollment status gate', () => {
   it('keeps the batch tutor able to READ the kept history but not to post', async () => {
     const { service, create } = build('left');
     await expect(
-      service.listThread(tutor, 'batch-1', 'student-1'),
+      service.listThread(tutor, INDIVIDUAL_CONTEXT, 'batch-1', 'student-1'),
     ).resolves.toEqual([]);
     await expect(
-      service.send(tutor, 'batch-1', 'student-1', 'hi'),
+      service.send(tutor, INDIVIDUAL_CONTEXT, 'batch-1', 'student-1', 'hi'),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(create).not.toHaveBeenCalled();
   });
@@ -218,7 +256,107 @@ describe('MessagesService — enrollment status gate', () => {
   it("rejects a student using another student's id even if enrolled", async () => {
     const { service } = build('active');
     await expect(
-      service.listThread(student, 'batch-1', 'student-2'),
+      service.listThread(student, INDIVIDUAL_CONTEXT, 'batch-1', 'student-2'),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+/**
+ * Teaching-context gate: a teacher reaches a batch's thread only while working
+ * in that batch's own context. Owning the batch is not enough.
+ */
+describe('MessagesService — teaching context gate', () => {
+  const ACADEMY_A = '11111111-1111-4111-8111-111111111111';
+  const ACADEMY_B = '22222222-2222-4222-8222-222222222222';
+  const inAcademy = (academyId: string): TeachingContext => ({
+    kind: 'academy',
+    academyId,
+  });
+
+  function build(batchAcademyId: string | null) {
+    const create = jest.fn().mockResolvedValue({ id: 'msg-new' });
+    const listForThread = jest.fn().mockResolvedValue([]);
+    const repository = {
+      create,
+      listForThread,
+    } as unknown as MessagesRepository;
+    const assertActiveMember = jest.fn().mockResolvedValue(undefined);
+    const batchesRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'batch-1',
+        tutor_id: 'tutor-1',
+        title: 'B',
+        academy_id: batchAcademyId,
+      }),
+      findEnrollment: jest
+        .fn()
+        .mockResolvedValue({ id: 'e-1', status: 'active' }),
+    } as unknown as BatchesRepository;
+    const service = new MessagesService(
+      repository,
+      batchesRepository,
+      {
+        findByParentAndStudent: jest.fn(),
+        listForStudent: jest.fn().mockResolvedValue([]),
+      } as unknown as ParentLinksRepository,
+      { capture: jest.fn() } as unknown as AnalyticsService,
+      {
+        notify: jest.fn().mockResolvedValue([]),
+      } as unknown as NotificationsService,
+      { assertActiveMember } as unknown as TeachingContextService,
+    );
+    return { service, create, listForThread };
+  }
+  const tutor: AccessTokenPayload = { sub: 'tutor-1', roles: ['tutor'] };
+
+  it('Academy context cannot read or post to the teacher’s own INDIVIDUAL batch', async () => {
+    const { service, create, listForThread } = build(null);
+    await expect(
+      service.listThread(tutor, inAcademy(ACADEMY_A), 'batch-1', 'student-1'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      service.send(tutor, inAcademy(ACADEMY_A), 'batch-1', 'student-1', 'hi'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(listForThread).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('Individual context still reaches the Individual batch', async () => {
+    const { service, create } = build(null);
+    await expect(
+      service.listThread(tutor, INDIVIDUAL_CONTEXT, 'batch-1', 'student-1'),
+    ).resolves.toEqual([]);
+    await service.send(tutor, INDIVIDUAL_CONTEXT, 'batch-1', 'student-1', 'hi');
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('Individual context cannot reach an ACADEMY batch', async () => {
+    const { service, create } = build(ACADEMY_A);
+    await expect(
+      service.listThread(tutor, INDIVIDUAL_CONTEXT, 'batch-1', 'student-1'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      service.send(tutor, INDIVIDUAL_CONTEXT, 'batch-1', 'student-1', 'hi'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('the matching Academy context reaches its own Academy batch; another Academy does not', async () => {
+    const { service, create } = build(ACADEMY_A);
+    await expect(
+      service.listThread(tutor, inAcademy(ACADEMY_A), 'batch-1', 'student-1'),
+    ).resolves.toEqual([]);
+    await service.send(
+      tutor,
+      inAcademy(ACADEMY_A),
+      'batch-1',
+      'student-1',
+      'hi',
+    );
+    expect(create).toHaveBeenCalledTimes(1);
+    await expect(
+      service.send(tutor, inAcademy(ACADEMY_B), 'batch-1', 'student-1', 'no'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(create).toHaveBeenCalledTimes(1);
   });
 });

@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { AcademiesRepository } from './academies.repository';
+import { TeacherDepartureService } from '../../scheduling/departure/teacher-departure.service';
 import { AcademyLocationsRepository } from './academy-locations.repository';
 import { AcademyPhotosRepository } from './academy-photos.repository';
 import { AcademyMembershipsRepository } from '../academy-memberships/academy-memberships.repository';
@@ -51,6 +52,7 @@ export class AcademyAdminService {
     private readonly usersRepository: UsersRepository,
     private readonly auditLog: AuditLogService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
+    private readonly teacherDeparture: TeacherDepartureService,
   ) {}
 
   listAll(q?: string) {
@@ -216,7 +218,7 @@ export class AcademyAdminService {
     const membership =
       await this.academyMembershipsRepository.findById(membershipId);
     if (!membership) throw new NotFoundException('Membership not found');
-    return this.academyMembershipsRepository.markLeft(membershipId);
+    return (await this.teacherDeparture.leave(membershipId)).membership;
   }
 
   listContactRequests(academyId: string) {

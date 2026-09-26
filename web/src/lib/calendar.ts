@@ -28,6 +28,34 @@ export function dayKeyIn(utcIso: string, timeZone: string): string {
   return new Date(utcIso).toLocaleDateString('en-CA', { timeZone });
 }
 
+/** Is this class TODAY? "Today" is read in the class's own timezone — the same
+ *  zone its calendar day and time are shown in — so the Teacher, Student,
+ *  Parent and Academy "today" all agree on which classes are today. */
+export function isSessionToday(
+  session: { scheduled_start_utc: string; timezone: string },
+  now: Date = new Date(),
+): boolean {
+  return (
+    dayKeyIn(session.scheduled_start_utc, session.timezone) ===
+    now.toLocaleDateString('en-CA', { timeZone: session.timezone })
+  );
+}
+
+/** "Classes today" as a NUMBER, on every dashboard: the classes that are
+ *  actually happening — a cancelled class is still LISTED (with its reason)
+ *  but is not counted, exactly like Academy Today's `classesToday`, which
+ *  reports cancelled classes separately (`classesCancelledToday`). */
+export function countClassesToday(
+  sessions: Array<{ scheduled_start_utc: string; timezone: string; status: string }>,
+  now: Date = new Date(),
+): { happening: number; cancelled: number } {
+  const today = sessions.filter((s) => isSessionToday(s, now));
+  return {
+    happening: today.filter((s) => s.status !== 'cancelled').length,
+    cancelled: today.filter((s) => s.status === 'cancelled').length,
+  };
+}
+
 /** "5:00 pm" — the instant's wall-clock time in `timeZone`. */
 export function timeIn(utcIso: string, timeZone: string): string {
   return new Date(utcIso).toLocaleTimeString('en-IN', {

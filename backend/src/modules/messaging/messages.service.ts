@@ -9,7 +9,9 @@ import type { AccessTokenPayload } from '../identity/auth/tokens.service';
 import { TeachingContextService } from '../teaching-context/teaching-context.service';
 import {
   academyIdOf,
+  contextOfAcademyId,
   INDIVIDUAL_CONTEXT,
+  sameContext,
   type TeachingContext,
 } from '../teaching-context/teaching-context';
 
@@ -42,11 +44,18 @@ export class MessagesService {
 
   async send(
     user: AccessTokenPayload,
+    ctx: TeachingContext,
     batchId: string,
     studentId: string,
     body: string,
   ) {
-    const role = await this.resolveAccess(user, batchId, studentId, 'write');
+    const role = await this.resolveAccess(
+      user,
+      ctx,
+      batchId,
+      studentId,
+      'write',
+    );
     const message = await this.repository.create(
       batchId,
       studentId,
@@ -99,11 +108,12 @@ export class MessagesService {
 
   async listThread(
     user: AccessTokenPayload,
+    ctx: TeachingContext,
     batchId: string,
     studentId: string,
     params: { limit?: number; before?: string } = {},
   ) {
-    await this.resolveAccess(user, batchId, studentId, 'read');
+    await this.resolveAccess(user, ctx, batchId, studentId, 'read');
     const limit = Math.min(
       params.limit && params.limit > 0
         ? params.limit
@@ -165,16 +175,34 @@ export class MessagesService {
    *  active membership, so the student — and a parent acting for them —
    *  lose the thread, and nobody can post into it. The batch's own tutor
    *  keeps read access to the kept history but cannot write to a student
-   *  who is no longer in the batch. */
+   *  who is no longer in the batch.
+   *
+   *  The tutor grant additionally requires the caller's teaching context to
+   *  match the batch's own context (see the block below); a mismatch skips
+   *  the tutor grant entirely and ends in the same 403 as any other
+   *  non-participant, so nothing about the batch is revealed. */
   private async resolveAccess(
     user: AccessTokenPayload,
+    ctx: TeachingContext,
     batchId: string,
     studentId: string,
     mode: 'read' | 'write',
   ): Promise<SenderRole> {
     if (user.roles.includes('tutor')) {
       const batch = await this.batchesRepository.findById(batchId);
-      if (batch && batch.tutor_id === user.sub) {
+      // Teaching context: a batch belongs to ONE context (its academy, or
+      // Individual) and a teacher only reaches it while working in that
+      // context — owning the batch is not enough. An Academy profile never
+      // "falls through" to the same teacher's Individual batch (or another
+      // academy's), and the Individual profile never reaches an Academy
+      // batch. `ctx` is the caller's VERIFIED context (TeachingContextGuard
+      // rejects an Academy context they are not an active member of), never a
+      // client-supplied batch/academy id.
+      if (
+        batch &&
+        batch.tutor_id === user.sub &&
+        sameContext(ctx, contextOfAcademyId(batch.academy_id))
+      ) {
         // An Academy batch's thread is only open to its teacher while they
         // are still an active member — leaving ends their access to the
         // academy's students.

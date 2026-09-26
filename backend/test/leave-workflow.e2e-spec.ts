@@ -325,9 +325,13 @@ describe('Teacher Leave workflow (e2e)', () => {
       { body: {} },
     );
     expect(lateApprove.status).toBe(400);
+    // The late approval itself produced NO teacher-leave side effect: the class
+    // carries no leave request. It is cancelled only because the teacher LEFT
+    // the academy (a future Academy class with no teacher is not left
+    // scheduled) — reason `academy_manual`, never `teacher_leave`.
     expect(await sessionStatus(aSession2)).toEqual({
-      status: 'scheduled',
-      cancellation_reason: null,
+      status: 'cancelled',
+      cancellation_reason: 'academy_manual',
       teacher_leave_request_id: null,
     });
     // Untouched Individual class, still.
@@ -339,7 +343,7 @@ describe('Teacher Leave workflow (e2e)', () => {
   });
 
   // ==========================================================================
-  it('§39 — future Academy classes remain Academy-owned after the teacher leaves; the departed teacher can no longer operate them', async () => {
+  it('§39 — after the teacher leaves, the batch stays Academy-owned but its future class (no teacher left) is cancelled; the departed teacher can no longer operate it', async () => {
     const A = await makeAcademy('a2');
     const T = await makeUser('tutor', 't2');
     const membershipId = await join(A.id, T.id);
@@ -371,15 +375,20 @@ describe('Teacher Leave workflow (e2e)', () => {
       (academyBatches.body as Array<{ id: string }>).map((b) => b.id),
     ).toContain(aBatch);
 
-    // The academy can still manage it (cancel it here as the concrete
-    // "manage" action already supported).
-    const cancel = await api(
+    // The future class had no teacher left to run it, so departure itself
+    // cancelled it (the academy owns it; there is no valid replacement).
+    expect(await sessionStatus(futureSession)).toEqual({
+      status: 'cancelled',
+      cancellation_reason: 'academy_manual',
+      teacher_leave_request_id: null,
+    });
+    // ...which the academy sees, and cancelling it again is refused.
+    const again = await api(
       'POST',
       `/academy/me/batches/${aBatch}/sessions/${futureSession}/cancel`,
       A.owner.token,
     );
-    expect(cancel.status).toBe(201);
-    expect((await sessionStatus(futureSession)).status).toBe('cancelled');
+    expect(again.status).toBeGreaterThanOrEqual(400);
 
     // The departed teacher can no longer touch it via the Academy context.
     const asFormerMember = await api(
@@ -639,9 +648,14 @@ describe('Teacher Leave workflow (e2e)', () => {
         .status,
     ).toBe(400);
 
-    // Neither session was ever touched by any of this.
-    expect((await sessionStatus(aSession)).status).toBe('scheduled');
+    // The Individual class was never touched. The Academy class had no other
+    // teacher, so leaving the academy cancelled it (academy_manual).
     expect((await sessionStatus(iSession)).status).toBe('scheduled');
+    expect(await sessionStatus(aSession)).toEqual({
+      status: 'cancelled',
+      cancellation_reason: 'academy_manual',
+      teacher_leave_request_id: null,
+    });
 
     // Historical Academy batch stays Academy-owned.
     expect(

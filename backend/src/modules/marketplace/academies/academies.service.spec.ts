@@ -57,6 +57,7 @@ function buildService(overrides: {
     {} as never,
     notificationsService,
     {} as never,
+    {} as never,
   );
 
   return { service, notify };

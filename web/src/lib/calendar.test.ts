@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dayKeyIn, daysBetween, holidayCoversDay, holidayDaysInRange, holidaysOnDay, localDateKey, timeIn } from './calendar';
+import { countClassesToday, isSessionToday, dayKeyIn, daysBetween, holidayCoversDay, holidayDaysInRange, holidaysOnDay, localDateKey, timeIn } from './calendar';
 
 describe('session day / time follow the session timezone, not the browser', () => {
   // 2026-09-28 22:30 UTC:
@@ -61,5 +61,31 @@ describe('holiday day coverage', () => {
     expect(holidaysOnDay(list, '2026-10-02')).toEqual([multi]);
     const days = holidayDaysInRange(list, '2026-09-27', '2026-10-02');
     expect(days.map((d) => d.key)).toEqual(['2026-09-28', '2026-10-01', '2026-10-02']);
+  });
+});
+
+describe('"today" and the classes-today count', () => {
+  // 2026-10-01 20:00 UTC == 01:30 IST on 2 Oct == 13:00 in LA on 1 Oct.
+  const now = new Date('2026-10-01T20:00:00.000Z');
+  const ist = { timezone: 'Asia/Kolkata' };
+  const la = { timezone: 'America/Los_Angeles' };
+
+  it('a class is "today" in ITS OWN timezone, not the viewer’s', () => {
+    // 2 Oct 02:00 IST (= 1 Oct 20:30 UTC): today in IST (it is 2 Oct there).
+    expect(isSessionToday({ scheduled_start_utc: '2026-10-01T20:30:00.000Z', ...ist }, now)).toBe(true);
+    // The same instant in LA is 1 Oct 13:30 — today in LA as well.
+    expect(isSessionToday({ scheduled_start_utc: '2026-10-01T20:30:00.000Z', ...la }, now)).toBe(true);
+    // 1 Oct 09:00 IST is yesterday in IST (it is already 2 Oct there).
+    expect(isSessionToday({ scheduled_start_utc: '2026-10-01T03:30:00.000Z', ...ist }, now)).toBe(false);
+  });
+
+  it('counts only classes that are happening; cancelled ones are reported separately', () => {
+    const sessions = [
+      { scheduled_start_utc: '2026-10-01T20:30:00.000Z', status: 'scheduled', ...ist },
+      { scheduled_start_utc: '2026-10-01T21:00:00.000Z', status: 'completed', ...ist },
+      { scheduled_start_utc: '2026-10-01T21:30:00.000Z', status: 'cancelled', ...ist },
+      { scheduled_start_utc: '2026-10-05T10:00:00.000Z', status: 'scheduled', ...ist },
+    ];
+    expect(countClassesToday(sessions, now)).toEqual({ happening: 2, cancelled: 1 });
   });
 });

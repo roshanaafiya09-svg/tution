@@ -24,6 +24,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { api, errorMessage, formatMinor } from '@/lib/api';
+import { countClassesToday, isSessionToday } from '@/lib/calendar';
 import { safeHref } from '@/lib/safe-url';
 import { canManageSession, coverageLabel } from '@/lib/session-labels';
 import { owedCount } from '@/lib/fee-status';
@@ -83,11 +84,9 @@ function sessionDateTime(session: Session): string {
   });
 }
 
-function isToday(session: Session): boolean {
-  const start = new Date(session.scheduled_start_utc);
-  const now = new Date();
-  return start.toDateString() === now.toDateString();
-}
+// "Today" is read in the class's own timezone (lib/calendar.ts), like every
+// other dashboard, rather than the browser's.
+const isToday = (session: Session): boolean => isSessionToday(session);
 
 /** Holiday & Teacher Leave feature: a cancelled session's status badge
  *  says *why* rather than a generic "cancelled" — matches the spec's
@@ -249,6 +248,9 @@ export default function TodayPage() {
   const now = new Date();
   const activeBatches = (batches ?? []).filter((b) => b.status === 'active');
   const todaySessions = (sessions ?? []).filter(isToday);
+  // A cancelled class stays in the timeline below but isn't counted as a class
+  // "today" — same definition as Academy Today (lib/calendar.ts).
+  const classesToday = countClassesToday(sessions ?? []);
   const upcoming = (sessions ?? []).filter(
     (s) => !isToday(s) && s.status === 'scheduled' && new Date(s.scheduled_start_utc) >= now,
   );
@@ -487,8 +489,14 @@ export default function TodayPage() {
           <MetricCard
             icon={CalendarCheck}
             label="Classes today"
-            value={todaySessions.length}
-            hint={todaySessions.length === 0 ? 'Nothing scheduled' : `${todaySessions.filter((s) => s.status === 'scheduled').length} still to run`}
+            value={classesToday.happening}
+            hint={
+              todaySessions.length === 0
+                ? 'Nothing scheduled'
+                : `${todaySessions.filter((s) => s.status === 'scheduled').length} still to run${
+                    classesToday.cancelled > 0 ? ` · ${classesToday.cancelled} cancelled` : ''
+                  }`
+            }
             href="/dashboard/calendar"
           />
           <MetricCard

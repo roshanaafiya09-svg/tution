@@ -258,7 +258,7 @@ export default function AcademyTeachersPage() {
             ? 'They will become an active member of your academy. Their teacher account stays fully independent.'
             : confirmTarget?.kind === 'reject'
               ? 'They will be notified that their request was declined. They can request again later.'
-              : 'This only deactivates their academy membership — their teacher account, profile, batches, students, and reviews are never affected.'
+              : "This deactivates their academy membership — their teacher account, profile, Individual teaching and your academy's history are never affected. Their upcoming classes here that no other teacher covers will be cancelled, and those students and parents will be notified."
         }
         confirmLabel={confirmTarget?.kind === 'accept' ? 'Accept' : confirmTarget?.kind === 'reject' ? 'Reject' : 'Remove'}
         danger={confirmTarget?.kind !== 'accept'}

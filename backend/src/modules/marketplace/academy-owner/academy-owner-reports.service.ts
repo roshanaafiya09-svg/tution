@@ -107,7 +107,9 @@ export class AcademyOwnerReportsService {
       contactRequests,
     ] = await Promise.all([
       this.batchesRepository.listForAcademy(academy.id),
-      this.batchesRepository.listDistinctStudentIdsForAcademy(academy.id),
+      // CURRENT students (active enrolments, each counted once) — the same
+      // definition as the Students page and the Students report below.
+      this.batchesRepository.listDistinctActiveStudentIdsForAcademy(academy.id),
       this.sessionsRepository.listForAcademyBetween(
         academy.id,
         startOfDay,
@@ -119,12 +121,16 @@ export class AcademyOwnerReportsService {
         todayStr,
         holidayWindowEnd,
       ),
-      this.holidaysRepository.listGovernment(
-        academy.country_code,
-        academy.state_code,
-        todayStr,
-        holidayWindowEnd,
-      ),
+      // Government holidays only count when the academy observes them (the
+      // same rule the Academy calendar / Holidays page applies).
+      academy.auto_observe_govt_holidays
+        ? this.holidaysRepository.listGovernment(
+            academy.country_code,
+            academy.state_code,
+            todayStr,
+            holidayWindowEnd,
+          )
+        : Promise.resolve([]),
       this.academyContactRequestsRepository.listForAcademy(academy.id),
     ]);
 
@@ -221,10 +227,22 @@ export class AcademyOwnerReportsService {
       );
     }
 
+    // "New" counts STUDENTS, like totalStudents does (never enrolments): a
+    // student is new when their FIRST enrolment in the academy (within the
+    // current filters) began in the range — so it can never exceed the total,
+    // however many batches they joined.
+    const firstJoined = new Map<string, Date>();
+    for (const e of scoped) {
+      const current = firstJoined.get(e.student_id);
+      if (!current || e.joined_at < current) {
+        firstJoined.set(e.student_id, e.joined_at);
+      }
+    }
+
     return {
       totalStudents: studentIds.length,
-      newStudentsInRange: scoped.filter(
-        (e) => e.joined_at >= from && e.joined_at < to,
+      newStudentsInRange: [...firstJoined.values()].filter(
+        (joined) => joined >= from && joined < to,
       ).length,
       studentsByBatch: [...studentsByBatch].map(([batchId, count]) => ({
         batchId,
@@ -612,12 +630,17 @@ export class AcademyOwnerReportsService {
 
     const [academyHolidays, govHolidays] = await Promise.all([
       this.holidaysRepository.listForAcademy(academy.id, from, to),
-      this.holidaysRepository.listGovernment(
-        academy.country_code,
-        academy.state_code,
-        from,
-        to,
-      ),
+      // Only when the academy observes government holidays — identical to
+      // HolidayService.listEffectiveForAcademy (the Academy calendar), so the
+      // Holidays report and the Holidays page list the same holidays.
+      academy.auto_observe_govt_holidays
+        ? this.holidaysRepository.listGovernment(
+            academy.country_code,
+            academy.state_code,
+            from,
+            to,
+          )
+        : Promise.resolve([]),
     ]);
 
     const allHolidays = [...academyHolidays, ...govHolidays];

@@ -17,6 +17,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
+import { isSessionToday } from '@/lib/calendar';
 import { GREETING, dayPeriod, todayLabel } from '@/lib/greeting';
 import { useCachedFetch } from '@/lib/use-cached-fetch';
 import type {
@@ -64,9 +65,6 @@ function sessionTime(session: Session): string {
   });
 }
 
-function isSessionToday(session: Session, now: Date): boolean {
-  return new Date(session.scheduled_start_utc).toDateString() === now.toDateString();
-}
 
 /** Holiday & Teacher Leave feature — see the identical helper in
  *  dashboard/page.tsx for why this says why rather than just "cancelled". */

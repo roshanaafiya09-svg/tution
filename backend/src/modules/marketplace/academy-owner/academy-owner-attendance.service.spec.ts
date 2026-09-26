@@ -81,7 +81,12 @@ function buildService(overrides: {
     listEnrollments:
       overrides.listEnrollments ?? jest.fn().mockResolvedValue([]),
     listEnrollmentsForAcademy:
-      overrides.listEnrollmentsForAcademy ?? jest.fn().mockResolvedValue([]),
+      overrides.listEnrollmentsForAcademy ??
+      // Two active students in the default batch (matches enrolled_count '2').
+      jest.fn().mockResolvedValue([
+        { batch_id: BATCH_ID, student_id: 'student-1' },
+        { batch_id: BATCH_ID, student_id: 'student-2' },
+      ]),
     findByIdInAcademy:
       overrides.findById ??
       jest.fn().mockResolvedValue({ id: BATCH_ID, tutor_id: TUTOR_ID }),

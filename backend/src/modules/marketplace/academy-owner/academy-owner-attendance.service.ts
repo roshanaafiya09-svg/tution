@@ -5,6 +5,7 @@ import { AcademyMembershipsRepository } from '../academy-memberships/academy-mem
 import { BatchesRepository } from '../../scheduling/batches/batches.repository';
 import { SessionsRepository } from '../../scheduling/sessions/sessions.repository';
 import { AttendanceRepository } from '../../scheduling/attendance/attendance.repository';
+import { rosterAttendance } from './attendance-roster';
 
 // V1 only ever schedules classes in this zone — same constant
 // HolidayService/TeacherLeaveService already use for "what day is it"
@@ -63,6 +64,18 @@ export class AcademyOwnerAttendanceService {
     return this.academyMembershipsRepository.displayNamesForAcademy(academyId);
   }
 
+  private groupActiveByBatch(
+    enrollments: Array<{ batch_id: string; student_id: string }>,
+  ): Map<string, string[]> {
+    const byBatch = new Map<string, string[]>();
+    for (const e of enrollments) {
+      const list = byBatch.get(e.batch_id) ?? [];
+      list.push(e.student_id);
+      byBatch.set(e.batch_id, list);
+    }
+    return byBatch;
+  }
+
   /** Today's summary cards — classes today (non-cancelled), students
    *  expected, present/absent, attendance %. */
   async getTodaySummary(ownerUserId: string) {
@@ -73,21 +86,19 @@ export class AcademyOwnerAttendanceService {
     const startOfDay = now.startOf('day').toJSDate();
     const endOfDay = now.endOf('day').toJSDate();
 
-    const [sessions, batches] = await Promise.all([
+    const [sessions, enrollments] = await Promise.all([
       this.sessionsRepository.listForAcademyBetween(
         academy.id,
         startOfDay,
         endOfDay,
       ),
-      this.batchesRepository.listForAcademy(academy.id),
+      this.batchesRepository.listEnrollmentsForAcademy(academy.id, 'active'),
     ]);
-    const enrolledByBatch = new Map(
-      batches.map((b) => [b.id, Number(b.enrolled_count)]),
-    );
+    const activeByBatch = this.groupActiveByBatch(enrollments);
 
     const activeSessions = sessions.filter((s) => s.status !== 'cancelled');
     const studentsExpected = activeSessions.reduce(
-      (sum, s) => sum + (enrolledByBatch.get(s.batch_id) ?? 0),
+      (sum, s) => sum + (activeByBatch.get(s.batch_id)?.length ?? 0),
       0,
     );
 
@@ -96,14 +107,20 @@ export class AcademyOwnerAttendanceService {
       batchIds.length > 0
         ? await this.attendanceRepository.listForBatches(batchIds)
         : [];
-    const todaySessionIds = new Set(activeSessions.map((s) => s.id));
-    const todaysAttendance = attendanceRows.filter((r) =>
-      todaySessionIds.has(r.session_id),
-    );
-    const present = todaysAttendance.filter(
-      (r) => r.status === 'present' || r.status === 'late',
-    ).length;
-    const absent = todaysAttendance.filter((r) => r.status === 'absent').length;
+    // Same per-class definition the table and the absent-students report use
+    // (see attendance-roster.ts): an unmarked seat on a COMPLETED class is an
+    // absence, not "unknown".
+    let present = 0;
+    let absent = 0;
+    for (const s of activeSessions) {
+      const counts = rosterAttendance({
+        sessionStatus: s.status,
+        activeStudentIds: activeByBatch.get(s.batch_id) ?? [],
+        rows: attendanceRows.filter((r) => r.session_id === s.id),
+      });
+      present += counts.present;
+      absent += counts.absent;
+    }
     const marked = present + absent;
 
     return {
@@ -135,18 +152,20 @@ export class AcademyOwnerAttendanceService {
       ? new Date(filters.from)
       : new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    const [sessions, batches] = await Promise.all([
+    const [sessions, enrollments] = await Promise.all([
       this.sessionsRepository.listForAcademyBetween(
         academy.id,
         from,
         to,
         tutorIds,
       ),
-      this.batchesRepository.listForAcademy(academy.id, tutorIds),
+      this.batchesRepository.listEnrollmentsForAcademy(
+        academy.id,
+        'active',
+        tutorIds,
+      ),
     ]);
-    const enrolledByBatch = new Map(
-      batches.map((b) => [b.id, Number(b.enrolled_count)]),
-    );
+    const activeByBatch = this.groupActiveByBatch(enrollments);
 
     const scoped = sessions.filter(
       (s) => !filters.batchId || s.batch_id === filters.batchId,
@@ -166,18 +185,17 @@ export class AcademyOwnerAttendanceService {
     return scoped
       .filter((s) => !filters.status || s.status === filters.status)
       .map((s) => {
-        const rows = bySession.get(s.id) ?? [];
-        const present = rows.filter(
-          (r) => r.status === 'present' || r.status === 'late',
-        ).length;
         // Only a completed class's unmarked seats count as absent — a
         // cancelled class never has rows to begin with, and a scheduled
-        // (future) class simply hasn't happened yet.
-        const totalEnrolled = enrolledByBatch.get(s.batch_id) ?? 0;
-        const absent =
-          s.status === 'completed'
-            ? Math.max(totalEnrolled - present, 0)
-            : rows.filter((r) => r.status === 'absent').length;
+        // (future) class simply hasn't happened yet. The roster (active
+        // enrolments plus anyone with a row, e.g. a student who has since
+        // left) is the same one the absent-students report uses.
+        const { roster, present, absent } = rosterAttendance({
+          sessionStatus: s.status,
+          activeStudentIds: activeByBatch.get(s.batch_id) ?? [],
+          rows: bySession.get(s.id) ?? [],
+        });
+        const totalEnrolled = roster;
         return {
           sessionId: s.id,
           scheduledStartUtc: s.scheduled_start_utc,

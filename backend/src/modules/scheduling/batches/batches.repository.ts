@@ -413,6 +413,26 @@ export class BatchesRepository {
     return rows.map((r) => r.student_id);
   }
 
+  /** Students CURRENTLY enrolled (active) in this academy's own batches,
+   *  each counted once however many batches they are in — the Academy
+   *  dashboard's "students" figure. Distinct from
+   *  listDistinctStudentIdsForAcademy above ("ever taught", which keeps
+   *  students who have since left) so the dashboard tile always agrees with
+   *  the Students page and the Students report. */
+  async listDistinctActiveStudentIdsForAcademy(
+    academyId: string,
+  ): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom('enrollments')
+      .innerJoin('batches', 'batches.id', 'enrollments.batch_id')
+      .select('enrollments.student_id')
+      .distinct()
+      .where('batches.academy_id', '=', academyId)
+      .where('enrollments.status', '=', 'active')
+      .execute();
+    return rows.map((r) => r.student_id);
+  }
+
   /** Every batch (any status) the academy owns, with a live enrolled
    *  count — the Academy Dashboard's batch list. Includes archived ones
    *  so an academy admin can see (and re-activate) them. */

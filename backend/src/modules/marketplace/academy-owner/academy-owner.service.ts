@@ -15,6 +15,7 @@ import { AcademyMembershipRequestsRepository } from '../academy-memberships/acad
 import { AcademyReviewsService } from '../academy-reviews/academy-reviews.service';
 import { BatchesRepository } from '../../scheduling/batches/batches.repository';
 import { SessionsRepository } from '../../scheduling/sessions/sessions.repository';
+import { TeacherDepartureService } from '../../scheduling/departure/teacher-departure.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { TeacherLeaveRepository } from '../../holidays/teacher-leave.repository';
 import { AcademySubscriptionsService } from '../../billing/subscriptions/academy-subscriptions.service';
@@ -70,6 +71,7 @@ export class AcademyOwnerService {
     private readonly teacherLeaveRepository: TeacherLeaveRepository,
     private readonly academySubscriptions: AcademySubscriptionsService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
+    private readonly teacherDeparture: TeacherDepartureService,
   ) {}
 
   /** Every other method starts here. Throws 404 (not 403) when no
@@ -189,7 +191,7 @@ export class AcademyOwnerService {
     // count their private Individual teaching.
     const [openBatches, academyStudentIds] = await Promise.all([
       this.batchesRepository.listOpenWithSeatsForAcademy(academy.id),
-      this.batchesRepository.listDistinctStudentIdsForAcademy(academy.id),
+      this.batchesRepository.listDistinctActiveStudentIdsForAcademy(academy.id),
     ]);
     const studentsCount = academyStudentIds.length;
 
@@ -597,7 +599,10 @@ export class AcademyOwnerService {
   /** Deactivates the membership only — see this method's guarantees in
    *  the class doc comment above. Never deletes or modifies the
    *  teacher's user row, profile, batches, students, reviews, or
-   *  bookings, and never revokes their login. */
+   *  bookings, and never revokes their login. The one class-level effect:
+   *  the teacher's FUTURE Academy classes that no other active teacher
+   *  covers are cancelled (TeacherDepartureService), so students are not
+   *  left with a normal "scheduled" class nobody will teach. */
   async removeTeacher(ownerUserId: string, membershipId: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
     const membership =
@@ -608,7 +613,9 @@ export class AcademyOwnerService {
         'That membership belongs to another academy',
       );
     }
-    return this.academyMembershipsRepository.markLeft(membershipId);
+    // Membership + future Academy classes atomically; the response stays the
+    // membership row (the API shape is unchanged).
+    return (await this.teacherDeparture.leave(membershipId)).membership;
   }
 
   async listContactRequests(ownerUserId: string) {

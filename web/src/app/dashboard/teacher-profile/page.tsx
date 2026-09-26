@@ -1309,7 +1309,7 @@ export default function TeacherProfilePage() {
         onOpenChange={(open) => !open && setLeaveTarget(null)}
         onConfirm={confirmLeaveAcademy}
         title={leaveTarget ? `Leave ${leaveTarget.name}?` : 'Leave academy?'}
-        description="You'll lose access to this academy's classes and students. Your Individual teaching is never affected, and the academy keeps your teaching history."
+        description="You'll lose access to this academy's classes and students, and your upcoming classes there that no other teacher covers will be cancelled (those students and parents are notified). Your Individual teaching is never affected, and the academy keeps your teaching history."
         confirmLabel={leavingAcademy ? 'Leaving…' : 'Leave'}
         danger
       />

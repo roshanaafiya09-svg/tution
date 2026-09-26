@@ -234,6 +234,21 @@ export class AcademyMembershipsRepository {
    * sidesteps a real module cycle: AcademyOwnerModule/HolidaysModule
    * already depend on AcademiesModule, so wiring the dependency the
    * other way round here is not an option.
+   *
+   * ALSO in the same transaction: the teacher's FUTURE ACADEMY classes stop
+   * being ordinary scheduled classes. A class that would still be taught by
+   * the departing teacher — i.e. whose effective teacher
+   * (`coalesce(substitute_tutor_id, tutor_id)`, the person actually
+   * covering it) is them — is cancelled with the existing
+   * `academy_manual` reason, because from this moment the ACADEMY owns
+   * that class with nobody to teach it. A class already covered by a
+   * different, still-active substitute keeps running (a valid replacement
+   * arrangement exists). Strictly scoped to THIS academy's own batches
+   * (`batches.academy_id`) and to classes that have not started, so the
+   * teacher's Individual classes, other academies' classes and all
+   * historical/completed classes are untouched. The cancelled ids are
+   * returned so the caller can send the existing cancellation notice once
+   * the transaction has committed.
    */
   markLeft(id: string) {
     return this.db.transaction().execute(async (trx) => {
@@ -252,7 +267,29 @@ export class AcademyMembershipsRepository {
         .where('status', '=', 'pending')
         .execute();
 
-      return membership;
+      const cancelled = await trx
+        .updateTable('class_sessions')
+        .set({ status: 'cancelled', cancellation_reason: 'academy_manual' })
+        .where('status', '=', 'scheduled')
+        .where('scheduled_start_utc', '>', new Date())
+        .where('batch_id', 'in', (eb) =>
+          eb
+            .selectFrom('batches')
+            .select('batches.id')
+            .where('batches.academy_id', '=', membership.academy_id),
+        )
+        .where(
+          (eb) => eb.fn.coalesce('substitute_tutor_id', 'tutor_id'),
+          '=',
+          membership.tutor_id,
+        )
+        .returning('id')
+        .execute();
+
+      return {
+        ...membership,
+        cancelledSessionIds: cancelled.map((row) => row.id),
+      };
     });
   }
 }

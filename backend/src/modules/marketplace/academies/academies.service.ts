@@ -14,6 +14,7 @@ import { AcademyContactRequestsRepository } from './academy-contact-requests.rep
 import { AcademyReviewsService } from '../academy-reviews/academy-reviews.service';
 import { BatchesRepository } from '../../scheduling/batches/batches.repository';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { TeacherDepartureService } from '../../scheduling/departure/teacher-departure.service';
 import { STORAGE_PROVIDER } from '../../../common/storage/storage-provider.interface';
 import type { StorageProvider } from '../../../common/storage/storage-provider.interface';
 import type { SearchAcademiesDto } from './dto/search-academies.dto';
@@ -77,6 +78,7 @@ export class AcademiesService {
     private readonly batchesRepository: BatchesRepository,
     private readonly notificationsService: NotificationsService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
+    private readonly teacherDeparture: TeacherDepartureService,
   ) {}
 
   async isGateOpen(): Promise<boolean> {
@@ -412,9 +414,12 @@ export class AcademiesService {
    * profile, batches, students, or history; also retires any leave
    * request still pending against this academy in the same transaction,
    * so it can never later be approved against a teacher who has already
-   * left — see markLeft's doc comment). Future Academy classes already
-   * scheduled to this teacher stay Academy-owned; the academy manages
-   * them from here on (cancel/reassign), same as after an
+   * left — see markLeft's doc comment). The batches and every historical
+   * class stay Academy-owned. Future Academy classes that would still be
+   * taught by this teacher are cancelled (a class already covered by
+   * another active substitute keeps running) and their students/parents
+   * are told — see TeacherDepartureService; the teacher's Individual
+   * classes and other academies are never touched. Same as after an
    * academy-initiated removal.
    */
   async leaveAcademy(slug: string, tutorId: string) {
@@ -433,9 +438,11 @@ export class AcademiesService {
       );
     }
 
-    const left = await this.academyMembershipsRepository.markLeft(
-      membership.id,
-    );
+    // Membership + the teacher's future Academy classes, atomically (see
+    // TeacherDepartureService); students/parents of cancelled classes are
+    // told afterwards.
+    const { membership: left, cancelledSessionIds } =
+      await this.teacherDeparture.leave(membership.id);
 
     if (academy.owner_user_id) {
       try {
@@ -443,8 +450,15 @@ export class AcademiesService {
           userIds: [academy.owner_user_id],
           type: 'academy_teacher_left',
           title: 'A teacher has left',
-          body: 'A teacher has left your academy.',
-          payload: { academyId: academy.id, tutorId },
+          body:
+            cancelledSessionIds.length > 0
+              ? `A teacher has left your academy. ${cancelledSessionIds.length} upcoming class${cancelledSessionIds.length === 1 ? ' was' : 'es were'} cancelled because it no longer has a teacher — reassign the students if needed.`
+              : 'A teacher has left your academy.',
+          payload: {
+            academyId: academy.id,
+            tutorId,
+            cancelledClassCount: cancelledSessionIds.length,
+          },
         });
       } catch (err) {
         this.logger.warn(

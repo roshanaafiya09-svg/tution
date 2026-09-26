@@ -61,10 +61,20 @@ describe('Five-feature remediation (e2e)', () => {
           .executeTakeFirstOrThrow()
       ).c,
     );
-  const thread = (u: Actor, batchId: string, studentId: string) =>
-    h.api('GET', `/messages/batch/${batchId}/student/${studentId}`, u.token);
-  const say = (u: Actor, batchId: string, studentId: string, body = 'hello') =>
+  // `ctx`: a teacher reaches a batch only in that batch's own teaching context.
+  const thread = (u: Actor, batchId: string, studentId: string, ctx?: string) =>
+    h.api('GET', `/messages/batch/${batchId}/student/${studentId}`, u.token, {
+      ctx,
+    });
+  const say = (
+    u: Actor,
+    batchId: string,
+    studentId: string,
+    body = 'hello',
+    ctx?: string,
+  ) =>
     h.api('POST', `/messages/batch/${batchId}/student/${studentId}`, u.token, {
+      ctx,
       body: { body },
     });
 
@@ -154,7 +164,7 @@ describe('Five-feature remediation (e2e)', () => {
     it('1-2 an active student, their parent and the teacher can read and post', async () => {
       expect((await thread(S1, aBatch, S1.id)).status).toBe(200);
       expect((await say(S1, aBatch, S1.id, 'sir, a doubt')).status).toBe(201);
-      expect((await say(T1, aBatch, S1.id, 'sure')).status).toBe(201);
+      expect((await say(T1, aBatch, S1.id, 'sure', A.ctx)).status).toBe(201);
       expect((await thread(P1, aBatch, S1.id)).status).toBe(200);
       expect((await say(P1, aBatch, S1.id, 'thanks')).status).toBe(201);
       // Academy context does not matter for messaging access — enrolment does.
@@ -206,10 +216,10 @@ describe('Five-feature remediation (e2e)', () => {
     });
 
     it('the teacher can still READ the kept history but cannot post to a removed student', async () => {
-      const res = await thread(T1, aBatch, S1.id);
+      const res = await thread(T1, aBatch, S1.id, A.ctx);
       expect(res.status).toBe(200);
       expect(res.body.length).toBe(3);
-      expect((await say(T1, aBatch, S1.id)).status).toBe(403);
+      expect((await say(T1, aBatch, S1.id, 'hi', A.ctx)).status).toBe(403);
     });
 
     it("the removed batch drops out of the student's and parent's inbox; other enrolments stay", async () => {

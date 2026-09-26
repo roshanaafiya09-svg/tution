@@ -40,12 +40,13 @@ export class MessagesController {
   @Roles('tutor', 'student', 'parent')
   listThread(
     @CurrentUser() user: AccessTokenPayload,
+    @CurrentTeachingContext() ctx: TeachingContext,
     @Param('batchId') batchId: string,
     @Param('studentId') studentId: string,
     @Query('limit') limit?: string,
     @Query('before') before?: string,
   ) {
-    return this.messagesService.listThread(user, batchId, studentId, {
+    return this.messagesService.listThread(user, ctx, batchId, studentId, {
       limit: limit ? Number(limit) : undefined,
       before,
     });
@@ -55,10 +56,11 @@ export class MessagesController {
   @Roles('tutor', 'student', 'parent')
   send(
     @CurrentUser() user: AccessTokenPayload,
+    @CurrentTeachingContext() ctx: TeachingContext,
     @Param('batchId') batchId: string,
     @Param('studentId') studentId: string,
     @Body() dto: SendMessageDto,
   ) {
-    return this.messagesService.send(user, batchId, studentId, dto.body);
+    return this.messagesService.send(user, ctx, batchId, studentId, dto.body);
   }
 }
