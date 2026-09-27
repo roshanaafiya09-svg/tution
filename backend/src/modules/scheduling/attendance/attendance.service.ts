@@ -127,14 +127,7 @@ export class AttendanceService {
       throw new BadRequestException('This class has been cancelled');
     }
 
-    await this.repository.upsert(
-      sessionId,
-      studentId,
-      'present',
-      'join_tap',
-      null,
-      new Date(),
-    );
+    await this.repository.upsertJoinTap(sessionId, studentId, new Date());
 
     this.analytics.capture(studentId, 'class_joined', {
       sessionId,

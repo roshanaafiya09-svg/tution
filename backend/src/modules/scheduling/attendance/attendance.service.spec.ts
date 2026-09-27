@@ -22,8 +22,10 @@ const SESSION_ID = 'session-1';
 
 function buildService(overrides: {
   getViewableSession?: jest.Mock;
+  findByIdOrThrow?: jest.Mock;
   findEnrollment?: jest.Mock;
   upsert?: jest.Mock;
+  upsertJoinTap?: jest.Mock;
   listForSession?: jest.Mock;
 }) {
   const getViewableSession =
@@ -33,7 +35,20 @@ function buildService(overrides: {
       batch_id: 'batch-1',
       status: 'scheduled',
     });
-  const sessionsService = { getViewableSession } as unknown as SessionsService;
+  const findByIdOrThrow =
+    overrides.findByIdOrThrow ??
+    jest.fn().mockResolvedValue({
+      id: SESSION_ID,
+      batch_id: 'batch-1',
+      status: 'scheduled',
+      meeting_url: null,
+      scheduled_start_utc: new Date(),
+      duration_min: 60,
+    });
+  const sessionsService = {
+    getViewableSession,
+    findByIdOrThrow,
+  } as unknown as SessionsService;
 
   const findEnrollment =
     overrides.findEnrollment ??
@@ -42,10 +57,14 @@ function buildService(overrides: {
 
   const upsert =
     overrides.upsert ?? jest.fn().mockResolvedValue({ id: 'attendance-1' });
+  const upsertJoinTap =
+    overrides.upsertJoinTap ??
+    jest.fn().mockResolvedValue({ id: 'attendance-1' });
   const listForSession =
     overrides.listForSession ?? jest.fn().mockResolvedValue([]);
   const repository = {
     upsert,
+    upsertJoinTap,
     listForSession,
   } as unknown as AttendanceRepository;
 
@@ -65,7 +84,14 @@ function buildService(overrides: {
     notificationsService,
   );
 
-  return { service, getViewableSession, upsert, listForSession };
+  return {
+    service,
+    getViewableSession,
+    findByIdOrThrow,
+    upsert,
+    upsertJoinTap,
+    listForSession,
+  };
 }
 
 describe('AttendanceService.markManually — holiday/cancelled-class guard', () => {
@@ -111,6 +137,68 @@ describe('AttendanceService.markManually — holiday/cancelled-class guard', () 
     await expect(
       service.markManually(TUTOR_ID, SESSION_ID, 'former-student', 'present'),
     ).rejects.toThrow(BadRequestException);
+  });
+});
+
+describe('AttendanceService.joinSession — join-tap must never clobber a manual mark', () => {
+  it('refuses to join a cancelled class', async () => {
+    const findByIdOrThrow = jest.fn().mockResolvedValue({
+      id: SESSION_ID,
+      batch_id: 'batch-1',
+      status: 'cancelled',
+    });
+    const upsertJoinTap = jest.fn();
+    const { service } = buildService({ findByIdOrThrow, upsertJoinTap });
+
+    await expect(
+      service.joinSession('student-1', SESSION_ID),
+    ).rejects.toThrow(BadRequestException);
+    expect(upsertJoinTap).not.toHaveBeenCalled();
+  });
+
+  it('refuses to join for a student not actively enrolled in the batch', async () => {
+    const findEnrollment = jest.fn().mockResolvedValue(undefined);
+    const upsertJoinTap = jest.fn();
+    const { service } = buildService({ findEnrollment, upsertJoinTap });
+
+    await expect(
+      service.joinSession('stranger', SESSION_ID),
+    ).rejects.toThrow(BadRequestException);
+    expect(upsertJoinTap).not.toHaveBeenCalled();
+  });
+
+  it('delegates to the conditional upsertJoinTap (not the unconditional manual upsert), so a prior manual mark is preserved at the query layer', async () => {
+    const upsert = jest.fn();
+    const upsertJoinTap = jest.fn().mockResolvedValue(undefined);
+    const { service } = buildService({ upsert, upsertJoinTap });
+
+    await service.joinSession('student-1', SESSION_ID);
+
+    expect(upsertJoinTap).toHaveBeenCalledWith(
+      SESSION_ID,
+      'student-1',
+      expect.any(Date),
+    );
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('still returns the meeting link even when the join-tap write was skipped (student already marked manually)', async () => {
+    const findByIdOrThrow = jest.fn().mockResolvedValue({
+      id: SESSION_ID,
+      batch_id: 'batch-1',
+      status: 'scheduled',
+      meeting_url: 'https://meet.example/abc',
+      scheduled_start_utc: new Date('2026-01-01T10:00:00Z'),
+      duration_min: 60,
+    });
+    // Mirrors what the conditional DO UPDATE ... WHERE returns in
+    // production when it skips the write: no row.
+    const upsertJoinTap = jest.fn().mockResolvedValue(undefined);
+    const { service } = buildService({ findByIdOrThrow, upsertJoinTap });
+
+    const result = await service.joinSession('student-1', SESSION_ID);
+
+    expect(result.meetingUrl).toBe('https://meet.example/abc');
   });
 });
 

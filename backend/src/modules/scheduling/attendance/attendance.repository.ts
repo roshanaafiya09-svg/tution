@@ -86,6 +86,9 @@ export class AttendanceRepository {
       .execute();
   }
 
+  /** Teacher's manual mark — always wins, including over an existing
+   *  join-tap row. See `upsertJoinTap` for the reverse direction, which
+   *  is deliberately NOT symmetric. */
   upsert(
     sessionId: string,
     studentId: string,
@@ -115,6 +118,41 @@ export class AttendanceRepository {
       )
       .returningAll()
       .executeTakeFirstOrThrow();
+  }
+
+  /** Student's own join-tap: a pre-fill signal only. If the tutor already
+   *  marked this student manually for this session, that mark must stand —
+   *  a student tapping Join after being marked absent must NOT flip them
+   *  back to present. The conditional DO UPDATE ... WHERE (evaluated under
+   *  the row lock, so it can't race a concurrent manual mark) makes the
+   *  insert-or-update a no-op against an existing 'manual' row instead of
+   *  overwriting it. Returns undefined when the update was skipped for
+   *  that reason — callers don't need the row back either way. */
+  upsertJoinTap(sessionId: string, studentId: string, joinedAt: Date) {
+    return this.db
+      .insertInto('attendance')
+      .values({
+        id: newId(),
+        session_id: sessionId,
+        student_id: studentId,
+        status: 'present',
+        method: 'join_tap',
+        marked_by: null,
+        joined_at: joinedAt,
+      })
+      .onConflict((oc) =>
+        oc
+          .columns(['session_id', 'student_id'])
+          .doUpdateSet({
+            status: 'present',
+            method: 'join_tap',
+            marked_by: null,
+            joined_at: joinedAt,
+          })
+          .where('attendance.method', '!=', 'manual'),
+      )
+      .returningAll()
+      .executeTakeFirst();
   }
 
   /** Feeds the trial-end value-recap paywall (blueprint §5). The paywall

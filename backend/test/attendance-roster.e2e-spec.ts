@@ -352,6 +352,87 @@ describe('Attendance roster correctness (e2e)', () => {
   });
 
   // ==========================================================================
+  // Mobile-parity fix — a student's join-tap must never clobber a teacher's
+  // prior manual mark. Real HTTP against the real DB, order-of-operations
+  // matters here: teacher marks first, student joins after.
+  // ==========================================================================
+  it('a student who taps Join AFTER the teacher manually marked them Absent stays Absent', async () => {
+    const T = await makeUser('tutor', 'joinguard1');
+    const batchId = await teacherCreatesBatch(T, `JOINGUARD-${MARKER}-1`);
+    const student = await makeUser('student', 'jg1-student');
+    await enroll(batchId, student.id);
+    const sessionId = await teacherSchedules(T, batchId, `${D}T13:00`);
+
+    const markAbsent = await api(
+      'POST',
+      `/attendance/session/${sessionId}/mark`,
+      T.token,
+      { body: { studentId: student.id, status: 'absent' } },
+    );
+    expect(markAbsent.status).toBe(201);
+
+    const joinRes = await api(
+      'POST',
+      `/attendance/session/${sessionId}/join`,
+      student.token,
+    );
+    expect(joinRes.status).toBe(201);
+
+    const rows = (
+      await api('GET', `/attendance/session/${sessionId}`, T.token)
+    ).body as Array<{ student_id: string; status: string | null; method: string | null }>;
+    const row = rows.find((r) => r.student_id === student.id);
+    expect(row?.status).toBe('absent');
+    expect(row?.method).toBe('manual');
+  });
+
+  it('a join-tap with no prior manual mark still records present as usual', async () => {
+    const T = await makeUser('tutor', 'joinguard2');
+    const batchId = await teacherCreatesBatch(T, `JOINGUARD-${MARKER}-2`);
+    const student = await makeUser('student', 'jg2-student');
+    await enroll(batchId, student.id);
+    const sessionId = await teacherSchedules(T, batchId, `${D}T13:30`);
+
+    const joinRes = await api(
+      'POST',
+      `/attendance/session/${sessionId}/join`,
+      student.token,
+    );
+    expect(joinRes.status).toBe(201);
+
+    const rows = (
+      await api('GET', `/attendance/session/${sessionId}`, T.token)
+    ).body as Array<{ student_id: string; status: string | null; method: string | null }>;
+    const row = rows.find((r) => r.student_id === student.id);
+    expect(row?.status).toBe('present');
+    expect(row?.method).toBe('join_tap');
+  });
+
+  it('the teacher can still override a join-tap manually afterwards (the one direction that IS allowed to overwrite)', async () => {
+    const T = await makeUser('tutor', 'joinguard3');
+    const batchId = await teacherCreatesBatch(T, `JOINGUARD-${MARKER}-3`);
+    const student = await makeUser('student', 'jg3-student');
+    await enroll(batchId, student.id);
+    const sessionId = await teacherSchedules(T, batchId, `${D}T14:00`);
+
+    await api('POST', `/attendance/session/${sessionId}/join`, student.token);
+    const override = await api(
+      'POST',
+      `/attendance/session/${sessionId}/mark`,
+      T.token,
+      { body: { studentId: student.id, status: 'absent' } },
+    );
+    expect(override.status).toBe(201);
+
+    const rows = (
+      await api('GET', `/attendance/session/${sessionId}`, T.token)
+    ).body as Array<{ student_id: string; status: string | null; method: string | null }>;
+    const row = rows.find((r) => r.student_id === student.id);
+    expect(row?.status).toBe('absent');
+    expect(row?.method).toBe('manual');
+  });
+
+  // ==========================================================================
   // TEST 4 — an OFFLINE-style session (zero join events at all) still
   // returns every expected student.
   // ==========================================================================
