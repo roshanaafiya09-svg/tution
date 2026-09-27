@@ -242,7 +242,7 @@ export class TeacherLeaveService {
       type: 'teacher_leave_rejected',
       title: 'Leave request rejected',
       body: `Your leave request for ${dateLabel} has been rejected by the academy.`,
-      payload: { leaveRequestId: id },
+      payload: { leaveRequestId: id, academyId },
     });
     return result.request;
   }
@@ -319,7 +319,7 @@ export class TeacherLeaveService {
       type: 'teacher_leave_approved',
       title: 'Leave approved',
       body: `Your leave request for ${dateLabel} has been approved.`,
-      payload: { leaveRequestId: id },
+      payload: { leaveRequestId: id, academyId },
     });
 
     await this.notifyAffectedClasses(

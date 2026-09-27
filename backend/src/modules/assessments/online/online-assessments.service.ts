@@ -452,7 +452,11 @@ export class OnlineAssessmentsService {
       type: 'assessment_completed',
       title: `Completed: ${assessment.title}`,
       body: `All results are in for ${assessment.title}`,
-      payload: { assessmentId, mode: 'online' },
+      payload: {
+        assessmentId,
+        mode: 'online',
+        academyId: assessment.academy_id,
+      },
     });
     await this.notificationsService.notify({
       userIds: studentIds,

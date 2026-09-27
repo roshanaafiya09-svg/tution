@@ -322,7 +322,7 @@ export class OfflineAssessmentsService {
         type: 'assessment_scorecard_validation_failed',
         title: `Scorecard validation failed: ${assessment.title}`,
         body: `${outcome.errors.length} issue(s) found — see the assessment for details`,
-        payload: { assessmentId },
+        payload: { assessmentId, academyId: assessment.academy_id },
       });
       this.analytics.capture(tutorId, 'offline_scorecard_validation_failed', {
         assessmentId,
@@ -340,7 +340,11 @@ export class OfflineAssessmentsService {
       body: outcome.completedLate
         ? 'Scorecard imported (completed late)'
         : 'Scorecard imported successfully',
-      payload: { assessmentId, mode: 'offline' },
+      payload: {
+        assessmentId,
+        mode: 'offline',
+        academyId: assessment.academy_id,
+      },
     });
     await this.notificationsService.notify({
       userIds: studentIds,
