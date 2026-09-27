@@ -98,6 +98,17 @@ export class FeesRepository {
       .executeTakeFirst();
   }
 
+  /** The student's display name, for parent-facing fee notices. Null when
+   *  the student has no profile row. */
+  async findStudentDisplayName(studentId: string): Promise<string | null> {
+    const row = await this.db
+      .selectFrom('profiles_student')
+      .select('display_name')
+      .where('user_id', '=', studentId)
+      .executeTakeFirst();
+    return row?.display_name?.trim() || null;
+  }
+
   /** Atomic claim like SessionsRepository.cancelIfScheduled (H2): only a
    *  'due'/'partial' entry can be paid, so two concurrent requests (or a
    *  payment racing a waive) resolve to exactly one winner via Postgres's

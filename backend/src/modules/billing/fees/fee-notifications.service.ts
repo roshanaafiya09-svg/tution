@@ -4,6 +4,12 @@ import type { FeeLedgerTable } from '../../../database/types';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { ParentLinksRepository } from '../../parents/parent-links.repository';
 import { BatchesRepository } from '../../scheduling/batches/batches.repository';
+import { FeesRepository } from './fees.repository';
+import {
+  feeNotificationTitle,
+  type FeeNotificationAudience,
+  type FeeNotificationEvent,
+} from './fee-notification-messages';
 
 type FeeRow = Selectable<FeeLedgerTable>;
 
@@ -16,7 +22,10 @@ export const FEE_WAIVED = 'fee_waived';
  * Scholar's own subscription billing (tutor plans / parent premium), which
  * never flows through here.
  *
- * Recipients are the student and their ACTIVELY-consented parents. Every
+ * Recipients are the student and their ACTIVELY-consented parents. Parents
+ * get a title that names the child (read from the fee row's own student_id,
+ * never from any dashboard/session state); the student keeps the original
+ * wording. Every
  * call is best-effort: the money action has already committed, so a
  * delivery failure is logged and never fails or rolls it back. Each event
  * carries a dedupe key so a repeat (regenerating a period, a re-delivered
@@ -30,6 +39,7 @@ export class FeeNotificationsService {
     private readonly notifications: NotificationsService,
     private readonly parentLinks: ParentLinksRepository,
     private readonly batches: BatchesRepository,
+    private readonly fees: FeesRepository,
   ) {}
 
   /** A fee row was raised (or re-generated) for a period. Only untouched
@@ -39,10 +49,9 @@ export class FeeNotificationsService {
     for (const entry of entries) {
       if (entry.status !== 'due') continue;
       await this.safely(`fee raised ${entry.id}`, async () => {
-        const batchTitle = await this.batchTitle(entry.batch_id);
         await this.toFamily(entry, {
           type: FEE_RAISED,
-          title: `Fee due — ${batchTitle}`,
+          event: 'raised',
           body: `${formatMinor(entry.expected_minor, entry.currency)} is due for ${entry.period_label}.`,
           dedupeKey: `fee-raised:${entry.id}`,
         });
@@ -58,16 +67,13 @@ export class FeeNotificationsService {
     opts: { source: 'teacher' | 'online'; payerId?: string },
   ): Promise<void> {
     await this.safely(`fee payment ${entry.id}`, async () => {
-      const batchTitle = await this.batchTitle(entry.batch_id);
       const paid = entry.recorded_paid_minor ?? 0;
       const settled = entry.status === 'paid';
       await this.toFamily(
         entry,
         {
           type: FEE_PAYMENT_RECORDED,
-          title: settled
-            ? `Fee paid — ${batchTitle}`
-            : `Payment received — ${batchTitle}`,
+          event: settled ? 'paid' : 'partial',
           body: settled
             ? `${entry.period_label} is fully paid (${formatMinor(paid, entry.currency)}).`
             : `${formatMinor(paid, entry.currency)} of ${formatMinor(entry.expected_minor, entry.currency)} received for ${entry.period_label}.`,
@@ -76,6 +82,7 @@ export class FeeNotificationsService {
         opts.payerId,
       );
       if (opts.source === 'online' && entry.tutor_id !== opts.payerId) {
+        const batchTitle = await this.batchTitle(entry.batch_id);
         await this.notifications.notify({
           userIds: [entry.tutor_id],
           type: FEE_PAYMENT_RECORDED,
@@ -90,10 +97,9 @@ export class FeeNotificationsService {
 
   async notifyWaived(entry: FeeRow): Promise<void> {
     await this.safely(`fee waived ${entry.id}`, async () => {
-      const batchTitle = await this.batchTitle(entry.batch_id);
       await this.toFamily(entry, {
         type: FEE_WAIVED,
-        title: `Fee waived — ${batchTitle}`,
+        event: 'waived',
         body: `The fee for ${entry.period_label} has been waived.`,
         dedupeKey: `fee-waived:${entry.id}`,
       });
@@ -104,30 +110,40 @@ export class FeeNotificationsService {
     entry: FeeRow,
     msg: {
       type: string;
-      title: string;
+      event: FeeNotificationEvent;
       body: string;
       dedupeKey: string;
     },
     excludeUserId?: string,
   ): Promise<void> {
-    const parentIds = await this.parentLinks.listActiveParentIdsForStudents([
-      entry.student_id,
+    const [batchTitle, studentName, parentIds] = await Promise.all([
+      this.batchTitle(entry.batch_id),
+      this.fees.findStudentDisplayName(entry.student_id),
+      this.parentLinks.listActiveParentIdsForStudents([entry.student_id]),
     ]);
-    const userIds = [entry.student_id, ...parentIds].filter(
-      (id) => id !== excludeUserId,
-    );
-    await this.notifications.notify({
-      userIds,
-      type: msg.type,
-      title: msg.title,
-      body: msg.body,
-      payload: {
-        feeLedgerId: entry.id,
-        batchId: entry.batch_id,
-        studentId: entry.student_id,
-      },
-      dedupeKey: msg.dedupeKey,
-    });
+    const payload = {
+      feeLedgerId: entry.id,
+      batchId: entry.batch_id,
+      studentId: entry.student_id,
+    };
+    // One send per audience, same dedupe key: the per-user dedupe (user +
+    // type + key) is unchanged, so each person still gets exactly one row.
+    const send = (userIds: string[], audience: FeeNotificationAudience) =>
+      this.notifications.notify({
+        userIds: userIds.filter((id) => id !== excludeUserId),
+        type: msg.type,
+        title: feeNotificationTitle(
+          msg.event,
+          audience,
+          batchTitle,
+          studentName,
+        ),
+        body: msg.body,
+        payload,
+        dedupeKey: msg.dedupeKey,
+      });
+    await send([entry.student_id], 'student');
+    await send(parentIds, 'parent');
   }
 
   private async batchTitle(batchId: string): Promise<string> {

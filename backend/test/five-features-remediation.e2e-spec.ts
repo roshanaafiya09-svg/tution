@@ -586,6 +586,24 @@ describe('Five-feature remediation (e2e)', () => {
           expect(rows[0].payload.title).toContain('Academy Chemistry');
           expect(rows[0].payload.body).toContain('due');
         }
+        // The parent's copy names the child; the student's keeps the original wording.
+        const s2Name = (
+          await h.db
+            .selectFrom('profiles_student')
+            .select('display_name')
+            .where('user_id', '=', S2.id)
+            .executeTakeFirstOrThrow()
+        ).display_name;
+        expect(
+          (await notes(P2, 'fee_raised')).find(
+            (n) => n.payload.feeLedgerId === feeId,
+          )!.payload.title,
+        ).toBe(`Fee due for ${s2Name} — Academy Chemistry`);
+        expect(
+          (await notes(S2, 'fee_raised')).find(
+            (n) => n.payload.feeLedgerId === feeId,
+          )!.payload.title,
+        ).toBe('Fee due — Academy Chemistry');
         // Other families / the removed student: nothing.
         for (const u of [P1, S1, P3, S3, PI, SI]) {
           expect(await notes(u, 'fee_raised')).toHaveLength(0);
@@ -613,15 +631,26 @@ describe('Five-feature remediation (e2e)', () => {
           },
         );
         expect(full.status).toBe(201);
-        for (const u of [S2, P2]) {
-          const rows = (await notes(u, 'fee_payment_recorded')).filter(
-            (n) => n.payload.feeLedgerId === feeId,
-          );
-          expect(rows.map((r) => r.payload.title).sort()).toEqual([
-            'Fee paid — Academy Chemistry',
-            'Payment received — Academy Chemistry',
-          ]);
-        }
+        const s2Name = (
+          await h.db
+            .selectFrom('profiles_student')
+            .select('display_name')
+            .where('user_id', '=', S2.id)
+            .executeTakeFirstOrThrow()
+        ).display_name;
+        const titlesFor = async (u: Actor) =>
+          (await notes(u, 'fee_payment_recorded'))
+            .filter((n) => n.payload.feeLedgerId === feeId)
+            .map((r) => r.payload.title)
+            .sort();
+        expect(await titlesFor(S2)).toEqual([
+          'Fee paid — Academy Chemistry',
+          'Payment received — Academy Chemistry',
+        ]);
+        expect(await titlesFor(P2)).toEqual([
+          `Fee paid for ${s2Name} — Academy Chemistry`,
+          `Payment received for ${s2Name} — Academy Chemistry`,
+        ]);
         expect(await notes(T1, 'fee_payment_recorded')).toHaveLength(0);
       });
 
