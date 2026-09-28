@@ -18,7 +18,20 @@ export interface AutomatedResult {
   reason: string | null;
 }
 
+/** Blocks a NEW owner submission while one is still being decided. Note
+ *  needs_manual_review is deliberately NOT here: the owner UI lets them
+ *  resubmit from that state (a corrected PAN/GSTIN re-runs the automated
+ *  check), keeping the earlier row as history. */
 const OPEN_STATUSES: AcademyKycStatus[] = ['pending', 'under_review'];
+
+/** What a reviewer can act on. An automated check that couldn't settle a
+ *  submission leaves it needs_manual_review — that is precisely the case a
+ *  human has to pick up, so it must be listed and reviewable. */
+export const REVIEWABLE_STATUSES: AcademyKycStatus[] = [
+  'pending',
+  'under_review',
+  'needs_manual_review',
+];
 
 @Injectable()
 export class AcademyVerificationRepository {
@@ -69,9 +82,11 @@ export class AcademyVerificationRepository {
       .executeTakeFirst();
   }
 
-  /** The manual-review queue — everything not yet at a terminal state,
-   *  oldest first (same SLA-ordering convention as tutor_verifications'
-   *  listPending). */
+  /** The manual-review queue — every academy whose CURRENT submission is
+   *  still awaiting a reviewer (REVIEWABLE_STATUSES), oldest first (same
+   *  SLA-ordering convention as tutor_verifications' listPending). Only the
+   *  latest submission per academy is listed: once an owner resubmits, the
+   *  earlier row is history, not a second thing to review. */
   listQueue() {
     return this.db
       .selectFrom('academy_kyc_verifications')
@@ -89,7 +104,26 @@ export class AcademyVerificationRepository {
         'academies.name as academy_name',
         'academies.owner_user_id',
       ])
-      .where('academy_kyc_verifications.status', 'in', OPEN_STATUSES)
+      .where('academy_kyc_verifications.status', 'in', REVIEWABLE_STATUSES)
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom('academy_kyc_verifications as newer')
+              .select('newer.id')
+              .whereRef(
+                'newer.academy_id',
+                '=',
+                'academy_kyc_verifications.academy_id',
+              )
+              .whereRef(
+                'newer.created_at',
+                '>',
+                'academy_kyc_verifications.created_at',
+              ),
+          ),
+        ),
+      )
       .orderBy('academy_kyc_verifications.created_at', 'asc')
       .execute();
   }

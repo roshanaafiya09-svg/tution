@@ -721,6 +721,19 @@ export type AcademyKycStatus =
   | 'rejected'
   | 'needs_manual_review';
 
+/** One row of GET /admin/academy-verifications/queue — an academy whose
+ *  CURRENT KYC submission is waiting for a reviewer. Deliberately carries no
+ *  PAN/GSTIN: those are never stored (see the backend service). */
+export interface AcademyKycQueueItem {
+  id: string;
+  academy_id: string;
+  academy_name: string;
+  owner_user_id: string | null;
+  status: 'pending' | 'under_review' | 'needs_manual_review';
+  reason: string | null;
+  created_at: string;
+}
+
 export interface AcademyKycVerificationStatus {
   status: AcademyKycStatus;
   reason: string | null;

@@ -13,7 +13,10 @@ jest.mock('../../../database/database.module', () => ({
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { AcademyVerificationService } from './academy-verification.service';
 import { KycProviderUnavailableError } from './providers/setu-kyc.provider';
-import type { AcademyVerificationRepository } from './academy-verification.repository';
+import {
+  REVIEWABLE_STATUSES,
+  type AcademyVerificationRepository,
+} from './academy-verification.repository';
 import type { AcademiesRepository } from '../academies/academies.repository';
 import type { ConsentService } from '../../trust/consent/consent.service';
 import type { AuditLogService } from '../../trust/audit/audit-log.service';
@@ -410,5 +413,69 @@ describe('AcademyVerificationService.review', () => {
     });
 
     expect(setVerificationStatus).not.toHaveBeenCalled();
+  });
+
+  // start() leaves an unsettled submission in needs_manual_review — that,
+  // not 'pending', is the state a reviewer actually receives. The tests
+  // above mock 'pending' (which a real submission never rests in), which is
+  // how a queue/review that ignored needs_manual_review went unnoticed.
+  describe('reviewing a needs_manual_review submission (the state start() actually leaves behind)', () => {
+    const inManualReview = () =>
+      jest.fn().mockResolvedValue({
+        id: 's1',
+        status: 'needs_manual_review',
+        academy_id: 'a1',
+      });
+
+    it('can be approved: syncs academies.verification_status and notifies the owner', async () => {
+      const { service, setVerificationStatus } = buildService({
+        findById: inManualReview(),
+      });
+      await service.review('admin_1', 'trust_safety', 's1', {
+        status: 'verified',
+      });
+      expect(setVerificationStatus).toHaveBeenCalledWith('a1', 'verified');
+    });
+
+    it('can be rejected with a reason: syncs academies.verification_status', async () => {
+      const { service, setVerificationStatus } = buildService({
+        findById: inManualReview(),
+      });
+      await service.review('admin_1', 'trust_safety', 's1', {
+        status: 'rejected',
+        reason: 'PAN does not match the academy owner',
+      });
+      expect(setVerificationStatus).toHaveBeenCalledWith('a1', 'rejected');
+    });
+
+    it.each(['verified', 'rejected'])(
+      'a %s submission can NOT be reviewed again',
+      async (status) => {
+        const { service, review } = buildService({
+          findById: jest
+            .fn()
+            .mockResolvedValue({ id: 's1', status, academy_id: 'a1' }),
+        });
+        await expect(
+          service.review('admin_1', 'superadmin', 's1', {
+            status: 'rejected',
+            reason: 'again',
+          }),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(review).not.toHaveBeenCalled();
+      },
+    );
+
+    it('needs_manual_review is in the reviewable set the queue lists', () => {
+      expect(REVIEWABLE_STATUSES).toEqual(
+        expect.arrayContaining([
+          'pending',
+          'under_review',
+          'needs_manual_review',
+        ]),
+      );
+      expect(REVIEWABLE_STATUSES).not.toContain('verified');
+      expect(REVIEWABLE_STATUSES).not.toContain('rejected');
+    });
   });
 });

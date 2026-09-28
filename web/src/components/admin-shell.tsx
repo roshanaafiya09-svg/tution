@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import posthog from 'posthog-js';
-import { ShieldCheck, Users, GraduationCap, Heart, LogOut, LayoutDashboard, BadgeCheck } from 'lucide-react';
+import { ShieldCheck, Users, GraduationCap, Heart, LogOut, LayoutDashboard, BadgeCheck, Building2 } from 'lucide-react';
 import { api, apiLogout, requireSession } from '@/lib/api';
 import { useApiQuery } from '@/lib/query';
 import type { Me } from '@/lib/types';
@@ -24,6 +24,7 @@ const NAV = [
   { href: '/admin/students', label: 'Students', icon: GraduationCap },
   { href: '/admin/parents', label: 'Parents', icon: Heart },
   { href: '/admin/verifications', label: 'Verifications', icon: BadgeCheck },
+  { href: '/admin/academy-verifications', label: 'Academy KYC', icon: Building2 },
 ];
 
 /**

@@ -5,7 +5,10 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { AcademyVerificationRepository } from './academy-verification.repository';
+import {
+  AcademyVerificationRepository,
+  REVIEWABLE_STATUSES,
+} from './academy-verification.repository';
 import { AcademiesRepository } from '../academies/academies.repository';
 import { ConsentService } from '../../trust/consent/consent.service';
 import { AuditLogService } from '../../trust/audit/audit-log.service';
@@ -206,7 +209,7 @@ export class AcademyVerificationService {
     if (!existing) {
       throw new NotFoundException('Verification submission not found');
     }
-    if (existing.status !== 'pending' && existing.status !== 'under_review') {
+    if (!REVIEWABLE_STATUSES.includes(existing.status)) {
       throw new BadRequestException(
         `This submission was already resolved (${existing.status}).`,
       );
