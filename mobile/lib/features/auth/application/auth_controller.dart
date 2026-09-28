@@ -29,9 +29,7 @@ class AuthController extends Notifier<AuthState> {
   /// Startup check: a stored access token (even if expired — ApiClient
   /// silently refreshes it) means the session survives an app restart.
   Future<void> _restoreSession() async {
-    final storedToken = await ref
-        .read(tokenStorageProvider)
-        .readAccessToken();
+    final storedToken = await ref.read(tokenStorageProvider).readAccessToken();
     if (storedToken == null) {
       state = state.copyWith(status: AuthStatus.signedOut);
       return;
@@ -116,6 +114,7 @@ class AuthController extends Notifier<AuthState> {
   Future<void> signOut() async {
     await Analytics.capture('logout');
     await Analytics.reset();
+    await unregisterDeviceToken(ref);
     final storage = ref.read(tokenStorageProvider);
     final refreshToken = await storage.readRefreshToken();
     await storage.clear();

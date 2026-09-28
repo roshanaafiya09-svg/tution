@@ -23,6 +23,17 @@ export class DeviceTokensRepository {
       .then(() => undefined);
   }
 
+  /** Detach a device from ONE user — scoped by user_id so a caller can never
+   *  remove someone else's token, even if they know its value. */
+  deleteForUser(userId: string, token: string) {
+    return this.db
+      .deleteFrom('device_tokens')
+      .where('user_id', '=', userId)
+      .where('token', '=', token)
+      .execute()
+      .then(() => undefined);
+  }
+
   findTokensForUsers(userIds: string[]) {
     if (userIds.length === 0) return Promise.resolve([]);
 

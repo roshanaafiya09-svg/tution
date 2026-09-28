@@ -10,8 +10,13 @@ import { PushMessage, PushProvider } from './push-provider.interface';
 // docs suggest — confirmed against the live API. Without this, a
 // malformed token (e.g. from a buggy client build) would log a warning
 // on every single push forever instead of ever being cleaned up.
+// An expired/uninstalled (UNREGISTERED) token surfaces as
+// 'messaging/registration-token-not-registered' — that exact spelling is
+// what firebase-admin emits and what the live API returned; the earlier
+// 'registered-token-not-registered' never matches, so the most common
+// stale case (app uninstalled) was never cleaned up.
 const STALE_TOKEN_ERROR_CODES = new Set([
-  'messaging/registered-token-not-registered',
+  'messaging/registration-token-not-registered',
   'messaging/invalid-registration-token',
   'messaging/invalid-argument',
 ]);

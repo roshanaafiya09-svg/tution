@@ -10,4 +10,9 @@ class DeviceApi {
         'token': token,
         'platform': platform,
       });
+
+  /// Sign-out: detach this device from the signed-in user. Token goes in the
+  /// body (never a URL) — same reason the backend route is POST, not DELETE.
+  Future<void> unregisterToken(String token) =>
+      _client.post('/notifications/device-tokens/unregister', {'token': token});
 }

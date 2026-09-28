@@ -35,3 +35,24 @@ Future<void> registerDeviceToken(Ref ref) async {
     // Swallow — push registration failing must never break login.
   }
 }
+
+/// Detaches this device's FCM token from the signed-in user on sign-out, so a
+/// phone that has logged out stops receiving that user's notifications.
+/// Must run BEFORE the auth tokens are cleared (the call is authenticated).
+/// Best-effort and bounded: never throws, and never holds sign-out up for
+/// more than a few seconds (e.g. Firebase unreachable / offline) — in that
+/// case the token simply stays until the next login on this device
+/// re-registers it under the new user (the backend upsert reassigns it) or
+/// FCM reports it stale.
+Future<void> unregisterDeviceToken(Ref ref) async {
+  try {
+    await () async {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null) {
+        await ref.read(deviceApiProvider).unregisterToken(token);
+      }
+    }().timeout(const Duration(seconds: 4));
+  } catch (_) {
+    // Swallow — see above.
+  }
+}
