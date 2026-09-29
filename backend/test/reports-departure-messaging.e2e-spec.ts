@@ -787,7 +787,11 @@ describe('Reports / teacher departure / messaging context (e2e)', () => {
 
     it('no reminder can fire for the cancelled classes (moved INTO the reminder window), while a real class still reminds', async () => {
       const reminders = h.app.get(RemindersService);
-      const soon = new Date(Date.now() + 10 * 60_000 + 5_000);
+      // H7: the sweep's window is now forward-looking ([now, now+10min], not
+      // a ±30s slice around exactly "now+10min") — genuinely inside it, so
+      // this still proves cancellation suppresses the reminder despite being
+      // "in window", not just that it's outside the window either way.
+      const soon = new Date(Date.now() + 9 * 60_000);
       await h.db
         .updateTable('class_sessions')
         .set({ scheduled_start_utc: soon })
@@ -806,7 +810,10 @@ describe('Reports / teacher departure / messaging context (e2e)', () => {
       await h.db
         .updateTable('class_sessions')
         .set({
-          scheduled_start_utc: new Date(Date.now() + 10 * 60_000 + 5_000),
+          // H7: the sweep's window is now forward-looking ([now, now+10min],
+          // not a ±30s slice around exactly "now+10min") — safely inside it,
+          // not right at its old edge.
+          scheduled_start_utc: new Date(Date.now() + 9 * 60_000),
         })
         .where('id', '=', ids.indClass)
         .execute();

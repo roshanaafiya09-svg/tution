@@ -417,6 +417,43 @@ export interface SubscriptionPlan {
   label: string;
   priceMinor: number;
   periodDays: number;
+  /** How many 25-student blocks this plan includes (audit H1). */
+  blocks: number;
+  cadence: 'monthly' | 'annual';
+}
+
+/** GET /subscriptions/capacity — the tutor's own 25-student-block usage,
+ *  computed server-side from real enrollments (audit H1). The frontend only
+ *  displays this; every enrollment/purchase limit is enforced by the
+ *  backend regardless of what this shows. */
+export interface SubscriptionCapacity {
+  ownerKind: 'tutor' | 'academy';
+  status: 'trialing' | 'active' | 'past_due' | 'cancelled';
+  active: boolean;
+  trialEndsAt: string;
+  currentPeriodEnd: string | null;
+  blockSize: number;
+  activeStudents: number;
+  purchasedBlocks: number;
+  capacityStudents: number | null;
+  freeSlots: number | null;
+  blocksRequired: number;
+  blocksShort: number;
+  renewalQuote:
+    | {
+        kind: 'individual';
+        monthly: { planId: string; extraBlocks: number; totalBlocks: number; amountMinor: number };
+        annual: { planId: string; extraBlocks: number; totalBlocks: number; amountMinor: number };
+      }
+    | {
+        kind: 'academy';
+        blocks: number;
+        teacherFeatures: number;
+        amountMinor: number;
+        blockPriceMinor: number;
+        teacherFeaturePriceMinor: number;
+      };
+  extraBlockPriceMinor?: { monthly: number; annual: number };
 }
 
 export interface Payout {

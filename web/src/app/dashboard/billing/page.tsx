@@ -1,10 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { GraduationCap, ClipboardCheck, Wallet, Landmark, Sparkles } from 'lucide-react';
+import { GraduationCap, ClipboardCheck, Wallet, Landmark, Sparkles, Users } from 'lucide-react';
 import { api, formatMinor } from '@/lib/api';
 import { payForOrder } from '@/lib/razorpay';
-import type { PaymentOrder, Payout, SubscriptionPlan, SubscriptionRecap } from '@/lib/types';
+import type {
+  PaymentOrder,
+  Payout,
+  SubscriptionCapacity,
+  SubscriptionPlan,
+  SubscriptionRecap,
+} from '@/lib/types';
 import {
   StatusBadge,
   Button,
@@ -21,6 +27,7 @@ export default function BillingPage() {
   const toast = useToast();
   const [recap, setRecap] = useState<SubscriptionRecap | null>(null);
   const [plans, setPlans] = useState<Record<string, SubscriptionPlan> | null>(null);
+  const [capacity, setCapacity] = useState<SubscriptionCapacity | null>(null);
   const [payouts, setPayouts] = useState<Payout[] | null>(null);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [purchasing, setPurchasing] = useState<string | null>(null);
@@ -32,11 +39,13 @@ export default function BillingPage() {
     Promise.all([
       api.get<SubscriptionRecap>('/subscriptions/recap'),
       api.get<Record<string, SubscriptionPlan>>('/subscriptions/plans'),
+      api.get<SubscriptionCapacity>('/subscriptions/capacity'),
       api.get<Payout[]>('/payouts/me'),
     ])
-      .then(([r, p, po]) => {
+      .then(([r, p, c, po]) => {
         setRecap(r);
         setPlans(p);
+        setCapacity(c);
         setPayouts(po);
       })
       .catch((err: unknown) => setLoadError(err ?? true));
@@ -50,10 +59,47 @@ export default function BillingPage() {
     setError(null);
     setPurchasing(planId);
     try {
-      const order = await api.post<PaymentOrder>('/payments/subscription/order', { planId });
+      // If this plan's own blocks wouldn't cover the students already
+      // active, buy the shortfall as extra blocks up front — the backend
+      // would otherwise reject an order that can't cover current usage
+      // (audit H1). The backend still prices and validates this; the
+      // frontend is only choosing a sensible default, never the authority.
+      const plan = plans?.[planId];
+      const extraBlocks =
+        plan && capacity
+          ? Math.max(0, capacity.blocksRequired - plan.blocks)
+          : 0;
+      const order = await api.post<PaymentOrder>('/payments/subscription/order', {
+        planId,
+        ...(extraBlocks > 0 ? { extraBlocks } : {}),
+      });
       await payForOrder(order, {
         name: 'Scholar subscription',
         description: plans?.[planId]?.label,
+        onSettled: () => load(),
+        onError: (message) => {
+          setError(message);
+          toast({ title: 'Payment did not complete', description: message, variant: 'error' });
+        },
+      });
+    } catch {
+      setError('Could not start checkout. Try again.');
+      toast({ title: 'Could not start checkout', variant: 'error' });
+    } finally {
+      setPurchasing(null);
+    }
+  }
+
+  async function purchaseAddBlocks(blocks: number) {
+    setError(null);
+    setPurchasing('add-blocks');
+    try {
+      const order = await api.post<PaymentOrder>('/payments/subscription/add-blocks-order', {
+        blocks,
+      });
+      await payForOrder(order, {
+        name: 'Scholar — extra student blocks',
+        description: `${blocks} extra block${blocks === 1 ? '' : 's'} of 25 students`,
         onSettled: () => load(),
         onError: (message) => {
           setError(message);
@@ -136,7 +182,7 @@ export default function BillingPage() {
             </div>
           </AcademicCard>
 
-          <div className="mb-8 grid gap-4 sm:grid-cols-3">
+          <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard icon={GraduationCap} label="Classes run" value={recap.classesRun} />
             <StatCard icon={ClipboardCheck} label="Attendances marked" value={recap.attendancesMarked} />
             <StatCard
@@ -144,7 +190,44 @@ export default function BillingPage() {
               label="Fees tracked"
               value={formatMinor(recap.feesTrackedMinor, recap.currency)}
             />
+            {capacity && (
+              <StatCard
+                icon={Users}
+                label="Students"
+                value={
+                  capacity.capacityStudents === null
+                    ? `${capacity.activeStudents} (unlimited on trial)`
+                    : `${capacity.activeStudents} of ${capacity.capacityStudents}`
+                }
+              />
+            )}
           </div>
+
+          {/* Every 25-student block is enforced server-side at enrolment —
+              this is a heads-up, not the enforcement layer (audit H1). */}
+          {capacity && capacity.blocksShort > 0 && (
+            <div className="mb-8 space-y-3">
+              <InlineError>
+                {isPaid
+                  ? `Your ${capacity.purchasedBlocks} purchased block${capacity.purchasedBlocks === 1 ? '' : 's'} ` +
+                    `cover${capacity.purchasedBlocks === 1 ? 's' : ''} up to ${capacity.capacityStudents} students, but ` +
+                    `${capacity.activeStudents} are already active. Add ${capacity.blocksShort} more block` +
+                    `${capacity.blocksShort === 1 ? '' : 's'} of ${capacity.blockSize} to enrol more students.`
+                  : `You have ${capacity.activeStudents} active students — that needs ${capacity.blocksRequired} block` +
+                    `${capacity.blocksRequired === 1 ? '' : 's'} of ${capacity.blockSize}. This is covered automatically ` +
+                    `when you subscribe below.`}
+              </InlineError>
+              {isPaid && (
+                <Button
+                  onClick={() => purchaseAddBlocks(capacity.blocksShort)}
+                  disabled={purchasing === 'add-blocks'}
+                  loading={purchasing === 'add-blocks'}
+                >
+                  Add {capacity.blocksShort} block{capacity.blocksShort === 1 ? '' : 's'}
+                </Button>
+              )}
+            </div>
+          )}
 
           {!isPaid && plans && (
             <>

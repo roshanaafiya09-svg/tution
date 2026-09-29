@@ -8,6 +8,7 @@ import { AttendanceRepository } from '../scheduling/attendance/attendance.reposi
 import { NotificationsService } from '../notifications/notifications.service';
 import { HolidayService } from '../holidays/holiday.service';
 import { HolidaysRepository } from '../holidays/holidays.repository';
+import { isInternalCronDisabled } from '../../common/scheduling/cron-gate';
 import type { ClassSessionCancellationReason } from '../../database/types';
 import {
   CLASS_CANCELLED_TYPE,
@@ -121,11 +122,32 @@ export class RemindersService {
    * minutes before the class that would have run" is exactly this same
    * window applied to `status = 'cancelled'` rows instead.
    */
+  /** `@Cron`-fired wrapper — see `sendUpcomingClassReminders` for the actual
+   *  work. Gated on DISABLE_INTERNAL_CRON so an operator can turn off the
+   *  in-process timer once an external scheduler drives this job instead
+   *  (audit H7); the underlying method stays directly callable (tests, and
+   *  the external-scheduler endpoint, both call it un-gated). */
   @Cron(CronExpression.EVERY_MINUTE)
+  async cronSendUpcomingClassReminders(): Promise<void> {
+    if (isInternalCronDisabled()) return;
+    await this.sendUpcomingClassReminders();
+  }
+
   async sendUpcomingClassReminders(): Promise<void> {
-    const target = new Date(Date.now() + REMINDER_LEAD_MINUTES * 60_000);
-    const windowStart = new Date(target.getTime() - 30_000);
-    const windowEnd = new Date(target.getTime() + 30_000);
+    // H7: forward-looking window — everything due for a reminder between
+    // NOW and REMINDER_LEAD_MINUTES from now, not a narrow ±30s slice
+    // around exactly "now + 10". The old slice gave each session exactly
+    // ONE per-minute tick to be caught in; a Render free instance asleep
+    // (or a deploy restart, or a slow tick) during that one minute lost the
+    // reminder permanently — the next tick's slice had already moved past
+    // it. A wide forward window is self-healing for any gap shorter than
+    // REMINDER_LEAD_MINUTES: whichever tick next actually runs still finds
+    // the session (idempotent via dedupeKey — see remindOne), so it is
+    // caught, just later than ideal, instead of not at all.
+    const windowStart = new Date();
+    const windowEnd = new Date(
+      windowStart.getTime() + REMINDER_LEAD_MINUTES * 60_000,
+    );
 
     const scheduled =
       await this.sessionsRepository.listScheduledRemindersBetween(
@@ -482,6 +504,11 @@ export class RemindersService {
    *  guarantee that makes running this daily (rather than only once per
    *  holiday) safe. */
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT, { timeZone: 'Asia/Kolkata' })
+  async cronApplyGovernmentHolidays(): Promise<void> {
+    if (isInternalCronDisabled()) return;
+    await this.applyGovernmentHolidays();
+  }
+
   async applyGovernmentHolidays(): Promise<void> {
     try {
       await this.holidayService.applyGovernmentHolidaysForToday();

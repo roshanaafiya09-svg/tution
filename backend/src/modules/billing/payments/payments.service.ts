@@ -1,17 +1,44 @@
 import {
   BadRequestException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PaymentsRepository } from './payments.repository';
+import type { Transaction } from 'kysely';
+import type { DB } from '../../../database/types';
+import { ErrorCode } from '../../../common/http/error-codes';
+import {
+  PaymentsRepository,
+  type OpenOrderSpec,
+  type PaymentRow,
+  type PaymentTarget,
+} from './payments.repository';
+import { PaymentLedgersRepository } from './payment-ledgers.repository';
+import {
+  PaymentSettlementService,
+  unappliedRefundKey,
+  type SettleOutcome,
+} from './payment-settlement.service';
+import { PaymentRefundsService } from './payment-refunds.service';
+import { AcademyBillingRepository } from './academy-billing.repository';
 import { FeesRepository } from '../fees/fees.repository';
 import { FeeNotificationsService } from '../fees/fee-notifications.service';
 import { ParentLinksRepository } from '../../parents/parent-links.repository';
-import { SubscriptionsService } from '../subscriptions/subscriptions.service';
-import { SUBSCRIPTION_PLANS, isPlanId } from '../subscriptions/plans';
+import { SubscriptionCapacityRepository } from '../subscriptions/subscription-capacity.repository';
+import { SubscriptionCapacityService } from '../subscriptions/subscription-capacity.service';
+import { isPlanId, planCadence } from '../subscriptions/plans';
+import {
+  ACADEMY_BLOCK_PRICE_MINOR,
+  ADDON_BLOCKS_PLAN_ID,
+  EXTRA_BLOCK_PRICE_MINOR,
+  academyOrderShape,
+  individualOrderShape,
+} from '../subscriptions/blocks';
 import { ParentPremiumService } from '../parent-premium/parent-premium.service';
 import {
   PARENT_PREMIUM_PLANS,
@@ -19,40 +46,48 @@ import {
 } from '../parent-premium/plans';
 import { BookingsService } from '../../marketplace/bookings/bookings.service';
 import { AnalyticsService } from '../../analytics/analytics.service';
-import { PAYMENTS_PROVIDER } from './payments-provider.interface';
-import type { PaymentsProvider } from './payments-provider.interface';
+import {
+  PAYMENTS_PROVIDER,
+  isPaymentEvent,
+  isRefundEvent,
+} from './payments-provider.interface';
+import type {
+  PaymentsProvider,
+  RefundProviderEvent,
+} from './payments-provider.interface';
 import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
-import type { Selectable } from 'kysely';
-import type { PaymentsTable } from '../../../database/types';
-
-type PaymentRow = Selectable<PaymentsTable>;
 
 /**
- * Four distinct money-in flows share one payments audit table (exactly
- * one of fee_ledger_id / subscription_id / parent_subscription_id /
- * booking_id set — migration 0014, extended to three-way by 0019, then
- * four-way by 0021):
- *  - Fee *collection*: a parent/student pays the tutor for tuition,
- *    settling one fee_ledger row (Phase 1's manual-tracking counterpart).
- *  - Subscription *purchase*: the tutor pays the platform for their own
- *    ₹499/999 plan (blueprint §5) — the "Razorpay subscriptions" piece
- *    that actually ends the 90-day trial, distinct from fee collection.
- *  - Parent premium *purchase*: a parent pays the platform for the
- *    ₹99–149/mo AI tier (blueprint §5/§10 Phase 3) — same shape as the
- *    tutor subscription purchase, different plan catalog and target.
- *  - Booking *purchase*: a student pays for a 1:1 marketplace booking
- *    (blueprint §5/§10 Phase 4) — the platform's take rate is already
- *    snapshotted on the booking row at creation time, not deducted here.
- * Order creation is flow-specific; capture (simulateCapture or the
- * webhook) is generic — it settles whichever side the payment is for.
+ * Money-in flows share one `payments` table (exactly one target column set —
+ * migration 0046 — and at most ONE open order per target):
+ *  - fee collection: a parent/student pays a teacher's or academy's fee;
+ *  - tutor subscription purchase (a plan period, or extra blocks mid-period);
+ *  - academy subscription purchase (blocks + per-teacher fee);
+ *  - parent premium purchase;
+ *  - marketplace booking purchase.
+ *
+ * State machine (guarded by a database trigger AND guarded UPDATEs):
+ *   created -> authorized -> captured -> refunded
+ *      \___________\____> failed ---(late success)---> captured
+ * A capture is applied to its target in the SAME transaction as the
+ * transition and stamped `settled_at`; whatever cannot be applied becomes a
+ * durable pending refund. Provider webhooks are recorded under a unique
+ * event id, so replays and out-of-order deliveries change nothing.
  */
 @Injectable()
 export class PaymentsService {
+  private readonly logger = new Logger(PaymentsService.name);
+
   constructor(
     private readonly repository: PaymentsRepository,
+    private readonly ledgers: PaymentLedgersRepository,
+    private readonly settlement: PaymentSettlementService,
+    private readonly refunds: PaymentRefundsService,
+    private readonly academies: AcademyBillingRepository,
     private readonly feesRepository: FeesRepository,
     private readonly parentLinksRepository: ParentLinksRepository,
-    private readonly subscriptionsService: SubscriptionsService,
+    private readonly capacityRepository: SubscriptionCapacityRepository,
+    private readonly capacity: SubscriptionCapacityService,
     private readonly parentPremiumService: ParentPremiumService,
     private readonly bookingsService: BookingsService,
     private readonly analytics: AnalyticsService,
@@ -61,88 +96,217 @@ export class PaymentsService {
     @Inject(PAYMENTS_PROVIDER) private readonly provider: PaymentsProvider,
   ) {}
 
+  // ======================================================================
+  // Orders
+  // ======================================================================
+
+  /**
+   * The single order-creation path. In ONE transaction: lock the target row
+   * (so concurrent requests for the same fee/booking/plan queue), then
+   *   - an open order with an identical spec from the same payer is REUSED
+   *     (double-click / retry gets the same order back, not a second charge);
+   *   - a different open order is retired ('superseded') first;
+   *   - otherwise a new one is created at the provider.
+   * The provider call happens inside the transaction on purpose: it is one
+   * short call, and keeping it there means a provider failure leaves no
+   * half-created row behind.
+   */
+  private async openOrder(
+    target: PaymentTarget,
+    payerId: string,
+    resolveSpec: (
+      trx: Transaction<DB>,
+    ) => Promise<Omit<OpenOrderSpec, 'payerId'>>,
+  ): Promise<PaymentRow> {
+    return this.repository.transaction(async (trx) => {
+      await this.repository.lockTarget(trx, target);
+      const spec: OpenOrderSpec = { payerId, ...(await resolveSpec(trx)) };
+
+      const open = await this.repository.findOpenForTarget(trx, target);
+      if (open) {
+        const same =
+          open.provider_order_id !== null &&
+          open.payer_id === spec.payerId &&
+          open.amount_minor === spec.amountMinor &&
+          open.currency === spec.currency &&
+          (open.plan_id ?? null) === (spec.planId ?? null) &&
+          (open.blocks ?? null) === (spec.blocks ?? null) &&
+          (open.teacher_features ?? null) === (spec.teacherFeatures ?? null);
+        if (same) return open;
+        await this.repository.markFailed(trx, open.id, 'superseded');
+      }
+
+      const payment = await this.repository.createOpen(trx, target, spec);
+      const { orderId } = await this.provider.createOrder({
+        amountMinor: spec.amountMinor,
+        currency: spec.currency,
+        receipt: payment.id,
+      });
+      return this.repository.setOrder(
+        trx,
+        payment.id,
+        orderId,
+        this.provider.name,
+      );
+    });
+  }
+
   async initiateFeeOrder(user: AccessTokenPayload, feeLedgerId: string) {
     const fee = await this.feesRepository.findById(feeLedgerId);
     if (!fee) throw new NotFoundException('Fee entry not found');
     await this.assertCanPayFee(user, fee.student_id);
 
-    if (fee.status === 'paid' || fee.status === 'waived') {
-      throw new BadRequestException(`This fee is already ${fee.status}`);
-    }
-
-    const outstandingMinor =
-      fee.expected_minor - (fee.recorded_paid_minor ?? 0);
-    if (outstandingMinor <= 0) {
-      throw new BadRequestException('Nothing outstanding on this fee');
-    }
-
-    const payment = await this.repository.createForFee(
-      fee.id,
+    const order = await this.openOrder(
+      { kind: 'fee', id: fee.id },
       user.sub,
-      outstandingMinor,
-      fee.currency,
-    );
-
-    const order = await this.createOrderFor(
-      payment.id,
-      outstandingMinor,
-      fee.currency,
+      async (trx) => {
+        // Re-read under the target lock: the outstanding amount is decided
+        // from the row as it is NOW, not as it was when the request arrived.
+        const current = await trx
+          .selectFrom('fee_ledger')
+          .selectAll()
+          .where('id', '=', fee.id)
+          .executeTakeFirstOrThrow();
+        if (current.status === 'paid' || current.status === 'waived') {
+          throw new BadRequestException(
+            `This fee is already ${current.status}`,
+          );
+        }
+        const outstanding =
+          current.expected_minor - (current.recorded_paid_minor ?? 0);
+        if (outstanding <= 0) {
+          throw new BadRequestException('Nothing outstanding on this fee');
+        }
+        return { amountMinor: outstanding, currency: current.currency };
+      },
     );
     this.analytics.capture(user.sub, 'payment_order_created', {
       feeLedgerId,
-      amountMinor: outstandingMinor,
+      amountMinor: order.amount_minor,
       provider: this.provider.name,
     });
     return order;
   }
 
-  /** Tutor-only — the trial-ending subscription purchase (blueprint §5). */
-  async initiateSubscriptionOrder(user: AccessTokenPayload, planId: string) {
+  /** Tutor-only — a plan period (plus optional extra blocks). */
+  async initiateSubscriptionOrder(
+    user: AccessTokenPayload,
+    planId: string,
+    extraBlocks = 0,
+  ) {
     if (!isPlanId(planId)) throw new BadRequestException('Unknown plan');
-    const plan = SUBSCRIPTION_PLANS[planId];
+    const shape = individualOrderShape(planId, extraBlocks);
+    const owner = { kind: 'tutor', tutorId: user.sub } as const;
+    // You cannot renew into a capacity smaller than your current usage.
+    await this.capacity.assertOrderCoversUsage(owner, shape.totalBlocks);
 
-    const subscription = await this.subscriptionsService.getOwnSubscription(
+    const sub = await this.capacityRepository.getOrStart(owner);
+    const order = await this.openOrder(
+      { kind: 'subscription', id: sub.id },
       user.sub,
+      async () => ({
+        amountMinor: shape.amountMinor,
+        currency: 'INR',
+        planId,
+        blocks: shape.totalBlocks,
+      }),
     );
-
-    const payment = await this.repository.createForSubscription(
-      subscription.id,
-      planId,
-      user.sub,
-      plan.priceMinor,
-      'INR',
-    );
-
-    const order = await this.createOrderFor(payment.id, plan.priceMinor, 'INR');
     this.analytics.capture(user.sub, 'subscription_order_created', {
       planId,
-      amountMinor: plan.priceMinor,
+      blocks: shape.totalBlocks,
+      amountMinor: shape.amountMinor,
       provider: this.provider.name,
     });
     return order;
   }
 
-  /** Parent-only — the ₹99–149/mo AI premium purchase (blueprint §5/§10
-   *  Phase 3), distinct from fee collection and the tutor's own
-   *  subscription above. */
-  async initiateParentPremiumOrder(user: AccessTokenPayload, planId: string) {
-    if (!isParentPremiumPlanId(planId))
-      throw new BadRequestException('Unknown plan');
-    const plan = PARENT_PREMIUM_PLANS[planId];
+  /** Tutor-only — more 25-student blocks NOW, inside a live paid period. */
+  async initiateAddBlocksOrder(user: AccessTokenPayload, blocks: number) {
+    const owner = { kind: 'tutor', tutorId: user.sub } as const;
+    const sub = await this.capacityRepository.getOrStart(owner);
+    this.assertLivePaidPeriod(sub, 'plan');
+    const cadence = isPlanId(sub.plan_id)
+      ? planCadence(sub.plan_id)
+      : 'monthly';
+    const amountMinor = blocks * EXTRA_BLOCK_PRICE_MINOR[cadence];
+    return this.openOrder(
+      { kind: 'subscription', id: sub.id },
+      user.sub,
+      async () => ({
+        amountMinor,
+        currency: 'INR',
+        planId: ADDON_BLOCKS_PLAN_ID,
+        blocks,
+      }),
+    );
+  }
 
+  /** Academy-owner-only — a monthly period: N blocks + the per-teacher fee.
+   *  The academy is derived from the caller, never from the request. */
+  async initiateAcademySubscriptionOrder(
+    user: AccessTokenPayload,
+    blocks: number,
+  ) {
+    const academy = await this.requireOwnAcademy(user.sub);
+    const owner = { kind: 'academy', academyId: academy.id } as const;
+    await this.capacity.assertOrderCoversUsage(owner, blocks);
+    const teachers = await this.capacityRepository.countActiveTeachers(
+      academy.id,
+    );
+    const shape = academyOrderShape(blocks, teachers);
+
+    const sub = await this.capacityRepository.getOrStart(owner);
+    return this.openOrder(
+      { kind: 'academy_subscription', id: sub.id },
+      user.sub,
+      async () => ({
+        amountMinor: shape.amountMinor,
+        currency: 'INR',
+        planId: 'academy_monthly',
+        blocks: shape.blocks,
+        teacherFeatures: shape.teacherFeatures,
+      }),
+    );
+  }
+
+  /** Academy-owner-only — extra blocks NOW inside a live paid period. */
+  async initiateAcademyAddBlocksOrder(
+    user: AccessTokenPayload,
+    blocks: number,
+  ) {
+    const academy = await this.requireOwnAcademy(user.sub);
+    const sub = await this.capacityRepository.getOrStart({
+      kind: 'academy',
+      academyId: academy.id,
+    });
+    this.assertLivePaidPeriod(sub, 'academy plan');
+    return this.openOrder(
+      { kind: 'academy_subscription', id: sub.id },
+      user.sub,
+      async () => ({
+        amountMinor: blocks * ACADEMY_BLOCK_PRICE_MINOR,
+        currency: 'INR',
+        planId: ADDON_BLOCKS_PLAN_ID,
+        blocks,
+        teacherFeatures: 0,
+      }),
+    );
+  }
+
+  /** Parent-only — the AI premium purchase. */
+  async initiateParentPremiumOrder(user: AccessTokenPayload, planId: string) {
+    if (!isParentPremiumPlanId(planId)) {
+      throw new BadRequestException('Unknown plan');
+    }
+    const plan = PARENT_PREMIUM_PLANS[planId];
     const subscription = await this.parentPremiumService.getOwnSubscription(
       user.sub,
     );
-
-    const payment = await this.repository.createForParentPremium(
-      subscription.id,
-      planId,
+    const order = await this.openOrder(
+      { kind: 'parent_subscription', id: subscription.id },
       user.sub,
-      plan.priceMinor,
-      'INR',
+      async () => ({ amountMinor: plan.priceMinor, currency: 'INR', planId }),
     );
-
-    const order = await this.createOrderFor(payment.id, plan.priceMinor, 'INR');
     this.analytics.capture(user.sub, 'parent_premium_order_created', {
       planId,
       amountMinor: plan.priceMinor,
@@ -151,104 +315,46 @@ export class PaymentsService {
     return order;
   }
 
-  /** Student-only — a 1:1 marketplace booking purchase (blueprint
-   *  §5/§10 Phase 4). amount_minor was already snapshotted (rate ×
-   *  duration, take rate included) when the booking was created. */
+  /** Student-only — a 1:1 marketplace booking purchase. */
   async initiateBookingOrder(user: AccessTokenPayload, bookingId: string) {
     const booking = await this.bookingsService.assertPayableByStudent(
       bookingId,
       user.sub,
     );
-
-    const payment = await this.repository.createForBooking(
-      booking.id,
+    const order = await this.openOrder(
+      { kind: 'booking', id: booking.id },
       user.sub,
-      booking.amount_minor,
-      booking.currency,
-    );
-
-    const order = await this.createOrderFor(
-      payment.id,
-      booking.amount_minor,
-      booking.currency,
+      async (trx) => {
+        // Re-check under the lock: a booking cancelled a moment ago is not
+        // payable, however the request raced.
+        const current = await trx
+          .selectFrom('bookings')
+          .select(['status', 'amount_minor', 'currency'])
+          .where('id', '=', booking.id)
+          .executeTakeFirstOrThrow();
+        if (current.status !== 'pending_payment') {
+          throw new BadRequestException(`Booking is already ${current.status}`);
+        }
+        return {
+          amountMinor: current.amount_minor,
+          currency: current.currency,
+        };
+      },
     );
     this.analytics.capture(user.sub, 'booking_order_created', {
       bookingId,
-      amountMinor: booking.amount_minor,
+      amountMinor: order.amount_minor,
       provider: this.provider.name,
     });
     return order;
   }
 
-  /** Settles the refund a cancelled booking's refund_percent already
-   *  decided (blueprint §10 Phase 4) — a separate step from cancel()
-   *  itself, mirroring the existing order/capture split, since
-   *  BookingsModule can't depend back on PaymentsService (BillingModule
-   *  already imports BookingsModule the other way). */
-  async processBookingCancellationRefund(
-    user: AccessTokenPayload,
-    bookingId: string,
-  ) {
-    const booking = await this.bookingsService.getForRefund(bookingId);
-    if (booking.student_id !== user.sub) {
-      throw new ForbiddenException('Not your booking');
-    }
-    if (booking.status !== 'cancelled' || booking.refund_percent === null) {
-      throw new BadRequestException('This booking has no refund to process');
-    }
-    if (booking.refund_percent === 0) {
-      throw new BadRequestException('No refund is owed for this cancellation');
-    }
+  // ======================================================================
+  // Capture (dev simulate + webhook share ONE path)
+  // ======================================================================
 
-    const payment = await this.repository.findByBookingId(bookingId);
-    if (!payment || !payment.provider_payment_id) {
-      throw new NotFoundException('No captured payment found for this booking');
-    }
-    if (payment.status !== 'captured') {
-      throw new BadRequestException(
-        `Payment is ${payment.status}, not captured`,
-      );
-    }
-
-    const refundAmountMinor = Math.round(
-      (payment.amount_minor * booking.refund_percent) / 100,
-    );
-    const { refundId } = await this.provider.simulateRefund(
-      payment.provider_payment_id,
-      refundAmountMinor,
-    );
-    const refunded = await this.repository.markRefunded(payment.id);
-
-    this.analytics.capture(user.sub, 'booking_refund_processed', {
-      bookingId,
-      refundAmountMinor,
-      refundPercent: booking.refund_percent,
-      provider: this.provider.name,
-    });
-    return { ...refunded, refundId, refundAmountMinor };
-  }
-
-  private async createOrderFor(
-    paymentId: string,
-    amountMinor: number,
-    currency: string,
-  ) {
-    const { orderId } = await this.provider.createOrder({
-      amountMinor,
-      currency,
-      receipt: paymentId,
-    });
-    return this.repository.setOrder(paymentId, orderId, this.provider.name);
-  }
-
-  /** Dev/test path — see PaymentsProvider.simulateCapture. The real
-   *  provider already rejects this, but that's contingent on Razorpay
-   *  keys actually being configured — this explicit environment check
-   *  is defense-in-depth so a production deploy that's ops-misconfigured
-   *  to be missing those keys (and so silently gets MockPaymentsProvider,
-   *  which always succeeds) still can't have any authenticated user mark
-   *  their own payment "paid" with no money moving. Production capture
-   *  is webhook-driven, full stop. */
+  /** Dev/test path. Refused in production regardless of which provider is
+   *  wired; production capture is webhook-driven, full stop. */
   async simulateCapture(user: AccessTokenPayload, paymentId: string) {
     this.assertNotProduction();
     const payment = await this.repository.findById(paymentId);
@@ -262,189 +368,378 @@ export class PaymentsService {
 
     const { paymentId: providerPaymentId } =
       await this.provider.simulateCapture(payment.provider_order_id);
-    return this.settleCapture(payment, providerPaymentId);
-  }
-
-  async handleWebhook(rawBody: string, signature: string) {
-    const result = this.provider.verifyWebhook(rawBody, signature);
-    if (!result) throw new ForbiddenException('Invalid webhook signature');
-
-    const payment = await this.repository.findByProviderOrderId(
-      result.providerOrderId,
+    const { payment: result, outcome } = await this.repository.transaction(
+      (trx) => this.applyCapture(trx, payment.id, providerPaymentId),
     );
-    if (!payment) throw new NotFoundException('No payment for this order');
-
-    if (result.status === 'failed') {
-      // markFailed only affects a row still in 'created' — a failed
-      // event delivered (or replayed) after the payment already
-      // captured/refunded must not flip its status backwards.
-      const failed = await this.repository.markFailed(
-        payment.id,
-        'Provider reported payment.failed',
-      );
-      return failed ?? (await this.repository.findById(payment.id)) ?? payment;
-    }
-
-    // The signature only proves the payload came from Razorpay, not
-    // that it's the payload for *this* order — cross-check the amount
-    // it reports capturing against what this payment row was actually
-    // created for, so a captured event can never settle a fee/
-    // subscription/booking for a different amount than was charged.
-    if (result.amountMinor !== payment.amount_minor) {
-      throw new BadRequestException(
-        `Webhook amount ${result.amountMinor} does not match payment ${payment.id}'s expected ${payment.amount_minor}`,
-      );
-    }
-    return this.settleCapture(payment, result.providerPaymentId);
+    await this.afterCapture(result, outcome);
+    return result;
   }
 
-  private async settleCapture(payment: PaymentRow, providerPaymentId: string) {
+  /**
+   * Applies one capture inside the caller's transaction. Idempotent: the
+   * row lock + guarded `-> captured` transition mean a duplicate or
+   * concurrent delivery finds the payment already captured and returns
+   * without touching the ledger.
+   */
+  private async applyCapture(
+    trx: Transaction<DB>,
+    paymentId: string,
+    providerPaymentId: string,
+    expectedAmountMinor?: number,
+  ): Promise<{ payment: PaymentRow; outcome: SettleOutcome | null }> {
+    const locked = await this.repository.lockById(trx, paymentId);
+    if (!locked) throw new NotFoundException('Payment not found');
+
+    if (
+      expectedAmountMinor !== undefined &&
+      expectedAmountMinor !== locked.amount_minor
+    ) {
+      throw new BadRequestException(
+        `Webhook amount ${expectedAmountMinor} does not match payment ${locked.id}'s expected ${locked.amount_minor}`,
+      );
+    }
+
+    if (locked.status === 'captured' || locked.status === 'refunded') {
+      if (locked.provider_payment_id !== providerPaymentId) {
+        this.logger.error(
+          `Payment ${locked.id} is already captured as ${locked.provider_payment_id}, ` +
+            `but the provider also reports ${providerPaymentId} for the same order — ` +
+            `a SECOND provider payment exists and needs manual review/refund.`,
+        );
+      }
+      return { payment: locked, outcome: null };
+    }
+
     const captured = await this.repository.markCaptured(
-      payment.id,
+      trx,
+      locked.id,
       providerPaymentId,
     );
-    if (!captured) {
-      // Razorpay delivers webhooks at-least-once, and this path is also
-      // shared with simulateCapture — markCaptured only transitions a
-      // payment still in 'created', so a duplicate delivery (or a
-      // concurrent double-call) lands here instead of re-crediting the
-      // fee/subscription/parent-premium/booking a second time. Return
-      // the payment's current state as-is; this is the idempotent
-      // no-op, not an error.
-      return (await this.repository.findById(payment.id)) ?? payment;
-    }
+    if (!captured) return { payment: locked, outcome: null };
 
-    if (payment.fee_ledger_id) {
-      await this.settleFee(
-        payment.fee_ledger_id,
-        payment.amount_minor,
-        captured.provider,
-        payment.id,
-        captured.payer_id,
-      );
-    } else if (
-      payment.subscription_id &&
-      payment.plan_id &&
-      isPlanId(payment.plan_id)
-    ) {
-      await this.settleSubscription(
-        payment.subscription_id,
-        payment.plan_id,
-        captured.provider,
-        providerPaymentId,
-      );
-    } else if (
-      payment.parent_subscription_id &&
-      payment.plan_id &&
-      isParentPremiumPlanId(payment.plan_id)
-    ) {
-      await this.settleParentPremium(
-        payment.parent_subscription_id,
-        payment.plan_id,
-        captured.provider,
-        providerPaymentId,
-      );
-    } else if (payment.booking_id) {
-      await this.bookingsService.markConfirmed(payment.booking_id);
-    }
-
-    this.analytics.capture(captured.payer_id, 'payment_captured', {
-      target: payment.fee_ledger_id
-        ? 'fee'
-        : payment.subscription_id
-          ? 'subscription'
-          : payment.parent_subscription_id
-            ? 'parent_premium'
-            : 'booking',
-      amountMinor: payment.amount_minor,
-      provider: captured.provider,
-    });
-    return captured;
+    const outcome = await this.settlement.settle(
+      trx,
+      captured,
+      captured.provider,
+      providerPaymentId,
+    );
+    const latest = (await this.repository.findById(captured.id, trx))!;
+    return { payment: latest, outcome };
   }
 
-  private async settleFee(
-    feeLedgerId: string,
-    amountMinor: number,
-    provider: string,
-    paymentId: string,
-    payerId: string,
+  /** Everything that must NOT run inside the transaction. */
+  private async afterCapture(
+    payment: PaymentRow,
+    outcome: SettleOutcome | null,
   ) {
-    const fee = await this.feesRepository.findById(feeLedgerId);
-    if (!fee) return;
+    if (!outcome) return;
+    if (outcome.creditedFee) {
+      await this.feeNotifications
+        .notifyPaymentRecorded(outcome.creditedFee, {
+          source: 'online',
+          payerId: payment.payer_id,
+        })
+        .catch((err) =>
+          this.logger.warn(
+            `Fee notice failed for ${payment.id}: ${String(err)}`,
+          ),
+        );
+    }
+    this.analytics.capture(payment.payer_id, 'payment_captured', {
+      target: outcome.target,
+      amountMinor: payment.amount_minor,
+      provider: payment.provider,
+      applied: outcome.applied,
+    });
+    if (outcome.unappliedMinor > 0) {
+      // The pending refund row already exists (written with the capture).
+      // Try to complete it now; if this fails the reconciliation job does.
+      await this.refunds
+        .refund({
+          paymentId: payment.id,
+          amountMinor: outcome.unappliedMinor,
+          idempotencyKey: unappliedRefundKey(payment.id),
+          reason: outcome.applied ? 'overpayment' : 'not_applied',
+        })
+        .catch((err) =>
+          this.logger.warn(
+            `Refund of unapplied ${outcome.unappliedMinor} on ${payment.id} left for reconciliation: ${String(err)}`,
+          ),
+        );
+    }
+  }
 
-    const newRecordedMinor = (fee.recorded_paid_minor ?? 0) + amountMinor;
-    const status = newRecordedMinor >= fee.expected_minor ? 'paid' : 'partial';
-    const updated = await this.feesRepository.recordPayment(
-      feeLedgerId,
-      newRecordedMinor,
-      status,
-      `Paid online via ${provider} (payment ${paymentId})`,
+  // ======================================================================
+  // Webhook
+  // ======================================================================
+
+  async handleWebhook(
+    rawBody: string,
+    signature: string,
+    eventIdHeader?: string,
+  ) {
+    const event = this.provider.verifyWebhook(
+      rawBody,
+      signature,
+      eventIdHeader,
     );
-    if (updated) {
-      await this.feeNotifications.notifyPaymentRecorded(updated, {
-        source: 'online',
-        payerId,
+    if (!event) throw new ForbiddenException('Invalid webhook signature');
+
+    const result = await this.repository.transaction(async (trx) => {
+      const fresh = await this.ledgers.recordEvent(trx, {
+        provider: this.provider.name,
+        eventId: event.eventId,
+        type:
+          event.type === 'ignored' ? event.rawType || 'ignored' : event.type,
+        providerOrderId:
+          'providerOrderId' in event ? event.providerOrderId : null,
+        providerPaymentId:
+          'providerPaymentId' in event ? event.providerPaymentId : null,
+      });
+      // A replay: recorded before, fully processed then. Do nothing.
+      if (!fresh)
+        return { status: 'duplicate' as const, payment: null, outcome: null };
+
+      if (event.type === 'ignored') {
+        return { status: 'ignored' as const, payment: null, outcome: null };
+      }
+
+      if (isRefundEvent(event)) {
+        await this.applyRefundEvent(trx, event);
+        return {
+          status: 'refund_event' as const,
+          payment: null,
+          outcome: null,
+        };
+      }
+      if (!isPaymentEvent(event)) {
+        return { status: 'ignored' as const, payment: null, outcome: null };
+      }
+
+      const payment = await this.repository.findByProviderOrderId(
+        event.providerOrderId,
+        trx,
+      );
+      if (!payment) {
+        // Signed and well-formed, but not an order of ours (another
+        // integration on the same account). Recorded; nothing to do, and a
+        // 200 stops the provider retrying it for days.
+        this.logger.warn(
+          `Webhook ${event.eventId}: no payment for order ${event.providerOrderId}`,
+        );
+        return {
+          status: 'unknown_order' as const,
+          payment: null,
+          outcome: null,
+        };
+      }
+      await this.ledgers.attachPaymentToEvent(
+        trx,
+        this.provider.name,
+        event.eventId,
+        payment.id,
+      );
+
+      if (event.type === 'captured') {
+        const applied = await this.applyCapture(
+          trx,
+          payment.id,
+          event.providerPaymentId,
+          event.amountMinor,
+        );
+        return { status: 'captured' as const, ...applied };
+      }
+      if (event.type === 'authorized') {
+        await this.repository.markAuthorized(trx, payment.id);
+      } else {
+        // 'failed' only ever moves an OPEN payment; a captured/refunded one
+        // is untouched, so an out-of-order failure cannot undo a success.
+        await this.repository.markFailed(
+          trx,
+          payment.id,
+          'Provider reported payment.failed',
+        );
+      }
+      const latest = await this.repository.findById(payment.id, trx);
+      return { status: event.type, payment: latest ?? null, outcome: null };
+    });
+
+    if (result.payment) await this.afterCapture(result.payment, result.outcome);
+    return { received: true, status: result.status };
+  }
+
+  /** A provider-side refund result: confirm or fail OUR ledger row, or —
+   *  for a refund issued outside this system (e.g. the provider dashboard) —
+   *  record it so balances stay truthful. */
+  private async applyRefundEvent(
+    trx: Transaction<DB>,
+    event: RefundProviderEvent,
+  ): Promise<void> {
+    const known = await this.ledgers.findRefundByProviderId(
+      event.providerRefundId,
+      trx,
+    );
+    if (known) {
+      if (event.type === 'refund_processed') {
+        await this.ledgers.markRefundSucceeded(
+          trx,
+          known.id,
+          event.providerRefundId,
+        );
+      } else if (known.status === 'pending') {
+        await this.ledgers.markRefundFailed(
+          known.id,
+          'Provider reported refund.failed',
+          trx,
+        );
+      }
+      return;
+    }
+    if (event.type !== 'refund_processed') return;
+    const payment = await this.repository.findByProviderPaymentId(
+      event.providerPaymentId,
+      trx,
+    );
+    if (!payment) return;
+    try {
+      const row = await this.ledgers.insertPendingRefund(trx, {
+        paymentId: payment.id,
+        amountMinor: event.amountMinor,
+        reason: 'provider_dashboard',
+        idempotencyKey: `provider:${event.providerRefundId}`,
+      });
+      await this.ledgers.markRefundSucceeded(
+        trx,
+        row.id,
+        event.providerRefundId,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Provider refund ${event.providerRefundId} on payment ${payment.id} could not be recorded (${String(err)}) — needs manual reconciliation.`,
+      );
+    }
+  }
+
+  // ======================================================================
+  // Refund of a cancelled booking (idempotent — audit H10)
+  // ======================================================================
+
+  /**
+   * Settles the refund a cancelled booking's `refund_percent` already
+   * decided. Safe to call any number of times, concurrently or after a
+   * timeout: the refund is keyed on the booking, so it is created once, sent
+   * to the provider once, and every later call returns the same result.
+   */
+  async processBookingCancellationRefund(
+    user: AccessTokenPayload,
+    bookingId: string,
+  ) {
+    const booking = await this.bookingsService.getForRefund(bookingId);
+    if (booking.student_id !== user.sub) {
+      throw new ForbiddenException('Not your booking');
+    }
+    if (booking.status !== 'cancelled' || booking.refund_percent === null) {
+      throw new HttpException(
+        {
+          error: 'BookingNotRefundable',
+          code: ErrorCode.BOOKING_NOT_REFUNDABLE,
+          message: 'This booking has no refund to process',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (booking.refund_percent === 0) {
+      throw new HttpException(
+        {
+          error: 'BookingNotRefundable',
+          code: ErrorCode.BOOKING_NOT_REFUNDABLE,
+          message: 'No refund is owed for this cancellation',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const payment = await this.repository.findCollectedForBooking(bookingId);
+    if (!payment || !payment.provider_payment_id) {
+      throw new NotFoundException('No captured payment found for this booking');
+    }
+
+    // Integer math, rounding half up — deterministic, and never above the
+    // captured amount because refund_percent is constrained to 0..100.
+    const amountMinor = Math.floor(
+      (payment.amount_minor * booking.refund_percent + 50) / 100,
+    );
+    const {
+      refund,
+      payment: after,
+      alreadyDone,
+    } = await this.refunds.refund({
+      paymentId: payment.id,
+      amountMinor,
+      idempotencyKey: `booking-cancel:${bookingId}`,
+      reason: 'booking_cancelled',
+    });
+    if (!alreadyDone) {
+      this.analytics.capture(user.sub, 'booking_refund_processed', {
+        bookingId,
+        refundAmountMinor: amountMinor,
+        refundPercent: booking.refund_percent,
+        provider: this.provider.name,
       });
     }
+    return {
+      ...after,
+      refundId: refund.provider_refund_id,
+      refundAmountMinor: refund.amount_minor,
+    };
   }
 
-  /** Extends from whichever is later, now or the existing
-   *  current_period_end — an early renewal (before the current period
-   *  actually lapses) must not discard whatever time is left on it. */
-  private async settleSubscription(
-    subscriptionId: string,
-    planId: keyof typeof SUBSCRIPTION_PLANS,
-    provider: string,
-    providerPaymentId: string,
+  // ======================================================================
+  // Status (what the UI polls after checkout)
+  // ======================================================================
+
+  /** The payer's own view of a payment — never trusts the client's idea of
+   *  whether it succeeded: a created order is NOT a paid one. */
+  async getStatusForPayer(user: AccessTokenPayload, paymentId: string) {
+    const payment = await this.repository.findById(paymentId);
+    if (!payment || payment.payer_id !== user.sub) {
+      throw new NotFoundException('Payment not found');
+    }
+    return {
+      id: payment.id,
+      status: payment.status,
+      amountMinor: payment.amount_minor,
+      refundedMinor: payment.refunded_minor,
+      currency: payment.currency,
+      settled: payment.settled_at !== null,
+      failureReason: payment.failure_reason,
+    };
+  }
+
+  // ======================================================================
+  // Guards
+  // ======================================================================
+
+  private assertLivePaidPeriod(
+    sub: { status: string; current_period_end: Date | null | string },
+    what: string,
   ) {
-    const plan = SUBSCRIPTION_PLANS[planId];
-    const existing =
-      await this.subscriptionsService.findSubscriptionById(subscriptionId);
-    const existingEnd = existing?.current_period_end
-      ? new Date(existing.current_period_end)
+    const end = sub.current_period_end
+      ? new Date(sub.current_period_end)
       : null;
-    const base =
-      existingEnd && existingEnd > new Date() ? existingEnd : new Date();
-    const currentPeriodEnd = new Date(
-      base.getTime() + plan.periodDays * 24 * 60 * 60 * 1000,
-    );
-    return this.subscriptionsService.activatePlan(
-      subscriptionId,
-      planId,
-      currentPeriodEnd,
-      provider,
-      providerPaymentId,
-    );
-  }
-
-  /** Same "extend from whichever is later" logic as settleSubscription —
-   *  an early renewal must not discard time left on the current period. */
-  private async settleParentPremium(
-    parentSubscriptionId: string,
-    planId: keyof typeof PARENT_PREMIUM_PLANS,
-    provider: string,
-    providerPaymentId: string,
-  ) {
-    const plan = PARENT_PREMIUM_PLANS[planId];
-    const existing =
-      await this.parentPremiumService.findSubscriptionById(
-        parentSubscriptionId,
+    if (sub.status !== 'active' || !end || end <= new Date()) {
+      throw new BadRequestException(
+        `Extra blocks can only be added inside a paid ${what} period — purchase or renew a ${what} first.`,
       );
-    const existingEnd = existing?.current_period_end
-      ? new Date(existing.current_period_end)
-      : null;
-    const base =
-      existingEnd && existingEnd > new Date() ? existingEnd : new Date();
-    const currentPeriodEnd = new Date(
-      base.getTime() + plan.periodDays * 24 * 60 * 60 * 1000,
-    );
-    return this.parentPremiumService.activatePlan(
-      parentSubscriptionId,
-      planId,
-      currentPeriodEnd,
-      provider,
-      providerPaymentId,
-    );
+    }
+  }
+
+  private async requireOwnAcademy(userId: string) {
+    const academy = await this.academies.findByOwner(userId);
+    if (!academy) {
+      throw new NotFoundException('No academy is linked to this account');
+    }
+    return academy;
   }
 
   private async assertCanPayFee(

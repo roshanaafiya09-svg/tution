@@ -1,5 +1,4 @@
 import { randomBytes } from 'node:crypto';
-import * as path from 'node:path';
 import {
   BadRequestException,
   Inject,
@@ -38,7 +37,7 @@ export class MaterialsService {
    * passes through the API (blueprint §6).
    */
   async createUploadUrl(tutorId: string, dto: CreateMaterialDto) {
-    await this.batchesService.getOwnedBatch(tutorId, dto.batchId);
+    await this.batchesService.getOwnedBatchForWrite(tutorId, dto.batchId);
 
     if (dto.sizeBytes > MAX_MATERIAL_BYTES) {
       throw new BadRequestException(
@@ -123,14 +122,5 @@ export class MaterialsService {
     if (!enrollment || enrollment.status !== 'active') {
       throw new NotFoundException('Material not found');
     }
-  }
-
-  /** Local-dev only — see LocalStorageProvider. */
-  sanitizeLocalKey(objectKey: string): string {
-    const normalized = path.normalize(objectKey);
-    if (normalized.startsWith('..') || path.isAbsolute(normalized)) {
-      throw new BadRequestException('Invalid object key');
-    }
-    return normalized;
   }
 }

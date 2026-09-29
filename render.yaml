@@ -31,6 +31,16 @@ services:
         sync: false
       - key: JWT_REFRESH_SECRET
         sync: false
+      # REQUIRED — env.validation.ts rejects boot without it (no default,
+      # no optional()). Missing from this blueprint until the 2026-09-29
+      # remediation pass (audit H6): a fresh Blueprint deploy would crash
+      # at startup with only a log-line explanation, never an obviously
+      # "add this to render.yaml" one. Generate with the same command as
+      # the JWT secrets (e.g. `openssl rand -base64 48`) — must differ
+      # from both JWT secrets (CsrfGuard; see the auth module's own
+      # validation for why).
+      - key: CSRF_SECRET
+        sync: false
       - key: SUPABASE_PROJECT_REF
         sync: false
       - key: SUPABASE_STORAGE_BUCKET
@@ -57,3 +67,49 @@ services:
         sync: false
       - key: SMTP_USER
         sync: false
+      # --- Payments (audit C1/H1/H5/H8/H10) ---
+      # Real money-in/money-out is DISABLED — every order/capture/payout
+      # attempt returns 503, loudly, with no mock fallback — whenever
+      # NODE_ENV=production and these are unset (see
+      # provider-selection.ts's chooseProvider). Production will NEVER run
+      # on the mock payments provider, unlike before this pass, when an
+      # unset key pair silently meant "everything is instantly free and
+      # always succeeds." Set all three together before enabling real
+      # checkout; RAZORPAY_WEBHOOK_SECRET is required in production the
+      # moment the key pair is set (env.validation.ts enforces this at
+      # boot) because a captured payment can only ever be recorded via the
+      # signed webhook.
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      # Optional — platform's cut of tuition-fee collection, 0-100. Unset =
+      # 0 (pure pass-through), which is the actual committed pricing model
+      # (blueprint §5: the tutor subscription is the revenue line, not a
+      # fee-collection cut). Only set this if that decision changes.
+      - key: PLATFORM_FEE_PERCENT
+        sync: false
+      # --- Scheduled jobs (audit H7) — see docs/scheduled-jobs.md ---
+      # Required to use POST /internal/jobs/:job at all (the endpoint
+      # returns 503 on every call otherwise, never silently open). 32+
+      # random characters, distinct from every other secret above.
+      - key: CRON_SECRET
+        sync: false
+      # Optional — leave unset (in-process @Cron timers stay on) unless an
+      # external scheduler is confirmed reliable AND this ever runs as more
+      # than one instance. See docs/scheduled-jobs.md.
+      # - key: DISABLE_INTERNAL_CRON
+      #   value: "true"
+      # --- Reverse-proxy trust (audit H3) ---
+      # Leave BOTH unset for this deployment. The backend's default in
+      # production (common/http/trusted-proxies.ts) already matches this
+      # exact topology (Render's private network + Cloudflare's published
+      # ranges) with no configuration needed. Only set ONE of these if that
+      # topology ever changes (e.g. a different reverse proxy in front of
+      # Render, or moving off Render entirely).
+      # - key: TRUST_PROXY_CIDRS
+      #   value: "10.0.0.0/8,172.16.0.0/12"
+      # - key: TRUST_PROXY_HOPS
+      #   value: "1"

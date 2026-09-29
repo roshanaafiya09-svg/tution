@@ -10,6 +10,7 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ConfigService } from '@nestjs/config';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AuthService } from './auth.service';
@@ -56,6 +57,10 @@ export class AuthController {
     private readonly config: ConfigService,
   ) {}
 
+  // Per-IP ceilings tighter than the global 300/min, on top of OtpService's
+  // own per-identifier limits. Keyed on the REAL client IP (bounded
+  // trustProxy), so rotating X-Forwarded-For cannot dodge them.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('otp/request')
   @HttpCode(200)
   async requestOtp(@Body() dto: RequestOtpDto) {
@@ -63,6 +68,7 @@ export class AuthController {
     return { sent: true };
   }
 
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post('otp/verify')
   @HttpCode(200)
   async verifyOtp(

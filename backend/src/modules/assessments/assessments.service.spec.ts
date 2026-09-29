@@ -26,7 +26,11 @@ function buildService(overrides: {
   const getOwnedBatch =
     overrides.getOwnedBatch ?? jest.fn().mockResolvedValue({ id: 'batch-1' });
   const batchesService = {
-    getOwnedBatch,
+    // AssessmentsService now calls getOwnedBatchForWrite (audit H1 —
+    // subscription-gated batch loads for CREATE flows); this mock's own
+    // `getOwnedBatch` name stays as the test-facing override key so
+    // existing assertions read the same.
+    getOwnedBatchForWrite: getOwnedBatch,
   } as unknown as BatchesService;
 
   const batchesRepository = {

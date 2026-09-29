@@ -14,7 +14,10 @@ export class AnnouncementsService {
   ) {}
 
   async create(tutorId: string, batchId: string, body: string) {
-    const batch = await this.batchesService.getOwnedBatch(tutorId, batchId);
+    const batch = await this.batchesService.getOwnedBatchForWrite(
+      tutorId,
+      batchId,
+    );
     const announcement = await this.repository.create(batchId, tutorId, body);
 
     const studentIds = await this.repository.listBatchStudentIds(batchId);

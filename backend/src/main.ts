@@ -14,6 +14,7 @@ import {
   CORS_EXPOSED_HEADERS,
   configureHttpApp,
   createFastifyAdapter,
+  registerJsonBodyParserWithRaw,
 } from './common/http/app-setup';
 
 // Must run before anything else, including NestFactory.create — Sentry's
@@ -32,12 +33,12 @@ if (process.env.SENTRY_DSN) {
 }
 
 async function bootstrap() {
-  // Render terminates TLS and proxies to this container over a single
-  // trusted hop — without trustProxy, request.ip resolves to Render's
-  // internal proxy address for every request, not the real client. That
-  // silently broke two things: DPDP consent records (parent-links
-  // controller stashes request.ip as the legally-relevant IP at the
-  // moment consent was granted) and any future IP-based rate limiting.
+  // Render terminates TLS (behind Cloudflare) and proxies to this container.
+  // request.ip must be the REAL client: DPDP consent records stash it as the
+  // legally-relevant IP, and the global rate limiter keys on it. Only our own
+  // infrastructure ranges may vouch for X-Forwarded-For (trusted-proxies.ts,
+  // overridable with TRUST_PROXY_CIDRS / TRUST_PROXY_HOPS) — trusting every
+  // hop let clients pick their own rate-limit bucket (audit H3).
   // find-my-way's default maxParamLength (100) is too tight for the
   // dev-only local-upload/local-download :objectKey param once an object
   // key has two UUID segments (e.g. assessment-question-papers/{tutorId}/
@@ -50,43 +51,31 @@ async function bootstrap() {
 
   // Raw binary bodies for the dev-only local upload endpoint that stands
   // in for Supabase Storage's presigned PUT (see LocalStorageProvider).
-  // In production uploads go straight to storage and never reach the API.
-  adapter.getInstance().addContentTypeParser(
-    [
-      'application/pdf',
-      'image/jpeg',
-      'image/png',
-      'image/webp',
-      // Offline assessment question papers (DOC/DOCX) and scorecards
-      // (XLSX) — same dev-only local-upload path as the mimes above.
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    ],
-    { parseAs: 'buffer' },
-    (_request, body, done) => done(null, body),
-  );
-
-  // Overrides Fastify's built-in JSON parser to also stash the exact raw
-  // bytes on the request — HMAC webhook signature verification (Razorpay)
-  // must run over the untouched body, since JSON.stringify(JSON.parse(x))
-  // is not guaranteed to equal x byte-for-byte. Every other JSON route's
-  // req.body is unaffected; this only adds request.rawBody alongside it.
-  adapter
-    .getInstance()
-    .addContentTypeParser(
-      'application/json',
-      { parseAs: 'string' },
-      (request, rawBody, done) => {
-        const body = String(rawBody);
-        (request as unknown as { rawBody: string }).rawBody = body;
-        try {
-          done(null, body.length ? JSON.parse(body) : {});
-        } catch (err) {
-          done(err as Error, undefined);
-        }
-      },
+  // In production uploads go straight to storage and never reach the API,
+  // and the route (LocalStorageController) is not registered — so neither
+  // is the parser (audit H4).
+  if (process.env.NODE_ENV !== 'production') {
+    adapter.getInstance().addContentTypeParser(
+      [
+        'application/pdf',
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        // Offline assessment question papers (DOC/DOCX) and scorecards
+        // (XLSX) — same dev-only local-upload path as the mimes above.
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ],
+      { parseAs: 'buffer' },
+      (_request, body, done) => done(null, body),
     );
+  }
+
+  // JSON parser that also stashes the exact raw bytes (HMAC webhook
+  // signature verification must run over the untouched body) — shared with
+  // the e2e harness so both boot the identical adapter.
+  registerJsonBodyParserWithRaw(adapter);
 
   // bodyParser: false — Nest's Fastify adapter otherwise registers its
   // own default 'application/json' parser during app.init(), which

@@ -9,5 +9,6 @@ import { RemindersService } from './reminders.service';
 @Module({
   imports: [SchedulingModule, NotificationsModule, HolidaysModule],
   providers: [RemindersService],
+  exports: [RemindersService],
 })
 export class RemindersModule {}

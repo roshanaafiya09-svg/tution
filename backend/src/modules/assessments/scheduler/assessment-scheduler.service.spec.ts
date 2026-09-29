@@ -256,3 +256,47 @@ describe('AssessmentSchedulerService.remindWeeklyAssessment', () => {
     );
   });
 });
+
+describe('DISABLE_INTERNAL_CRON gates only the @Cron-fired wrapper (H7)', () => {
+  const ORIGINAL_ENV = process.env.DISABLE_INTERNAL_CRON;
+  afterEach(() => {
+    if (ORIGINAL_ENV === undefined) delete process.env.DISABLE_INTERNAL_CRON;
+    else process.env.DISABLE_INTERNAL_CRON = ORIGINAL_ENV;
+  });
+
+  it('cronOpenScorecardWindows does nothing when the flag is set', async () => {
+    process.env.DISABLE_INTERNAL_CRON = 'true';
+    const listScheduledForDate = jest.fn().mockResolvedValue([{ id: 'a1' }]);
+    const { scheduler } = buildScheduler({ listScheduledForDate });
+
+    await scheduler.cronOpenScorecardWindows();
+
+    expect(listScheduledForDate).not.toHaveBeenCalled();
+  });
+
+  it('the underlying openScorecardWindows still runs when called directly — this is what the external-scheduler endpoint calls', async () => {
+    process.env.DISABLE_INTERNAL_CRON = 'true';
+    const updateStatus = jest.fn().mockResolvedValue({});
+    const { scheduler } = buildScheduler({
+      listScheduledForDate: jest.fn().mockResolvedValue([{ id: 'a1' }]),
+      updateStatus,
+    });
+
+    await scheduler.openScorecardWindows();
+
+    expect(updateStatus).toHaveBeenCalledWith('a1', 'scorecard_pending');
+  });
+
+  it('the wrapper runs the real work when the flag is unset', async () => {
+    delete process.env.DISABLE_INTERNAL_CRON;
+    const updateStatus = jest.fn().mockResolvedValue({});
+    const { scheduler } = buildScheduler({
+      listScheduledForDate: jest.fn().mockResolvedValue([{ id: 'a1' }]),
+      updateStatus,
+    });
+
+    await scheduler.cronOpenScorecardWindows();
+
+    expect(updateStatus).toHaveBeenCalledWith('a1', 'scorecard_pending');
+  });
+});

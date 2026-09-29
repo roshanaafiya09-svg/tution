@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { sql } from 'kysely';
-import type { Kysely } from 'kysely';
+import type { Kysely, Transaction } from 'kysely';
 import { KYSELY_CONNECTION } from '../../../database/database.module';
 import type { DB } from '../../../database/types';
 import { newId } from '../../../database/id';
@@ -57,8 +57,11 @@ export class InvitesRepository {
    * deleted, so an old link of a deleted teacher can never enroll a new
    * student even if it was created by some path that skipped revocation.
    */
-  async claimUse(token: string): Promise<boolean> {
-    const result = await this.db
+  async claimUse(
+    token: string,
+    db: Kysely<DB> | Transaction<DB> = this.db,
+  ): Promise<boolean> {
+    const result = await db
       .updateTable('invites')
       .set((eb) => ({ used_count: eb('used_count', '+', 1) }))
       .where('token', '=', token)

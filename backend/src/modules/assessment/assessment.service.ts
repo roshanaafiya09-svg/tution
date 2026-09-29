@@ -42,7 +42,10 @@ export class AssessmentService {
   ) {}
 
   async createAssignment(tutorId: string, dto: CreateAssignmentDto) {
-    const batch = await this.batchesService.getOwnedBatch(tutorId, dto.batchId);
+    const batch = await this.batchesService.getOwnedBatchForWrite(
+      tutorId,
+      dto.batchId,
+    );
     const timezone = dto.timezone ?? DEFAULT_TIMEZONE;
 
     const dueAt = DateTime.fromISO(dto.dueAtLocal, { zone: timezone });

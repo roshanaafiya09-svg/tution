@@ -55,6 +55,7 @@ import { AcademyOwnerModule } from './modules/marketplace/academy-owner/academy-
 import { AcademyVerificationModule } from './modules/marketplace/academy-verification/academy-verification.module';
 import { HolidaysModule } from './modules/holidays/holidays.module';
 import { RemindersModule } from './modules/reminders/reminders.module';
+import { InternalJobsModule } from './modules/internal-jobs/internal-jobs.module';
 import { TeachingContextModule } from './modules/teaching-context/teaching-context.module';
 
 /**
@@ -114,7 +115,7 @@ if (process.env.NODE_ENV !== 'production') {
     // blocking scraping/brute-force against unauthenticated endpoints
     // like the public marketplace search and /auth/refresh — nothing in
     // this app's own usage pattern is anywhere close to 300 req/min from
-    // one client. Relies on trustProxy (see main.ts) to key correctly on
+    // one client. Relies on the bounded trustProxy list (common/http/trusted-proxies.ts) to key correctly on
     // the real client IP behind Render's proxy, not shared infra IPs.
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]),
     // Holiday & Teacher Leave Management's 10-minute class reminder and
@@ -156,6 +157,7 @@ if (process.env.NODE_ENV !== 'production') {
     AcademyVerificationModule,
     HolidaysModule,
     RemindersModule,
+    InternalJobsModule,
   ],
   providers: [
     {

@@ -4,6 +4,8 @@ import { SubscriptionsRepository } from './subscriptions.repository';
 import { AcademySubscriptionsService } from './academy-subscriptions.service';
 import { AcademySubscriptionsRepository } from './academy-subscriptions.repository';
 import { ActiveSubscriptionGuard } from './guards/active-subscription.guard';
+import { SubscriptionCapacityRepository } from './subscription-capacity.repository';
+import { SubscriptionCapacityService } from './subscription-capacity.service';
 
 /**
  * Bounded context: subscription/trial state (blueprint §5, §10 Phase 2) —
@@ -22,11 +24,15 @@ import { ActiveSubscriptionGuard } from './guards/active-subscription.guard';
     AcademySubscriptionsService,
     AcademySubscriptionsRepository,
     ActiveSubscriptionGuard,
+    SubscriptionCapacityRepository,
+    SubscriptionCapacityService,
   ],
   exports: [
     SubscriptionsService,
     AcademySubscriptionsService,
     ActiveSubscriptionGuard,
+    SubscriptionCapacityService,
+    SubscriptionCapacityRepository,
   ],
 })
 export class SubscriptionsModule {}

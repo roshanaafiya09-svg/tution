@@ -395,6 +395,10 @@ export interface SubscriptionsTable {
   status: Generated<'trialing' | 'active' | 'past_due' | 'cancelled'>;
   trial_ends_at: Timestamp;
   current_period_end: Timestamp | null;
+  /** Migration 0045: 25-student blocks of capacity paid for the CURRENT
+   *  period. 0 while trialing (trial capacity is unrestricted). */
+  purchased_blocks: Generated<number>;
+  period_start: Timestamp | null;
   provider: string | null;
   provider_ref: string | null;
   created_at: GeneratedTimestamp;
@@ -410,8 +414,44 @@ export interface AcademySubscriptionsTable {
   status: Generated<'trialing' | 'active' | 'past_due' | 'cancelled'>;
   trial_ends_at: Timestamp;
   current_period_end: Timestamp | null;
+  /** Migration 0045 — see SubscriptionsTable.purchased_blocks. */
+  purchased_blocks: Generated<number>;
+  /** Teachers the academy paid the per-teacher fee for this period. */
+  purchased_teacher_features: Generated<number>;
+  period_start: Timestamp | null;
   provider: string | null;
   provider_ref: string | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+/** Every provider webhook, keyed by the provider's own event id — the
+ *  UNIQUE (provider, provider_event_id) makes a replay a no-op. */
+export interface PaymentEventsTable {
+  id: string;
+  provider: string;
+  provider_event_id: string;
+  event_type: string;
+  provider_order_id: string | null;
+  provider_payment_id: string | null;
+  payment_id: string | null;
+  received_at: GeneratedTimestamp;
+}
+
+/** Idempotent refund ledger. The database refuses a refund set that would
+ *  exceed the captured amount and keeps payments.refunded_minor in step. */
+export interface PaymentRefundsTable {
+  id: string;
+  payment_id: string;
+  amount_minor: number;
+  status: Generated<'pending' | 'succeeded' | 'failed'>;
+  reason: string;
+  idempotency_key: string;
+  provider_refund_id: string | null;
+  failure_reason: string | null;
+  /** Set by the caller that currently owns the provider call. */
+  dispatched_at: Timestamp | null;
+  dispatch_attempts: Generated<number>;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
 }
@@ -469,6 +509,19 @@ export interface PaymentsTable {
   fee_ledger_id: string | null;
   subscription_id: string | null;
   parent_subscription_id: string | null;
+  /** Fifth settleable target (migration 0046) — an ACADEMY's own plan. */
+  academy_subscription_id: string | null;
+  /** Total 25-student blocks this subscription order buys (or, for an
+   *  'addon_blocks' order, the blocks it adds). */
+  blocks: number | null;
+  /** Academy orders: how many teachers the per-teacher fee covered. */
+  teacher_features: number | null;
+  /** Set exactly once, when the capture was actually APPLIED to its target
+   *  (ledger credit / plan activation / booking confirmation). Payout
+   *  eligibility keys on this. */
+  settled_at: Timestamp | null;
+  /** Maintained by the payment_refunds triggers — never write directly. */
+  refunded_minor: Generated<number>;
   /** Only set for subscription/parent-premium purchases — which plan
    *  tier, needed at capture time to compute current_period_end. */
   plan_id: string | null;
@@ -496,6 +549,9 @@ export interface PaymentsTable {
 export interface PayoutsTable {
   id: string;
   tutor_id: string;
+  /** Set for an ACADEMY payout (paid to the academy owner); null for an
+   *  individual teacher's own payout. Migration 0046. */
+  academy_id: string | null;
   amount_minor: number;
   currency: Generated<string>;
   status: Generated<'pending' | 'processing' | 'paid' | 'failed'>;
@@ -1093,6 +1149,8 @@ export interface DB {
   subscriptions: SubscriptionsTable;
   academy_subscriptions: AcademySubscriptionsTable;
   audit_logs: AuditLogsTable;
+  payment_events: PaymentEventsTable;
+  payment_refunds: PaymentRefundsTable;
   notifications: NotificationsTable;
   device_tokens: DeviceTokensTable;
 

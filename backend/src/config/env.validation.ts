@@ -157,6 +157,27 @@ export const envSchema = z.object({
     .min(0)
     .default(250),
   MARKETPLACE_WAITLIST_WINDOW_HOURS: z.coerce.number().int().min(1).default(24),
+
+  // --- Reverse-proxy trust (audit H3) — which hops may vouch for
+  // X-Forwarded-For. Default in production: Render's private network +
+  // Cloudflare (common/http/trusted-proxies.ts). Set ONE of these only if the
+  // topology differs. Never "true". ---
+  TRUST_PROXY_CIDRS: z.string().optional(),
+  TRUST_PROXY_HOPS: z
+    .string()
+    .regex(/^[0-5]$/)
+    .optional(),
+
+  // --- Scheduled jobs (audit H7) — shared secret an external scheduler
+  // presents (X-Cron-Secret) to POST /internal/jobs/:job. Unset = the
+  // endpoint is disabled. DISABLE_INTERNAL_CRON=true turns off the in-
+  // process @Cron timers (use once an external scheduler is the only driver
+  // or when running several instances). ---
+  CRON_SECRET: z
+    .string()
+    .min(32, 'CRON_SECRET must be at least 32 characters')
+    .optional(),
+  DISABLE_INTERNAL_CRON: z.enum(['true', 'false']).optional(),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
@@ -231,6 +252,22 @@ export function validateEnv(config: Record<string, unknown>): EnvConfig {
     secretIssues.push(
       'CSRF_SECRET has too little character variety to be a real random secret.',
     );
+  }
+  // Payments must be all-or-nothing in production (audit C1/H5): a key pair
+  // without a webhook secret would take real money and never record it.
+  if (parsed.data.NODE_ENV === 'production') {
+    const { RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET } =
+      parsed.data;
+    if (Boolean(RAZORPAY_KEY_ID) !== Boolean(RAZORPAY_KEY_SECRET)) {
+      secretIssues.push(
+        'RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET must be set together in production.',
+      );
+    }
+    if (RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET && !RAZORPAY_WEBHOOK_SECRET) {
+      secretIssues.push(
+        'RAZORPAY_WEBHOOK_SECRET is required in production whenever Razorpay keys are set — without it captured payments can never be recorded.',
+      );
+    }
   }
   if (secretIssues.length > 0) {
     throw new Error(

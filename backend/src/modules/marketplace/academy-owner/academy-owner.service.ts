@@ -19,6 +19,7 @@ import { TeacherDepartureService } from '../../scheduling/departure/teacher-depa
 import { NotificationsService } from '../../notifications/notifications.service';
 import { TeacherLeaveRepository } from '../../holidays/teacher-leave.repository';
 import { AcademySubscriptionsService } from '../../billing/subscriptions/academy-subscriptions.service';
+import { SubscriptionCapacityService } from '../../billing/subscriptions/subscription-capacity.service';
 import { STORAGE_PROVIDER } from '../../../common/storage/storage-provider.interface';
 import type { StorageProvider } from '../../../common/storage/storage-provider.interface';
 import { randomSlugSuffix, slugify } from '../../identity/profiles/slug.util';
@@ -72,6 +73,7 @@ export class AcademyOwnerService {
     private readonly academySubscriptions: AcademySubscriptionsService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
     private readonly teacherDeparture: TeacherDepartureService,
+    private readonly capacity: SubscriptionCapacityService,
   ) {}
 
   /** Every other method starts here. Throws 404 (not 403) when no
@@ -170,7 +172,13 @@ export class AcademyOwnerService {
 
   async getSubscription(ownerUserId: string) {
     const academy = await this.resolveOwnAcademy(ownerUserId);
-    return this.academySubscriptions.getStatus(academy.id);
+    // Existing status fields are unchanged; `capacity` adds the academy's
+    // 25-student block usage and its next-period quote (audit H1/H8).
+    const [status, capacity] = await Promise.all([
+      this.academySubscriptions.getStatus(academy.id),
+      this.capacity.getUsage({ kind: 'academy', academyId: academy.id }),
+    ]);
+    return { ...status, capacity };
   }
 
   async getStats(ownerUserId: string) {

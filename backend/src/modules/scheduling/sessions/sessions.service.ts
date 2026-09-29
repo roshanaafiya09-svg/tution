@@ -55,7 +55,10 @@ export class SessionsService {
    *  an Academy profile cannot schedule a class on a private Individual
    *  batch. */
   async create(tutorId: string, dto: CreateSessionDto) {
-    const batch = await this.batchesService.getOwnedBatch(tutorId, dto.batchId);
+    const batch = await this.batchesService.getOwnedBatchForWrite(
+      tutorId,
+      dto.batchId,
+    );
     this.assertBatchActive(batch);
     return this.createSeries(tutorId, batch, dto);
   }
@@ -64,7 +67,7 @@ export class SessionsService {
    *  taught by one of its members) and its teacher must still be an
    *  active member. */
   async createForAcademy(academyId: string, dto: CreateSessionDto) {
-    const batch = await this.batchesService.getAcademyBatch(
+    const batch = await this.batchesService.getAcademyBatchForWrite(
       academyId,
       dto.batchId,
     );

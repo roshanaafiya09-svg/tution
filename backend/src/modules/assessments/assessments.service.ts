@@ -43,7 +43,7 @@ export class AssessmentsService {
     const unique = Array.from(new Set(batchIds));
     const batches = await Promise.all(
       unique.map((batchId) =>
-        this.batchesService.getOwnedBatch(tutorId, batchId),
+        this.batchesService.getOwnedBatchForWrite(tutorId, batchId),
       ),
     );
     const contexts = new Set(batches.map((b) => b.academy_id));

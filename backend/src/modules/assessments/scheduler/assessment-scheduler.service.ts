@@ -7,6 +7,7 @@ import { OnlineAssessmentsService } from '../online/online-assessments.service';
 import { BatchesRepository } from '../../scheduling/batches/batches.repository';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { academicWeekStart, ASSESSMENT_TIMEZONE } from '../academic-week.util';
+import { isInternalCronDisabled } from '../../../common/scheduling/cron-gate';
 
 /**
  * No controller — background jobs only, same shape as RemindersService
@@ -32,6 +33,11 @@ export class AssessmentSchedulerService {
   /** SCHEDULED -> SCORECARD_PENDING once the assessment date has arrived
    *  (§16). */
   @Cron(CronExpression.EVERY_DAY_AT_1AM, { timeZone: ASSESSMENT_TIMEZONE })
+  async cronOpenScorecardWindows(): Promise<void> {
+    if (isInternalCronDisabled()) return;
+    await this.openScorecardWindows();
+  }
+
   async openScorecardWindows(): Promise<void> {
     try {
       const today = DateTime.now()
@@ -57,6 +63,11 @@ export class AssessmentSchedulerService {
   /** SCORECARD_PENDING -> OVERDUE past the deadline (assessment_date + 2
    *  days, Asia/Kolkata — §16). */
   @Cron(CronExpression.EVERY_DAY_AT_2AM, { timeZone: ASSESSMENT_TIMEZONE })
+  async cronSweepOverdue(): Promise<void> {
+    if (isInternalCronDisabled()) return;
+    await this.sweepOverdue();
+  }
+
   async sweepOverdue(): Promise<void> {
     try {
       const now = new Date();
@@ -89,6 +100,11 @@ export class AssessmentSchedulerService {
    *  required student has a result; this sweep is purely the deadline
    *  fallback for the assessments that never got there naturally). */
   @Cron(CronExpression.EVERY_HOUR)
+  async cronSweepOnlineDeadlines(): Promise<void> {
+    if (isInternalCronDisabled()) return;
+    await this.sweepOnlineDeadlines();
+  }
+
   async sweepOnlineDeadlines(): Promise<void> {
     try {
       const open = await this.repository.listOpenOnlineCandidates();
@@ -107,6 +123,11 @@ export class AssessmentSchedulerService {
    *  scheduled/published/completed an assessment for the current
    *  Asia/Kolkata academic week yet — once per teacher per week. */
   @Cron(CronExpression.EVERY_DAY_AT_9AM, { timeZone: ASSESSMENT_TIMEZONE })
+  async cronRemindWeeklyAssessment(): Promise<void> {
+    if (isInternalCronDisabled()) return;
+    await this.remindWeeklyAssessment();
+  }
+
   async remindWeeklyAssessment(): Promise<void> {
     try {
       const weekStartDate = academicWeekStart();

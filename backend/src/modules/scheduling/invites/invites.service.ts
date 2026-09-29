@@ -22,7 +22,7 @@ export class InvitesService {
   ) {}
 
   async create(tutorId: string, batchId: string, dto: CreateInviteDto) {
-    await this.batchesService.getOwnedBatch(tutorId, batchId);
+    await this.batchesService.getOwnedBatchForWrite(tutorId, batchId);
     return this.createInvite(tutorId, batchId, dto);
   }
 
@@ -34,7 +34,10 @@ export class InvitesService {
     batchId: string,
     dto: CreateInviteDto,
   ) {
-    const batch = await this.batchesService.getAcademyBatch(academyId, batchId);
+    const batch = await this.batchesService.getAcademyBatchForWrite(
+      academyId,
+      batchId,
+    );
     return this.createInvite(batch.tutor_id, batchId, dto);
   }
 
@@ -99,22 +102,27 @@ export class InvitesService {
     const invite = await this.repository.findByToken(token);
     if (!invite) throw new NotFoundException('Invite not found');
 
-    const claimed = await this.repository.claimUse(token);
-    if (!claimed) {
-      if (
-        invite.revoked_at !== null ||
-        !(await this.repository.isBatchTeacherActive(invite.batch_id))
-      ) {
-        throw new BadRequestException({
-          code: ErrorCode.INVITE_REVOKED,
-          message: 'This invite link is no longer valid.',
-        });
-      }
-      throw new BadRequestException(
-        'This invite link has expired or is fully used',
-      );
-    }
-
-    return this.batchesService.enroll(invite.batch_id, studentId, 'invite');
+    // The invite-use claim runs INSIDE the enrollment transaction: if the
+    // batch is full, the plan has no free block, or anything else rejects the
+    // enrollment, the transaction rolls back and the use is NOT consumed. A
+    // student who is already enrolled never consumes one either.
+    return this.batchesService.enroll(invite.batch_id, studentId, 'invite', {
+      beforeEnroll: async (trx) => {
+        const claimed = await this.repository.claimUse(token, trx);
+        if (claimed) return;
+        if (
+          invite.revoked_at !== null ||
+          !(await this.repository.isBatchTeacherActive(invite.batch_id))
+        ) {
+          throw new BadRequestException({
+            code: ErrorCode.INVITE_REVOKED,
+            message: 'This invite link is no longer valid.',
+          });
+        }
+        throw new BadRequestException(
+          'This invite link has expired or is fully used',
+        );
+      },
+    });
   }
 }

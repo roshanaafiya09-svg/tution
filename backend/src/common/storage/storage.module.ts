@@ -4,6 +4,10 @@ import { STORAGE_PROVIDER } from './storage-provider.interface';
 import type { StorageProvider } from './storage-provider.interface';
 import { LocalStorageProvider } from './local-storage.provider';
 import { SupabaseStorageProvider } from './supabase-storage.provider';
+import {
+  LocalStorageController,
+  isProductionProcess,
+} from './local-storage.controller';
 
 const storageLogger = new Logger('StorageModule');
 
@@ -61,6 +65,9 @@ export function resolveStorageProvider(
  * there's exactly one bucket/provider instance to configure.
  */
 @Module({
+  // The local-disk upload/download routes exist ONLY outside production
+  // (audit H4) — in production they are not registered at all.
+  controllers: isProductionProcess() ? [] : [LocalStorageController],
   providers: [
     LocalStorageProvider,
     {

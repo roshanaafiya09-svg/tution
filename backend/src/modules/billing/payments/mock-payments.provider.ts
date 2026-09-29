@@ -3,22 +3,20 @@ import { randomBytes } from 'node:crypto';
 import type {
   CreateOrderParams,
   PaymentsProvider,
-  WebhookVerificationResult,
+  ProviderEvent,
+  RefundParams,
 } from './payments-provider.interface';
 
 /**
- * Selected by BillingModule's factory when RAZORPAY_KEY_ID/SECRET are
- * unset — same "working stand-in, not an error" shape as MockAiProvider.
- * Fakes order creation and always-succeeds capture so the full fee-
- * collection flow (order -> capture -> fee_ledger settlement) is
- * buildable and live-testable before a real Razorpay account exists.
- * IDs are prefixed `mock_` so they're never mistaken for real Razorpay
- * ids (which start `order_`/`pay_`) in logs or the database.
+ * Working stand-in for Razorpay for LOCAL DEVELOPMENT AND TESTS ONLY (fake
+ * order, always-succeeds capture, deterministic refund ids). BillingModule
+ * never selects it in production — see DisabledPaymentsProvider.
  */
 @Injectable()
 export class MockPaymentsProvider implements PaymentsProvider {
   readonly name = 'mock';
   private readonly logger = new Logger('Payments (mock)');
+  private readonly refunds = new Map<string, string>();
 
   async createOrder(params: CreateOrderParams): Promise<{ orderId: string }> {
     const orderId = `mock_order_${randomBytes(8).toString('hex')}`;
@@ -39,21 +37,32 @@ export class MockPaymentsProvider implements PaymentsProvider {
   verifyWebhook(
     _rawBody: string,
     _signature: string,
-  ): WebhookVerificationResult | null {
+    _eventIdHeader?: string,
+  ): ProviderEvent | null {
     this.logger.warn(
       'Webhook received while running the mock payments provider — mock orders are captured via simulateCapture, not a webhook. Rejecting.',
     );
     return null;
   }
 
-  async simulateRefund(
-    providerPaymentId: string,
-    amountMinor: number,
-  ): Promise<{ refundId: string }> {
+  /** Idempotent by receipt, like a well-behaved provider: asking again for
+   *  the same receipt returns the refund that already exists. */
+  async refund(params: RefundParams): Promise<{ refundId: string }> {
+    const existing = this.refunds.get(params.receipt);
+    if (existing) return { refundId: existing };
     const refundId = `mock_rfnd_${randomBytes(8).toString('hex')}`;
+    this.refunds.set(params.receipt, refundId);
     this.logger.warn(
-      `Simulated refund of ${amountMinor} for MOCK payment ${providerPaymentId} as ${refundId}`,
+      `Simulated refund of ${params.amountMinor} for MOCK payment ${params.providerPaymentId} as ${refundId}`,
     );
     return { refundId };
+  }
+
+  async findRefundByReceipt(
+    _providerPaymentId: string,
+    receipt: string,
+  ): Promise<{ refundId: string } | null> {
+    const existing = this.refunds.get(receipt);
+    return existing ? { refundId: existing } : null;
   }
 }

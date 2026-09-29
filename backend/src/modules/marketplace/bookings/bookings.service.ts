@@ -1,9 +1,11 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ErrorCode } from '../../../common/http/error-codes';
 import { ConfigService } from '@nestjs/config';
 import { DateTime } from 'luxon';
 import { BookingsRepository } from './bookings.repository';
@@ -188,36 +190,54 @@ export class BookingsService {
     );
   }
 
+  /**
+   * Cancels a booking. The state change is a guarded transition on the exact
+   * status the refund percentage was computed from, so:
+   *  - of N concurrent cancellations exactly ONE takes effect (the rest see a
+   *    terminal booking and get 409);
+   *  - if a payment captures mid-request (pending_payment -> confirmed) the
+   *    decision is re-made against the NEW state, never a stale one — a paid
+   *    booking can never end up cancelled with "no refund decided".
+   */
   async cancel(userId: string, bookingId: string, dto: CancelBookingDto) {
-    const booking = await this.getOwnedBooking(bookingId, userId);
-    if (
-      booking.status !== 'pending_payment' &&
-      booking.status !== 'confirmed'
-    ) {
-      throw new BadRequestException(`Booking is already ${booking.status}`);
-    }
+    let cancelled:
+      Awaited<ReturnType<BookingsRepository['markCancelled']>> | undefined;
+    let booking = await this.getOwnedBooking(bookingId, userId);
 
-    const cancelledBy: 'student' | 'tutor' =
-      booking.tutor_id === userId ? 'tutor' : 'student';
-
-    let refundPercent: number | null = null;
-    if (booking.status === 'confirmed') {
-      if (cancelledBy === 'tutor') {
-        refundPercent = 100;
-      } else {
-        const noticeHours =
-          (new Date(booking.scheduled_start_utc).getTime() - Date.now()) /
-          (60 * 60 * 1000);
-        refundPercent = refundPercentForNotice(noticeHours);
+    for (let attempt = 0; attempt < 3 && !cancelled; attempt++) {
+      if (
+        booking.status !== 'pending_payment' &&
+        booking.status !== 'confirmed'
+      ) {
+        throw this.alreadyTerminal(booking.status);
       }
-    }
 
-    const cancelled = await this.repository.markCancelled(
-      bookingId,
-      cancelledBy,
-      dto.reason ?? null,
-      refundPercent,
-    );
+      const cancelledBy: 'student' | 'tutor' =
+        booking.tutor_id === userId ? 'tutor' : 'student';
+
+      let refundPercent: number | null = null;
+      if (booking.status === 'confirmed') {
+        if (cancelledBy === 'tutor') {
+          refundPercent = 100;
+        } else {
+          const noticeHours =
+            (new Date(booking.scheduled_start_utc).getTime() - Date.now()) /
+            (60 * 60 * 1000);
+          refundPercent = refundPercentForNotice(noticeHours);
+        }
+      }
+
+      cancelled = await this.repository.markCancelled(
+        bookingId,
+        cancelledBy,
+        dto.reason ?? null,
+        refundPercent,
+        booking.status,
+      );
+      // Lost the race: re-read and decide again on the current state.
+      if (!cancelled) booking = await this.getOwnedBooking(bookingId, userId);
+    }
+    if (!cancelled) throw this.alreadyTerminal(booking.status);
 
     if (booking.status === 'confirmed') {
       const tutorSubjects =
@@ -242,7 +262,9 @@ export class BookingsService {
         'Only the tutor can mark a booking complete',
       );
     }
-    return this.repository.markCompleted(bookingId);
+    const done = await this.repository.markCompleted(bookingId);
+    if (!done) throw this.alreadyTerminal(booking.status, 'confirmed');
+    return done;
   }
 
   /** Tutor reports the student didn't show — the payment is kept, no
@@ -253,7 +275,20 @@ export class BookingsService {
     if (booking.tutor_id !== tutorId) {
       throw new ForbiddenException('Only the tutor can report a no-show');
     }
-    return this.repository.markNoShow(bookingId);
+    const done = await this.repository.markNoShow(bookingId);
+    if (!done) throw this.alreadyTerminal(booking.status, 'confirmed');
+    return done;
+  }
+
+  /** 409 for any transition attempted from a state that no longer allows it
+   *  (cancelled -> completed, completed -> cancelled, double cancel, …). */
+  private alreadyTerminal(status: string, needed?: string) {
+    return new ConflictException({
+      code: ErrorCode.BOOKING_ALREADY_TERMINAL,
+      message: needed
+        ? `Booking is ${status}, not ${needed}`
+        : `Booking is already ${status}`,
+    });
   }
 
   private async getOwnedBooking(bookingId: string, userId: string) {

@@ -1,7 +1,7 @@
 import 'dotenv/config';
-import { Test } from '@nestjs/testing';
+import { Test, type TestingModuleBuilder } from '@nestjs/testing';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerStorage } from '@nestjs/throttler';
 import type { Kysely } from 'kysely';
 import { AppModule } from '../../src/app.module';
 import { KYSELY_CONNECTION } from '../../src/database/database.module';
@@ -11,6 +11,7 @@ import { TokensService } from '../../src/modules/identity/auth/tokens.service';
 import {
   configureHttpApp,
   createFastifyAdapter,
+  registerJsonBodyParserWithRaw,
 } from '../../src/common/http/app-setup';
 
 /**
@@ -33,15 +34,53 @@ export interface Actor {
   label: string;
 }
 
-export async function createHarness(markerPrefix: string) {
+export interface HarnessOptions {
+  /** Swap providers (e.g. PAYMENTS_PROVIDER for a controllable fake). */
+  override?: (builder: TestingModuleBuilder) => TestingModuleBuilder;
+}
+
+export async function createHarness(
+  markerPrefix: string,
+  options: HarnessOptions = {},
+) {
   const MARKER = `${markerPrefix}${Date.now().toString(36)}`;
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-    .overrideGuard(ThrottlerGuard)
-    .useValue({ canActivate: () => true })
-    .compile();
-  const app = moduleRef.createNestApplication<NestFastifyApplication>(
-    createFastifyAdapter(),
-  );
+  // AppModule registers ThrottlerGuard via `{ provide: APP_GUARD, useClass:
+  // ThrottlerGuard }`. Nest's DependenciesScanner gives every APP_GUARD /
+  // APP_FILTER / APP_PIPE / APP_INTERCEPTOR provider a freshly randomised
+  // internal token (`${APP_GUARD} (UUID: <random>)`) at scan time specifically
+  // so several modules can each register one without colliding — which also
+  // means NEITHER `.overrideGuard(ThrottlerGuard)` NOR
+  // `.overrideProvider(APP_GUARD)` can ever reach it from a testing module:
+  // there is no stable token late-bound code can target. (Verified against
+  // @nestjs/core 11.1.28's scanner.js — confirmed empirically here too: both
+  // were tried and the real ThrottlerGuard instance kept being the one Nest
+  // actually applied.) This is exactly why every "the rate limiter is
+  // disabled here" e2e suite was silently still throttled — masked, until
+  // now, by the default limit being generous enough not to trip.
+  //
+  // What IS a normal, stably-tokened provider is `ThrottlerStorage` (a
+  // plain Symbol export) — the real ThrottlerGuard reads it on every request
+  // to decide `isBlocked`. Overriding it with a stub that always reports
+  // "not blocked" genuinely disables throttling for the suite while still
+  // running the real guard code, which is both the only mechanism that
+  // actually works here and closer to reality than trying to swap the guard.
+  let builder = Test.createTestingModule({ imports: [AppModule] })
+    .overrideProvider(ThrottlerStorage)
+    .useValue({
+      increment: async () => ({
+        totalHits: 0,
+        timeToExpire: 0,
+        isBlocked: false,
+        timeToBlockExpire: 0,
+      }),
+    });
+  if (options.override) builder = options.override(builder);
+  const moduleRef = await builder.compile();
+  const adapter = createFastifyAdapter();
+  registerJsonBodyParserWithRaw(adapter);
+  const app = moduleRef.createNestApplication<NestFastifyApplication>(adapter, {
+    bodyParser: false,
+  });
   configureHttpApp(app);
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
@@ -59,20 +98,33 @@ export async function createHarness(markerPrefix: string) {
   let phoneSeq = 0;
 
   async function api(
-    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'PUT',
     url: string,
     token?: string,
-    opts: { body?: unknown; ctx?: string } = {},
+    opts: {
+      body?: unknown;
+      ctx?: string;
+      headers?: Record<string, string>;
+      rawBody?: string;
+    } = {},
   ): Promise<Res> {
     const headers: Record<string, string> = {};
     if (token) headers.authorization = `Bearer ${token}`;
     if (opts.ctx) headers['x-teaching-context'] = opts.ctx;
-    if (opts.body !== undefined) headers['content-type'] = 'application/json';
+    if (opts.headers) Object.assign(headers, opts.headers);
+    if (opts.body !== undefined || opts.rawBody !== undefined) {
+      headers['content-type'] = 'application/json';
+    }
     const res = await app.inject({
       method,
       url,
       headers,
-      payload: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+      payload:
+        opts.rawBody !== undefined
+          ? opts.rawBody
+          : opts.body === undefined
+            ? undefined
+            : JSON.stringify(opts.body),
     });
     let body: unknown = null;
     try {
@@ -95,9 +147,16 @@ export async function createHarness(markerPrefix: string) {
       .insertInto('users')
       .values({
         id,
+        // No real length constraint on this column (test data, never
+        // validated as real E.164) — the old 20-char cap silently truncated
+        // the distinguishing sequence digits off the end for any marker
+        // prefix longer than ~14 characters, colliding two different users
+        // onto the same phone number (found via a genuine collision in
+        // internal-jobs.e2e-spec.ts's 'intjobs' marker). Widened with
+        // comfortable headroom instead of removing the cap outright.
         phone_e164: `+91${MARKER}${String(phoneSeq).padStart(3, '0')}`.slice(
           0,
-          20,
+          40,
         ),
         email: `${MARKER}-${label}@example.test`,
       })
@@ -233,6 +292,16 @@ export async function createHarness(markerPrefix: string) {
         await db
           .deleteFrom('attendance')
           .where('marked_by', 'in', cleanup.users)
+          .execute();
+        // Money rows reference users without ON DELETE CASCADE. Refunds and
+        // events hang off payments; payouts are paid to a user.
+        await db
+          .deleteFrom('payments')
+          .where('payer_id', 'in', cleanup.users)
+          .execute();
+        await db
+          .deleteFrom('payouts')
+          .where('tutor_id', 'in', cleanup.users)
           .execute();
         await db.deleteFrom('users').where('id', 'in', cleanup.users).execute();
       }

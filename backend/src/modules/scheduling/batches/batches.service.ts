@@ -6,6 +6,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { BatchesRepository } from './batches.repository';
+import { SubscriptionCapacityService } from '../../billing/subscriptions/subscription-capacity.service';
+import type { Transaction } from 'kysely';
+import type { DB } from '../../../database/types';
 import { SessionNotificationsService } from '../sessions/session-notifications.service';
 import type { CreateBatchDto } from './dto/create-batch.dto';
 import type { UpdateBatchDto } from './dto/update-batch.dto';
@@ -24,6 +27,7 @@ export class BatchesService {
     private readonly analytics: AnalyticsService,
     private readonly teachingContext: TeachingContextService,
     private readonly sessionNotices: SessionNotificationsService,
+    private readonly capacity: SubscriptionCapacityService,
   ) {}
 
   /** The tutor's batches in ONE context (Individual, or one academy they
@@ -87,6 +91,27 @@ export class BatchesService {
           : 'This is an Individual batch. Switch to your Individual profile to manage it.',
       });
     }
+    return batch;
+  }
+
+  /**
+   * getOwnedBatch + the subscription gate, for subscription-gated CREATION
+   * actions (new sessions, invites, materials, assignments, assessments,
+   * announcements — audit H1). Reads keep using getOwnedBatch so an expired
+   * teacher can still see their data and renew. The subscription checked is
+   * the one that owns THIS batch (its academy_id / tutor_id), never one named
+   * by the request.
+   */
+  async getOwnedBatchForWrite(tutorId: string, batchId: string) {
+    const batch = await this.getOwnedBatch(tutorId, batchId);
+    await this.capacity.assertActiveForBatch(batch);
+    return batch;
+  }
+
+  /** Academy-side twin of getOwnedBatchForWrite. */
+  async getAcademyBatchForWrite(academyId: string, batchId: string) {
+    const batch = await this.getAcademyBatch(academyId, batchId);
+    await this.capacity.assertActiveForBatch(batch);
     return batch;
   }
 
@@ -178,35 +203,86 @@ export class BatchesService {
     return this.repository.listEnrollmentsForBatches(batches.map((b) => b.id));
   }
 
+  /**
+   * The ONE enrollment path (invite redemption goes through here). Everything
+   * happens in a single transaction with two row locks, taken in a fixed
+   * order (subscription row, then batch row), so concurrent requests queue
+   * instead of racing:
+   *   - a batch can never exceed its capacity (audit H9) — the count is taken
+   *     under the batch lock; the enrollments trigger is the DB backstop;
+   *   - an owner can never exceed the 25-student blocks they paid for, and an
+   *     expired subscription cannot take on students (audit H1);
+   *   - `beforeEnroll` (the invite-use claim) runs in the SAME transaction,
+   *     so a rejected enrollment neither leaves a row nor burns an invite use.
+   * Re-enrolling a student who is already active is an idempotent no-op.
+   */
   async enroll(
     batchId: string,
     studentId: string,
     source: 'direct' | 'invite' = 'direct',
+    options: {
+      beforeEnroll?: (trx: Transaction<DB>) => Promise<void>;
+    } = {},
   ) {
-    const batch = await this.repository.findById(batchId);
-    if (!batch) throw new NotFoundException('Batch not found');
-    if (batch.status !== 'active') {
-      throw new BadRequestException('This batch is no longer active');
-    }
+    const preview = await this.repository.findById(batchId);
+    if (!preview) throw new NotFoundException('Batch not found');
 
-    const existing = await this.repository.findEnrollment(batchId, studentId);
-    if (existing?.status === 'active') {
-      return existing;
-    }
+    // Cheap, lock-free short circuit for the common double-click / re-open.
+    const already = await this.repository.findEnrollment(batchId, studentId);
+    if (already?.status === 'active') return already;
 
-    const activeCount = await this.repository.countActiveEnrollments(batchId);
-    if (activeCount >= batch.capacity) {
-      throw new BadRequestException('This batch is full');
-    }
+    let created: Awaited<ReturnType<BatchesRepository['enrollTx']>>;
+    try {
+      created = await this.repository.transaction(async (trx) => {
+        const locked = await this.capacity.lockForEnrollment(trx, preview);
+        const batch = await this.repository.lockBatch(trx, batchId);
+        if (!batch) throw new NotFoundException('Batch not found');
+        if (batch.status !== 'active') {
+          throw new BadRequestException('This batch is no longer active');
+        }
 
-    const enrollment = await this.repository.enroll(batchId, studentId);
+        const existing = await this.repository.findEnrollmentTx(
+          trx,
+          batchId,
+          studentId,
+        );
+        if (existing?.status === 'active') return existing;
+
+        if (options.beforeEnroll) await options.beforeEnroll(trx);
+
+        const taken = await this.repository.countActiveEnrollmentsTx(
+          trx,
+          batchId,
+        );
+        if (taken >= batch.capacity) throw this.batchFull();
+
+        await this.capacity.assertStudentFits(trx, locked, studentId);
+        return this.repository.enrollTx(trx, batchId, studentId);
+      });
+    } catch (err) {
+      // Database backstop tripped (only reachable if the locked count above
+      // and the trigger ever disagreed) — same user-facing answer.
+      if (
+        (err as { code?: string }).code === '23514' &&
+        /batch_capacity_exceeded/.test((err as Error).message)
+      ) {
+        throw this.batchFull();
+      }
+      throw err;
+    }
 
     this.analytics.capture(studentId, 'student_enrolled', {
       batchId,
       enrollmentSource: source,
     });
+    return created;
+  }
 
-    return enrollment;
+  private batchFull(): BadRequestException {
+    return new BadRequestException({
+      code: ErrorCode.BATCH_FULL,
+      message: 'This batch is full',
+    });
   }
 
   async removeStudent(

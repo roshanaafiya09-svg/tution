@@ -139,10 +139,15 @@ function buildService(overrides: {
   findSessionById?: jest.Mock;
 }) {
   const markCancellationNotified = jest.fn().mockResolvedValue(undefined);
+  // Kept as a plain, uncast reference so tests can assert on it directly —
+  // going through the `SessionsRepository`-typed `sessionsRepository` below
+  // makes it a class method, which `expect(...)` cannot reference unbound
+  // (@typescript-eslint/unbound-method).
+  const listScheduledRemindersBetweenMock =
+    overrides.listScheduledRemindersBetween ??
+    jest.fn().mockResolvedValue([NORMAL_SESSION]);
   const sessionsRepository = {
-    listScheduledRemindersBetween:
-      overrides.listScheduledRemindersBetween ??
-      jest.fn().mockResolvedValue([NORMAL_SESSION]),
+    listScheduledRemindersBetween: listScheduledRemindersBetweenMock,
     listCancelledRemindersBetween:
       overrides.listCancelledRemindersBetween ??
       jest.fn().mockResolvedValue([]),
@@ -214,6 +219,7 @@ function buildService(overrides: {
   return {
     service,
     sessionsRepository,
+    listScheduledRemindersBetweenMock,
     notify,
     listRecentForUserByType,
     markCancellationNotified,
@@ -643,5 +649,40 @@ describe('holidayGroupDedupeKey (H7)', () => {
     expect(
       holidayGroupDedupeKey([{ id: 'session-a', holiday_id: 'holiday-2' }]),
     ).not.toBe(holidayGroupDedupeKey([a]));
+  });
+});
+
+describe('DISABLE_INTERNAL_CRON gates only the @Cron-fired wrapper (H7)', () => {
+  const ORIGINAL_ENV = process.env.DISABLE_INTERNAL_CRON;
+  afterEach(() => {
+    if (ORIGINAL_ENV === undefined) delete process.env.DISABLE_INTERNAL_CRON;
+    else process.env.DISABLE_INTERNAL_CRON = ORIGINAL_ENV;
+  });
+
+  it('cronSendUpcomingClassReminders does nothing when the flag is set', async () => {
+    process.env.DISABLE_INTERNAL_CRON = 'true';
+    const { service, listScheduledRemindersBetweenMock } = buildService({});
+
+    await service.cronSendUpcomingClassReminders();
+
+    expect(listScheduledRemindersBetweenMock).not.toHaveBeenCalled();
+  });
+
+  it('the underlying sendUpcomingClassReminders still runs when called directly, flag or no flag — this is what the external-scheduler endpoint calls', async () => {
+    process.env.DISABLE_INTERNAL_CRON = 'true';
+    const { service, notify } = buildService({});
+
+    await service.sendUpcomingClassReminders();
+
+    expect(notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('the wrapper runs the real work when the flag is unset (normal in-process ticking)', async () => {
+    delete process.env.DISABLE_INTERNAL_CRON;
+    const { service, notify } = buildService({});
+
+    await service.cronSendUpcomingClassReminders();
+
+    expect(notify).toHaveBeenCalledTimes(1);
   });
 });

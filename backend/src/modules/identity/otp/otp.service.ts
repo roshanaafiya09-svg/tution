@@ -62,27 +62,31 @@ export class OtpService {
    * Call consumeOtp() once the caller is committing to the result.
    */
   async checkOtp(identifier: string, code: string): Promise<void> {
-    const challenge = await this.otpRepository.findActive(identifier);
-    if (!challenge) {
+    // ONE atomic Redis step: existence + attempt cap + compare + failed-
+    // attempt count. Nothing reads then writes `attempts` separately, so
+    // parallel guesses cannot out-run MAX_VERIFY_ATTEMPTS (audit H2).
+    const outcome = await this.otpRepository.verifyAttempt(
+      identifier,
+      hashCode(code),
+      MAX_VERIFY_ATTEMPTS,
+    );
+    if (outcome === 'ok') return;
+    if (outcome === 'missing') {
       throw new UnauthorizedException({
         code: ErrorCode.INVALID_OTP,
         message: 'No active OTP for this account. Request a new one.',
       });
     }
-    if (challenge.attempts >= MAX_VERIFY_ATTEMPTS) {
+    if (outcome === 'locked') {
       throw new UnauthorizedException({
         code: ErrorCode.INVALID_OTP,
         message: 'Too many incorrect attempts. Request a new OTP.',
       });
     }
-
-    if (hashCode(code) !== challenge.codeHash) {
-      await this.otpRepository.incrementAttempts(identifier);
-      throw new UnauthorizedException({
-        code: ErrorCode.INVALID_OTP,
-        message: 'Incorrect OTP.',
-      });
-    }
+    throw new UnauthorizedException({
+      code: ErrorCode.INVALID_OTP,
+      message: 'Incorrect OTP.',
+    });
   }
 
   consumeOtp(identifier: string): Promise<void> {

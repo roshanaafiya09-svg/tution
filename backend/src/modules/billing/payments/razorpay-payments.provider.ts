@@ -1,3 +1,4 @@
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import {
   BadRequestException,
   Injectable,
@@ -9,15 +10,32 @@ import Razorpay from 'razorpay';
 import type {
   CreateOrderParams,
   PaymentsProvider,
-  WebhookVerificationResult,
+  ProviderEvent,
+  RefundParams,
 } from './payments-provider.interface';
 
+/** Constant-time hex comparison of two HMAC digests. */
+function signaturesMatch(expectedHex: string, givenHex: string): boolean {
+  const a = Buffer.from(expectedHex, 'utf8');
+  const b = Buffer.from(givenHex, 'utf8');
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+interface RazorpayWebhookPayload {
+  event?: string;
+  payload?: {
+    payment?: {
+      entity?: { id?: string; order_id?: string; amount?: number };
+    };
+    refund?: {
+      entity?: { id?: string; payment_id?: string; amount?: number };
+    };
+  };
+}
+
 /**
- * Selected by BillingModule's factory once RAZORPAY_KEY_ID/SECRET are
- * set. Unexercised in this environment (no Razorpay account yet) — same
- * position as ClaudeAiProvider: built against the real SDK, verified by
- * type-checking and code review, activates with zero further code
- * changes the moment real keys land in .env.
+ * Selected by BillingModule's factory once RAZORPAY_KEY_ID/SECRET are set.
+ * Built against the real SDK; verified by unit tests with signed payloads.
  */
 @Injectable()
 export class RazorpayPaymentsProvider implements PaymentsProvider {
@@ -56,66 +74,110 @@ export class RazorpayPaymentsProvider implements PaymentsProvider {
     );
   }
 
-  async simulateRefund(
-    providerPaymentId: string,
-    amountMinor: number,
-  ): Promise<{ refundId: string }> {
+  async refund(params: RefundParams): Promise<{ refundId: string }> {
     if (!this.client) {
       throw new InternalServerErrorException('Razorpay client not initialized');
     }
-    const refund = await this.client.payments.refund(providerPaymentId, {
-      amount: amountMinor,
+    const refund = await this.client.payments.refund(params.providerPaymentId, {
+      amount: params.amountMinor,
+      receipt: params.receipt,
     });
     return { refundId: refund.id };
+  }
+
+  async findRefundByReceipt(
+    providerPaymentId: string,
+    receipt: string,
+  ): Promise<{ refundId: string } | null> {
+    if (!this.client) {
+      throw new InternalServerErrorException('Razorpay client not initialized');
+    }
+    const result = (await this.client.payments.fetchMultipleRefund(
+      providerPaymentId,
+      { count: 100 },
+    )) as { items?: Array<{ id: string; receipt?: string | null }> };
+    const hit = (result.items ?? []).find((r) => r.receipt === receipt);
+    return hit ? { refundId: hit.id } : null;
   }
 
   verifyWebhook(
     rawBody: string,
     signature: string,
-  ): WebhookVerificationResult | null {
+    eventIdHeader?: string,
+  ): ProviderEvent | null {
     if (!this.webhookSecret) {
       this.logger.error(
         'RAZORPAY_WEBHOOK_SECRET is unset — rejecting webhook, signature cannot be verified',
       );
       return null;
     }
-
-    const valid = Razorpay.validateWebhookSignature(
-      rawBody,
-      signature,
-      this.webhookSecret,
-    );
-    if (!valid) {
+    const expected = createHmac('sha256', this.webhookSecret)
+      .update(rawBody)
+      .digest('hex');
+    if (!signature || !signaturesMatch(expected, signature)) {
       this.logger.warn('Webhook signature verification failed — rejecting');
       return null;
     }
 
-    const payload = JSON.parse(rawBody) as {
-      event?: string;
-      payload?: {
-        payment?: {
-          entity?: {
-            id?: string;
-            order_id?: string;
-            amount?: number;
-          };
-        };
-      };
-    };
-    const paymentEntity = payload.payload?.payment?.entity;
-    if (
-      !paymentEntity?.id ||
-      !paymentEntity?.order_id ||
-      typeof paymentEntity.amount !== 'number'
-    ) {
+    let payload: RazorpayWebhookPayload;
+    try {
+      payload = JSON.parse(rawBody) as RazorpayWebhookPayload;
+    } catch {
+      return null;
+    }
+    // A signed body can still be `null`, a number, or an array.
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
       return null;
     }
 
-    return {
-      providerOrderId: paymentEntity.order_id,
-      providerPaymentId: paymentEntity.id,
-      status: payload.event === 'payment.captured' ? 'captured' : 'failed',
-      amountMinor: paymentEntity.amount,
-    };
+    // The provider's own delivery id. Without one (older webhook configs) a
+    // hash of the signed body is just as stable: an identical replay hashes
+    // identically.
+    const eventId =
+      eventIdHeader && eventIdHeader.trim()
+        ? eventIdHeader.trim()
+        : `body:${createHash('sha256').update(rawBody).digest('hex')}`;
+    const rawType = payload.event ?? '';
+
+    const pay = payload.payload?.payment?.entity;
+    const paymentEvents: Record<string, 'captured' | 'authorized' | 'failed'> =
+      {
+        'payment.captured': 'captured',
+        'payment.authorized': 'authorized',
+        'payment.failed': 'failed',
+      };
+    const paymentType = paymentEvents[rawType];
+    if (paymentType) {
+      if (!pay?.id || !pay.order_id || typeof pay.amount !== 'number') {
+        return null;
+      }
+      return {
+        type: paymentType,
+        eventId,
+        providerOrderId: pay.order_id,
+        providerPaymentId: pay.id,
+        amountMinor: pay.amount,
+      };
+    }
+
+    const ref = payload.payload?.refund?.entity;
+    if (rawType === 'refund.processed' || rawType === 'refund.failed') {
+      if (!ref?.id || !ref.payment_id || typeof ref.amount !== 'number') {
+        return null;
+      }
+      return {
+        type:
+          rawType === 'refund.processed' ? 'refund_processed' : 'refund_failed',
+        eventId,
+        providerPaymentId: ref.payment_id,
+        providerRefundId: ref.id,
+        amountMinor: ref.amount,
+      };
+    }
+
+    // Anything else (order.paid, payment.dispute.*, refund.created, …) is a
+    // valid, signed event we deliberately take no action on. It must NOT be
+    // treated as a payment failure (the old code did exactly that).
+    return { type: 'ignored', eventId, rawType };
   }
 }

@@ -6,18 +6,14 @@ import { PresignedUpload, StorageProvider } from './storage-provider.interface';
 
 /**
  * Dev-only stand-in for Supabase Storage that stores files on local disk
- * and serves them through the API itself (see MaterialsController's
- * local-upload/local-download routes). Real deployments use Supabase
+ * and serves them through the API itself (see LocalStorageController, which
+ * is registered only outside production). Real deployments use Supabase
  * Storage so media never touches the API — this exists purely so the
  * upload flow is runnable without cloud credentials.
  *
- * The upload/download URLs below are intentionally routed through
- * MaterialsController regardless of which feature is using this shared
- * provider (course materials, tutor avatars, ...) — objectKey alone
- * scopes each file (`batches/...`, `avatars/...`), and Materials'
- * local-upload/local-download handlers are already generic passthroughs
- * keyed only by objectKey, so every caller of StorageModule reuses those
- * same two dev-only routes instead of each feature adding its own.
+ * The upload/download URLs below point at LocalStorageController's two
+ * dev-only routes regardless of which feature is using this shared provider
+ * (course materials, avatars, ...) — objectKey alone scopes each file.
  */
 @Injectable()
 export class LocalStorageProvider implements StorageProvider {
@@ -40,7 +36,7 @@ export class LocalStorageProvider implements StorageProvider {
       `Storing "${objectKey}" on local disk — configure Supabase Storage for real deployments`,
     );
     return Promise.resolve({
-      uploadUrl: `${this.apiBaseUrl}/materials/local-upload/${encodeURIComponent(objectKey)}`,
+      uploadUrl: `${this.apiBaseUrl}/dev-storage/upload/${encodeURIComponent(objectKey)}`,
       objectKey,
       headers: { 'Content-Type': mime },
     });
@@ -48,7 +44,7 @@ export class LocalStorageProvider implements StorageProvider {
 
   createDownloadUrl(objectKey: string): Promise<string> {
     return Promise.resolve(
-      `${this.apiBaseUrl}/materials/local-download/${encodeURIComponent(objectKey)}`,
+      `${this.apiBaseUrl}/dev-storage/download/${encodeURIComponent(objectKey)}`,
     );
   }
 

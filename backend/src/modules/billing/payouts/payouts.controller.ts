@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../../identity/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../identity/auth/guards/roles.guard';
 import { Roles } from '../../identity/auth/decorators/roles.decorator';
@@ -34,7 +42,7 @@ export class PayoutsController {
   @Post(':payoutId/simulate-complete')
   simulateComplete(
     @CurrentUser() user: AccessTokenPayload,
-    @Param('payoutId') payoutId: string,
+    @Param('payoutId', ParseUUIDPipe) payoutId: string,
   ) {
     return this.payoutsService.simulateComplete(user.sub, payoutId);
   }

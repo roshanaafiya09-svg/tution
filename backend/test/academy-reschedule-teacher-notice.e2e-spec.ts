@@ -396,13 +396,15 @@ describe('Academy reschedule → teacher notification (e2e)', () => {
       0,
     );
 
-    // Moved INTO the window: the new time reminds exactly once.
+    // Moved INTO the window: the new time reminds exactly once. H7: the
+    // sweep's window is now forward-looking ([now, now+10min], not a ±30s
+    // slice around exactly "now+10min") — land safely inside it.
     const movedIn = await h.scheduleAt(T2, batch, inHours(8), { ctx: A.ctx });
     const into = await rescheduleAsAcademy(
       A.owner,
       batch,
       movedIn,
-      new Date(Date.now() + 10 * 60_000 + 15_000),
+      new Date(Date.now() + 9 * 60_000),
     );
     expect(into.status).toBe(201);
     await Promise.all([

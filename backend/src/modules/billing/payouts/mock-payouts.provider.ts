@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { randomBytes } from 'node:crypto';
 import type {
   InitiatePayoutParams,
   PayoutsProvider,
@@ -19,7 +18,9 @@ export class MockPayoutsProvider implements PayoutsProvider {
   async initiatePayout(
     params: InitiatePayoutParams,
   ): Promise<{ payoutId: string }> {
-    const payoutId = `mock_payout_${randomBytes(8).toString('hex')}`;
+    // Deterministic per reference, like an idempotent provider: asking again
+    // for the same payout returns the same id.
+    const payoutId = `mock_payout_${params.reference.replace(/-/g, '')}`;
     this.logger.warn(
       `Created MOCK payout ${payoutId} for ${params.amountMinor} ${params.currency} (reference ${params.reference}) — RAZORPAY_KEY_ID unset, not a real transfer`,
     );

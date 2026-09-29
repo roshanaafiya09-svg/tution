@@ -11,6 +11,10 @@ export const appConfig = registerAs('app', () => ({
   )
     .split(',')
     .map((origin) => origin.trim()),
+  // Audit H7 — the shared secret an external scheduler presents to
+  // POST /internal/jobs/:job. Unset = the endpoint refuses every request
+  // (never open, never guessable-by-absence).
+  cronSecret: process.env.CRON_SECRET,
 }));
 
 export const databaseConfig = registerAs('database', () => ({

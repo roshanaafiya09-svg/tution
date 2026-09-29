@@ -160,11 +160,17 @@ export class BookingsRepository {
       .executeTakeFirstOrThrow();
   }
 
+  /** Guarded transition: cancels ONLY if the booking is still in `fromStatus`
+   *  — the status the refund percentage was computed from. Returns undefined
+   *  when it has moved (payment captured meanwhile, a concurrent cancel won,
+   *  it completed…), so exactly one cancellation can ever take effect and the
+   *  refund decision always matches the state it was made for (audit H10). */
   markCancelled(
     id: string,
     cancelledBy: 'student' | 'tutor',
     reason: string | null,
     refundPercent: number | null,
+    fromStatus: 'pending_payment' | 'confirmed',
   ) {
     return this.db
       .updateTable('bookings')
@@ -175,8 +181,9 @@ export class BookingsRepository {
         refund_percent: refundPercent,
       })
       .where('id', '=', id)
+      .where('status', '=', fromStatus)
       .returningAll()
-      .executeTakeFirstOrThrow();
+      .executeTakeFirst();
   }
 
   markCompleted(id: string) {
@@ -186,7 +193,7 @@ export class BookingsRepository {
       .where('id', '=', id)
       .where('status', '=', 'confirmed')
       .returningAll()
-      .executeTakeFirstOrThrow();
+      .executeTakeFirst();
   }
 
   /** Student didn't show — tutor keeps the payment, no refund. A
@@ -199,6 +206,6 @@ export class BookingsRepository {
       .where('id', '=', id)
       .where('status', '=', 'confirmed')
       .returningAll()
-      .executeTakeFirstOrThrow();
+      .executeTakeFirst();
   }
 }

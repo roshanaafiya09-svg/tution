@@ -65,21 +65,32 @@ function buildService(overrides: {
       jest.fn().mockResolvedValue({ id: SESSION_ID, meeting_url: null }),
   } as unknown as SessionsRepository;
 
+  // SessionsService.create now goes through the subscription-gated
+  // getOwnedBatchForWrite/getAcademyBatchForWrite (audit H1); every other
+  // path (reschedule/cancel/complete/substitute) still calls the plain,
+  // ungated lookup. These tests don't exercise subscription gating itself
+  // (see enrollment-capacity.e2e-spec.ts for that) — aliasing the same mock
+  // under both names keeps every existing override/assertion meaningful for
+  // whichever name the code under test actually calls.
+  const ownedBatchMock =
+    overrides.getOwnedBatch ??
+    jest.fn().mockResolvedValue({
+      id: BATCH_ID,
+      tutor_id: TUTOR_ID,
+      status: 'active',
+    });
+  const academyBatchMock =
+    overrides.getAcademyBatch ??
+    jest.fn().mockResolvedValue({
+      id: BATCH_ID,
+      tutor_id: TUTOR_ID,
+      status: 'active',
+    });
   const batchesService = {
-    getOwnedBatch:
-      overrides.getOwnedBatch ??
-      jest.fn().mockResolvedValue({
-        id: BATCH_ID,
-        tutor_id: TUTOR_ID,
-        status: 'active',
-      }),
-    getAcademyBatch:
-      overrides.getAcademyBatch ??
-      jest.fn().mockResolvedValue({
-        id: BATCH_ID,
-        tutor_id: TUTOR_ID,
-        status: 'active',
-      }),
+    getOwnedBatch: ownedBatchMock,
+    getOwnedBatchForWrite: ownedBatchMock,
+    getAcademyBatch: academyBatchMock,
+    getAcademyBatchForWrite: academyBatchMock,
     findByIdUnchecked:
       overrides.findByIdUnchecked ??
       jest.fn().mockResolvedValue({

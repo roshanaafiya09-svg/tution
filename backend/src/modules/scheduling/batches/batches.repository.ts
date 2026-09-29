@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { Kysely } from 'kysely';
+import type { Kysely, Transaction } from 'kysely';
 import { KYSELY_CONNECTION } from '../../../database/database.module';
 import type { DB } from '../../../database/types';
 import { newId } from '../../../database/id';
@@ -296,8 +296,44 @@ export class BatchesRepository {
       .executeTakeFirst();
   }
 
-  enroll(batchId: string, studentId: string) {
-    return this.db
+  /** Runs `fn` in one transaction — the unit of every enrollment. */
+  transaction<T>(fn: (trx: Transaction<DB>) => Promise<T>): Promise<T> {
+    return this.db.transaction().execute(fn);
+  }
+
+  /** The batch row, locked for the rest of the transaction. Concurrent
+   *  enrollments into one batch queue on this lock (audit H9), so the count
+   *  taken afterwards includes every earlier committed enrollment. */
+  lockBatch(trx: Transaction<DB>, batchId: string) {
+    return trx
+      .selectFrom('batches')
+      .selectAll()
+      .where('id', '=', batchId)
+      .forUpdate()
+      .executeTakeFirst();
+  }
+
+  countActiveEnrollmentsTx(trx: Transaction<DB>, batchId: string) {
+    return trx
+      .selectFrom('enrollments')
+      .select((eb) => eb.fn.countAll().as('count'))
+      .where('batch_id', '=', batchId)
+      .where('status', '=', 'active')
+      .executeTakeFirstOrThrow()
+      .then((row) => Number(row.count));
+  }
+
+  findEnrollmentTx(trx: Transaction<DB>, batchId: string, studentId: string) {
+    return trx
+      .selectFrom('enrollments')
+      .selectAll()
+      .where('batch_id', '=', batchId)
+      .where('student_id', '=', studentId)
+      .executeTakeFirst();
+  }
+
+  enrollTx(trx: Transaction<DB>, batchId: string, studentId: string) {
+    return trx
       .insertInto('enrollments')
       .values({ id: newId(), batch_id: batchId, student_id: studentId })
       .onConflict((oc) =>

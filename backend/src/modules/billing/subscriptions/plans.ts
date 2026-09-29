@@ -36,3 +36,23 @@ export type PlanId = keyof typeof SUBSCRIPTION_PLANS;
 export function isPlanId(value: string): value is PlanId {
   return value in SUBSCRIPTION_PLANS;
 }
+
+/**
+ * How many 25-student blocks each catalogue plan includes (audit H1).
+ * "up to 25 students" = 1 block; "up to 100 students" = 4 blocks. Prices are
+ * unchanged — this only makes the promise in each plan's label enforceable.
+ */
+const PLAN_BLOCKS: Record<PlanId, number> = {
+  monthly_basic: 1,
+  monthly_pro: 4,
+  annual_basic: 1,
+  annual_pro: 4,
+};
+
+export function planBlocks(planId: PlanId): number {
+  return PLAN_BLOCKS[planId];
+}
+
+export function planCadence(planId: PlanId): 'monthly' | 'annual' {
+  return planId.startsWith('annual') ? 'annual' : 'monthly';
+}

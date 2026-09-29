@@ -50,6 +50,7 @@ import { AssessmentSchedulerService } from './scheduler/assessment-scheduler.ser
     AssessmentsService,
     OnlineAssessmentsService,
     OfflineAssessmentsService,
+    AssessmentSchedulerService,
   ],
 })
 export class AssessmentsModule {}

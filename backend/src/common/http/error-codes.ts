@@ -87,6 +87,19 @@ export const ErrorCode = {
   // Account deletion (H8).
   /** The invite was revoked — its teacher's account was deleted. */
   INVITE_REVOKED: 'INVITE_REVOKED',
+
+  // Enrollment capacity + student-block billing (H1/H9).
+  BATCH_FULL: 'BATCH_FULL',
+  BLOCK_CAPACITY_EXCEEDED: 'BLOCK_CAPACITY_EXCEEDED',
+  BLOCKS_INSUFFICIENT: 'BLOCKS_INSUFFICIENT',
+  SUBSCRIPTION_REQUIRED: 'SUBSCRIPTION_REQUIRED',
+
+  // Payment state machine (H5/H8/H10).
+  PAYMENTS_NOT_CONFIGURED: 'PAYMENTS_NOT_CONFIGURED',
+  PAYMENT_ALREADY_SETTLED: 'PAYMENT_ALREADY_SETTLED',
+  REFUND_EXCEEDS_CAPTURED: 'REFUND_EXCEEDS_CAPTURED',
+  BOOKING_NOT_REFUNDABLE: 'BOOKING_NOT_REFUNDABLE',
+  BOOKING_ALREADY_TERMINAL: 'BOOKING_ALREADY_TERMINAL',
 } as const;
 
 export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode];
