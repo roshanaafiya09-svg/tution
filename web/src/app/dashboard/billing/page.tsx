@@ -23,6 +23,11 @@ import {
 } from '@/components/ui';
 import { TeacherPageHeader, AcademicCard, EmptyPanel, SectionHeader } from '@/components/dashboard';
 
+const PAYMENT_PENDING_TOAST = {
+  title: 'Payment received — confirming',
+  description: 'Your plan will update here within a minute. Refresh if it has not.',
+};
+
 export default function BillingPage() {
   const toast = useToast();
   const [recap, setRecap] = useState<SubscriptionRecap | null>(null);
@@ -76,7 +81,10 @@ export default function BillingPage() {
       await payForOrder(order, {
         name: 'Scholar subscription',
         description: plans?.[planId]?.label,
-        onSettled: () => load(),
+        onSettled: (outcome) => {
+          load();
+          if (outcome === 'pending') toast(PAYMENT_PENDING_TOAST);
+        },
         onError: (message) => {
           setError(message);
           toast({ title: 'Payment did not complete', description: message, variant: 'error' });
@@ -100,7 +108,10 @@ export default function BillingPage() {
       await payForOrder(order, {
         name: 'Scholar — extra student blocks',
         description: `${blocks} extra block${blocks === 1 ? '' : 's'} of 25 students`,
-        onSettled: () => load(),
+        onSettled: (outcome) => {
+          load();
+          if (outcome === 'pending') toast(PAYMENT_PENDING_TOAST);
+        },
         onError: (message) => {
           setError(message);
           toast({ title: 'Payment did not complete', description: message, variant: 'error' });

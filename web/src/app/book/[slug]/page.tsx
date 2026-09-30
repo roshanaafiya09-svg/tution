@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CheckCircle2, Clock3 } from 'lucide-react';
 import { api, formatMinor, ensureSession, ApiError } from '@/lib/api';
-import { payForOrder } from '@/lib/razorpay';
+import { payForOrder, type CheckoutOutcome } from '@/lib/razorpay';
 import type { Booking, PaymentOrder, PublicTutorPage } from '@/lib/types';
 import { Card, Button, Field, Input, Select, InlineError, PageLoading } from '@/components/ui';
 
@@ -27,7 +27,10 @@ export default function BookSessionPage() {
   const [slotUnavailable, setSlotUnavailable] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [joinedWaitlist, setJoinedWaitlist] = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
+  // Only ever set from the SERVER's view of the payment (payForOrder polls
+  // it): 'pending' means checkout finished but the provider's webhook has not
+  // been recorded yet — never shown as "confirmed".
+  const [confirmed, setConfirmed] = useState<CheckoutOutcome | null>(null);
 
   useEffect(() => {
     api
@@ -59,7 +62,7 @@ export default function BookSessionPage() {
       const order = await api.post<PaymentOrder>(`/payments/booking/${booking.id}/order`);
       await payForOrder(order, {
         name: 'Scholar 1:1 session',
-        onSettled: () => setConfirmed(true),
+        onSettled: (outcome) => setConfirmed(outcome),
         onError: (message) => setError(message),
       });
     } catch (err) {
@@ -110,10 +113,12 @@ export default function BookSessionPage() {
                 <CheckCircle2 className="h-6 w-6 text-success dark:text-success-dark" aria-hidden />
               </div>
               <p className="font-display text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
-                Booked
+                {confirmed === 'captured' ? 'Booked' : 'Payment received'}
               </p>
               <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
-                Your session with {tutorPage?.profile.displayName ?? 'your tutor'} is confirmed.
+                {confirmed === 'captured'
+                  ? `Your session with ${tutorPage?.profile.displayName ?? 'your tutor'} is confirmed.`
+                  : "We're confirming your payment with the bank — this usually takes under a minute. Your booking will show as confirmed in My bookings."}
               </p>
               <Link href="/bookings">
                 <Button className="mt-6 w-full">View my bookings</Button>

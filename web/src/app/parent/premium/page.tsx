@@ -27,6 +27,7 @@ export default function ParentPremiumPage() {
   const [plans, setPlans] = useState<Record<string, SubscriptionPlan> | null>(null);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<unknown>(null);
 
   const load = useCallback(async () => {
@@ -49,13 +50,19 @@ export default function ParentPremiumPage() {
 
   async function purchase(planId: string) {
     setError(null);
+    setNotice(null);
     setPurchasing(planId);
     try {
       const order = await api.post<PaymentOrder>('/payments/parent-premium/order', { planId });
       await payForOrder(order, {
         name: 'Scholar Parent Premium',
         description: plans?.[planId]?.label,
-        onSettled: () => void load(),
+        onSettled: (outcome) => {
+          void load();
+          if (outcome === 'pending') {
+            setNotice('Payment received — confirming. Your Premium status will update within a minute.');
+          }
+        },
         onError: (message) => setError(message),
       });
     } catch {
@@ -77,6 +84,15 @@ export default function ParentPremiumPage() {
         title="Parent Premium"
         description="Richer weekly digests for your child, with more attendance and score detail."
       />
+
+      {notice && (
+        <p
+          role="status"
+          className="mb-4 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-200"
+        >
+          {notice}
+        </p>
+      )}
 
       {error && (
         <div className="mb-4">
