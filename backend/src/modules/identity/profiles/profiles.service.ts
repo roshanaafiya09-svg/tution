@@ -85,7 +85,8 @@ export class ProfilesService {
     }
 
     const previous = await this.profilesRepository.findTutorByUserId(tutorId);
-    if (previous?.avatar_object_key) {
+    if (!previous) throw new NotFoundException('Tutor profile not found');
+    if (previous.avatar_object_key) {
       await this.storage.delete(previous.avatar_object_key);
     }
 
@@ -102,7 +103,8 @@ export class ProfilesService {
 
   async removeAvatar(tutorId: string): Promise<void> {
     const profile = await this.profilesRepository.findTutorByUserId(tutorId);
-    if (profile?.avatar_object_key) {
+    if (!profile) throw new NotFoundException('Tutor profile not found');
+    if (profile.avatar_object_key) {
       await this.storage.delete(profile.avatar_object_key);
     }
     await this.profilesRepository.setTutorAvatarObjectKey(tutorId, null);

@@ -16,13 +16,21 @@ import { TeachingContextScope } from '../../teaching-context/teaching-context.gu
 import { MaterialsService } from './materials.service';
 import { CreateMaterialDto } from './dto/create-material.dto';
 
+// L2: every route here must resolve the caller's teaching context — a
+// tutor viewing their Individual profile must never see/touch an Academy
+// batch's materials (or the reverse) just because both profiles share the
+// same underlying tutor_id. TeachingContextGuard is a no-op for non-tutor
+// callers, so applying it controller-wide is safe for the student-facing
+// routes too. Class-level like AnnouncementsController/
+// OfflineAssessmentsController — JwtAuthGuard must stay class-level too
+// (not per-route) so it runs before TeachingContextGuard.
 @Controller('materials')
+@TeachingContextScope()
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class MaterialsController {
   constructor(private readonly materialsService: MaterialsService) {}
 
   @Post('upload-url')
-  @TeachingContextScope()
-  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('tutor')
   createUploadUrl(
     @CurrentUser() user: AccessTokenPayload,
@@ -34,14 +42,12 @@ export class MaterialsController {
   /** Bulk sibling of listForBatch — materials across every batch the
    *  student is enrolled in, in one call. */
   @Get('mine')
-  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('student')
   listMine(@CurrentUser() user: AccessTokenPayload) {
     return this.materialsService.listForOwnEnrolledBatches(user.sub);
   }
 
   @Get('batch/:batchId')
-  @UseGuards(JwtAuthGuard)
   listForBatch(
     @CurrentUser() user: AccessTokenPayload,
     @Param('batchId') batchId: string,
@@ -54,7 +60,6 @@ export class MaterialsController {
   }
 
   @Get(':id/download-url')
-  @UseGuards(JwtAuthGuard)
   getDownloadUrl(
     @CurrentUser() user: AccessTokenPayload,
     @Param('id') id: string,
@@ -67,7 +72,6 @@ export class MaterialsController {
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('tutor')
   delete(@CurrentUser() user: AccessTokenPayload, @Param('id') id: string) {
     return this.materialsService.delete(user.sub, id);

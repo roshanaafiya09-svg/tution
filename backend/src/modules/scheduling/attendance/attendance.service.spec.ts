@@ -34,6 +34,7 @@ function buildService(overrides: {
       id: SESSION_ID,
       batch_id: 'batch-1',
       status: 'scheduled',
+      scheduled_start_utc: new Date(Date.now() - 60_000),
     });
   const findByIdOrThrow =
     overrides.findByIdOrThrow ??
@@ -150,9 +151,9 @@ describe('AttendanceService.joinSession — join-tap must never clobber a manual
     const upsertJoinTap = jest.fn();
     const { service } = buildService({ findByIdOrThrow, upsertJoinTap });
 
-    await expect(
-      service.joinSession('student-1', SESSION_ID),
-    ).rejects.toThrow(BadRequestException);
+    await expect(service.joinSession('student-1', SESSION_ID)).rejects.toThrow(
+      BadRequestException,
+    );
     expect(upsertJoinTap).not.toHaveBeenCalled();
   });
 
@@ -161,9 +162,9 @@ describe('AttendanceService.joinSession — join-tap must never clobber a manual
     const upsertJoinTap = jest.fn();
     const { service } = buildService({ findEnrollment, upsertJoinTap });
 
-    await expect(
-      service.joinSession('stranger', SESSION_ID),
-    ).rejects.toThrow(BadRequestException);
+    await expect(service.joinSession('stranger', SESSION_ID)).rejects.toThrow(
+      BadRequestException,
+    );
     expect(upsertJoinTap).not.toHaveBeenCalled();
   });
 

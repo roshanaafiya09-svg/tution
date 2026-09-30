@@ -19,6 +19,7 @@ import { UpsertAcademyDto } from './dto/upsert-academy.dto';
 import { AcademyImageUploadUrlDto } from './dto/academy-image-upload-url.dto';
 import { AddMembershipDto } from './dto/add-membership.dto';
 import { LinkAcademyOwnerDto } from './dto/link-academy-owner.dto';
+import { SetAcademyVerificationStatusDto } from './dto/set-academy-verification-status.dto';
 
 /**
  * Superadmin only, enforced here (not just hidden in the UI) — mirrors
@@ -51,9 +52,13 @@ export class AcademyAdminController {
   setVerificationStatus(
     @CurrentUser() user: AccessTokenPayload,
     @Param('id') id: string,
-    @Body('status') status: 'pending' | 'verified' | 'rejected',
+    @Body() dto: SetAcademyVerificationStatusDto,
   ) {
-    return this.academyAdminService.setVerificationStatus(user.sub, id, status);
+    return this.academyAdminService.setVerificationStatus(
+      user.sub,
+      id,
+      dto.status,
+    );
   }
 
   @Post(':id/logo-upload-url')

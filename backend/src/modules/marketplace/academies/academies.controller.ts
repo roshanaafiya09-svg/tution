@@ -7,8 +7,10 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../../identity/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../identity/auth/guards/roles.guard';
+import { UserThrottlerGuard } from '../../../common/http/user-throttler.guard';
 import { Roles } from '../../identity/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../identity/auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
@@ -57,8 +59,9 @@ export class AcademiesController {
   /** "Contact Academy" from Find an Academy — student or parent, before
    *  any relationship exists. */
   @Post(':slug/contact')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, UserThrottlerGuard)
   @Roles('student', 'parent')
+  @Throttle({ default: { limit: 5, ttl: 600_000 } })
   contactAcademy(
     @CurrentUser() user: AccessTokenPayload,
     @Param('slug') slug: string,

@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { RRule } from 'rrule';
 import { DateTime } from 'luxon';
 
@@ -26,7 +27,10 @@ export function expandRecurrence(
 ): Date[] {
   const first = DateTime.fromISO(firstStartLocal, { zone: timezone });
   if (!first.isValid) {
-    throw new Error(
+    // A plain Error here falls through Nest's exception layer as a 500 —
+    // this is reachable directly from user input (an invalid IANA zone
+    // string, or an unparseable start time), so it must be an HttpException.
+    throw new BadRequestException(
       `Invalid start time "${firstStartLocal}" for zone "${timezone}"`,
     );
   }

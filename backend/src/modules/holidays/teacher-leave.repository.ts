@@ -42,6 +42,27 @@ export class TeacherLeaveRepository {
       .executeTakeFirst();
   }
 
+  /** Does this tutor already have a pending/approved request whose date
+   *  range overlaps [startDate, endDate]? Two leave requests for the same
+   *  teacher covering the same day would otherwise both sit as independent
+   *  rows — this is the check that stops that at creation time. */
+  async hasOverlappingLeaveForTutor(
+    tutorId: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<boolean> {
+    const row = await this.db
+      .selectFrom('teacher_leave_requests')
+      .select('id')
+      .where('tutor_id', '=', tutorId)
+      .where('status', 'in', ['pending', 'approved'])
+      .where('start_date', '<=', endDate)
+      .where('end_date', '>=', startDate)
+      .limit(1)
+      .executeTakeFirst();
+    return row !== undefined;
+  }
+
   create(input: NewLeaveRequest) {
     return this.db
       .insertInto('teacher_leave_requests')

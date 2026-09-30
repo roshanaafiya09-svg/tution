@@ -87,6 +87,23 @@ export class TeacherLeaveService {
     if (endDate < dto.startDate) {
       throw new BadRequestException('End date cannot be before start date');
     }
+    const today = DateTime.now().setZone(DEFAULT_TIMEZONE).toISODate()!;
+    if (dto.startDate < today) {
+      throw new BadRequestException(
+        'Leave cannot be requested for a past date',
+      );
+    }
+    if (
+      await this.repository.hasOverlappingLeaveForTutor(
+        tutorId,
+        dto.startDate,
+        endDate,
+      )
+    ) {
+      throw new ConflictException(
+        'You already have a pending or approved leave request that overlaps these dates',
+      );
+    }
 
     const { from, to } = dayRangeUtc(dto.startDate, endDate);
     // Only the classes this teacher runs FOR THIS ACADEMY — leave asked
@@ -169,7 +186,10 @@ export class TeacherLeaveService {
   async withdraw(tutorId: string, id: string) {
     const request = await this.getOwnedForTutor(tutorId, id);
     if (request.status !== 'pending') {
-      throw new BadRequestException('Only a pending request can be withdrawn');
+      // Same M6 fix as getPendingForAcademy: a request already known to be
+      // decided and one decided microseconds before the race-losing path
+      // just below are the same kind of conflict — both 409.
+      throw new ConflictException('Only a pending request can be withdrawn');
     }
     const updated = await this.repository.setStatus(id, 'cancelled', null);
     if (!updated) {
@@ -210,7 +230,11 @@ export class TeacherLeaveService {
   private async getPendingForAcademy(academyId: string, id: string) {
     const request = await this.getOwnedForAcademy(academyId, id);
     if (request.status !== 'pending') {
-      throw new BadRequestException('This request has already been decided');
+      // Same conflict this same call's `decide()` throws when it loses a
+      // genuine race — a request already known to be decided (the common
+      // double-click case) and one decided microseconds before the atomic
+      // claim below are the same kind of "conflicts with current state".
+      throw new ConflictException('This request has already been decided');
     }
     return request;
   }

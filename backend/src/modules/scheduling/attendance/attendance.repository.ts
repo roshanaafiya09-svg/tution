@@ -554,6 +554,10 @@ export class AttendanceRepository {
       ])
       .where('attendance.student_id', '=', studentId)
       .where('class_sessions.batch_id', '=', batchId)
+      // Same definition of "counted" attendance as summaryForStudentBetween
+      // (which mySummary/summaryForParent use): a session that hasn't
+      // started yet never contributes, however it got an attendance row.
+      .where('class_sessions.scheduled_start_utc', '<', new Date())
       .executeTakeFirstOrThrow();
 
     const total = Number(row.total);

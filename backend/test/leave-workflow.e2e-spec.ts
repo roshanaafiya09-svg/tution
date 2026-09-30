@@ -317,14 +317,15 @@ describe('Teacher Leave workflow (e2e)', () => {
     expect(req2?.status).toBe('cancelled');
 
     // Approving it now is refused as an already-decided request — never a
-    // 500, and it produces ZERO side effects.
+    // 500, and it produces ZERO side effects. M6: a conflict (409), not a
+    // plain bad request.
     const lateApprove = await api(
       'POST',
       `/academy/me/leave-requests/${requestId2}/approve`,
       A.owner.token,
       { body: {} },
     );
-    expect(lateApprove.status).toBe(400);
+    expect(lateApprove.status).toBe(409);
     // The late approval itself produced NO teacher-leave side effect: the class
     // carries no leave request. It is cancelled only because the teacher LEFT
     // the academy (a future Academy class with no teacher is not left
@@ -493,7 +494,7 @@ describe('Teacher Leave workflow (e2e)', () => {
       `/academy/me/leave-requests/${requestId}/reject`,
       A.owner.token,
     );
-    expect(rejectedAgain.status).toBe(400);
+    expect(rejectedAgain.status).toBe(409);
   });
 
   // ==========================================================================

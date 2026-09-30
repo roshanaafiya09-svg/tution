@@ -1,5 +1,5 @@
 # --- Build stage: compile TypeScript, including devDependencies ---
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -18,7 +18,7 @@ RUN npm run build
 RUN rm -rf dist/dev
 
 # --- Runtime stage: production deps + compiled dist only ---
-FROM node:20-alpine AS runtime
+FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 

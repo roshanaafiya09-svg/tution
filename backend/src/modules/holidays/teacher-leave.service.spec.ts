@@ -35,11 +35,17 @@ const OTHER_TUTOR_ID = 'tutor-2';
 const ACADEMY_ID = 'academy-1';
 const OTHER_ACADEMY_ID = 'academy-2';
 const REQUEST_ID = 'leave-1';
+// Computed relative to "now" (not a hardcoded literal) — M6 added a
+// reject-past-dates check to TeacherLeaveService.create, so a fixed date
+// would eventually fall into the past and break these tests by itself.
+const TEST_LEAVE_DATE = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000)
+  .toISOString()
+  .slice(0, 10);
 const SESSION = {
   id: 'session-1',
   batch_id: 'batch-1',
   tutor_id: TUTOR_ID,
-  scheduled_start_utc: new Date('2026-09-20T10:30:00.000Z'),
+  scheduled_start_utc: new Date(`${TEST_LEAVE_DATE}T10:30:00.000Z`),
   timezone: 'Asia/Kolkata',
   duration_min: 60,
   status: 'scheduled' as const,
@@ -50,8 +56,8 @@ const PENDING_REQUEST = {
   tutor_id: TUTOR_ID,
   academy_id: ACADEMY_ID,
   status: 'pending' as const,
-  start_date: '2026-09-20',
-  end_date: '2026-09-20',
+  start_date: TEST_LEAVE_DATE,
+  end_date: TEST_LEAVE_DATE,
 };
 
 function buildService(overrides: {
@@ -74,10 +80,14 @@ function buildService(overrides: {
   findByIdBatch?: jest.Mock;
   listActiveParentIdsForStudents?: jest.Mock;
   notify?: jest.Mock;
+  hasOverlappingLeaveForTutor?: jest.Mock;
 }) {
   const repository = {
     findById: overrides.findById ?? jest.fn(),
     findForAcademy: overrides.findForAcademy ?? jest.fn(),
+    hasOverlappingLeaveForTutor:
+      overrides.hasOverlappingLeaveForTutor ??
+      jest.fn().mockResolvedValue(false),
     listSessionIdsForRequest:
       overrides.listSessionIdsForRequest ??
       jest.fn().mockResolvedValue([SESSION.id]),
@@ -187,7 +197,7 @@ describe('TeacherLeaveService.create', () => {
 
     const result = await service.create(TUTOR_ID, {
       academyId: ACADEMY_ID,
-      startDate: '2026-09-20',
+      startDate: TEST_LEAVE_DATE,
       leaveType: 'full_day',
     } as never);
 
@@ -206,7 +216,7 @@ describe('TeacherLeaveService.create', () => {
 
     await service.create(TUTOR_ID, {
       academyId: ACADEMY_ID,
-      startDate: '2026-09-20',
+      startDate: TEST_LEAVE_DATE,
       leaveType: 'full_day',
     } as never);
 
@@ -225,7 +235,7 @@ describe('TeacherLeaveService.create', () => {
     await expect(
       service.create(TUTOR_ID, {
         academyId: ACADEMY_ID,
-        startDate: '2026-09-20',
+        startDate: TEST_LEAVE_DATE,
         leaveType: 'full_day',
       } as never),
     ).rejects.toThrow(ForbiddenException);
@@ -242,7 +252,7 @@ describe('TeacherLeaveService.create', () => {
 
     await service.create(TUTOR_ID, {
       academyId: ACADEMY_ID,
-      startDate: '2026-09-20',
+      startDate: TEST_LEAVE_DATE,
       leaveType: 'full_day',
     } as never);
 
@@ -264,7 +274,7 @@ describe('TeacherLeaveService.create', () => {
 
     const result = await service.create(TUTOR_ID, {
       academyId: ACADEMY_ID,
-      startDate: '2026-09-20',
+      startDate: TEST_LEAVE_DATE,
       leaveType: 'full_day',
     } as never);
 
@@ -278,7 +288,7 @@ describe('TeacherLeaveService.create', () => {
 
     const result = await service.create(TUTOR_ID, {
       academyId: ACADEMY_ID,
-      startDate: '2026-09-20',
+      startDate: TEST_LEAVE_DATE,
       leaveType: 'full_day',
     } as never);
 
@@ -382,7 +392,7 @@ describe('TeacherLeaveService.approve', () => {
     ).rejects.toThrow(NotFoundException);
   });
 
-  it('refuses to re-decide an already-decided request read as such up front', async () => {
+  it('refuses to re-decide an already-decided request read as such up front (M6: 409, matching the race-losing path below)', async () => {
     const findForAcademy = jest
       .fn()
       .mockResolvedValue({ ...PENDING_REQUEST, status: 'approved' });
@@ -390,7 +400,7 @@ describe('TeacherLeaveService.approve', () => {
 
     await expect(
       service.approve(ACADEMY_ID, REQUEST_ID, 'admin-1'),
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toThrow(ConflictException);
   });
 
   it('TEST 7/10 — refuses to approve once the teacher is no longer an active academy member', async () => {
@@ -547,7 +557,7 @@ describe('TeacherLeaveService.withdraw', () => {
     expect(result.status).toBe('cancelled');
   });
 
-  it('refuses to withdraw a request that has already been decided', async () => {
+  it('refuses to withdraw a request that has already been decided (M6: 409, matching the race-losing path below)', async () => {
     const findById = jest.fn().mockResolvedValue({
       id: REQUEST_ID,
       tutor_id: TUTOR_ID,
@@ -556,7 +566,7 @@ describe('TeacherLeaveService.withdraw', () => {
     const { service } = buildService({ findById });
 
     await expect(service.withdraw(TUTOR_ID, REQUEST_ID)).rejects.toThrow(
-      BadRequestException,
+      ConflictException,
     );
   });
 

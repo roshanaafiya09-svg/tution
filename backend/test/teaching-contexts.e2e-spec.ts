@@ -885,6 +885,19 @@ describe('Teaching contexts — Individual vs Academy isolation (e2e)', () => {
   });
 
   it('TEST 12 — Academy teacher leave affects Academy classes only', async () => {
+    // Run before any pending request exists for this tutor+date — M6's
+    // overlap guard would otherwise catch a second request for the same
+    // date first and mask the smuggle-prevention check this verifies.
+    const smuggle = await api('POST', '/leave', T1.token, {
+      body: {
+        academyId: A.id,
+        startDate: D_LEAVE,
+        leaveType: 'specific_classes',
+        sessionIds: [id.iSessT1Leave],
+      },
+    });
+    expect(smuggle.status).toBe(400);
+
     const applied = await api('POST', '/leave', T1.token, {
       body: {
         academyId: A.id,
@@ -909,17 +922,6 @@ describe('Teaching contexts — Individual vs Academy isolation (e2e)', () => {
     ).rejects.toThrow(
       /leave request can only cover classes owned by its academy/,
     );
-
-    // A specific-classes request can't smuggle in the private class either.
-    const smuggle = await api('POST', '/leave', T1.token, {
-      body: {
-        academyId: A.id,
-        startDate: D_LEAVE,
-        leaveType: 'specific_classes',
-        sessionIds: [id.iSessT1Leave],
-      },
-    });
-    expect(smuggle.status).toBe(400);
 
     const approved = await api(
       'POST',

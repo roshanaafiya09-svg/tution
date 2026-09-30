@@ -143,6 +143,10 @@ function clientErrorStatus(exception: unknown): number | null {
  *   23503 foreign_key_violation  — referenced a row that doesn't exist (or still has dependents).
  *   23514 check_violation        — a CHECK constraint or trigger (incl. context-ownership) rejected the write.
  *   23502 not_null_violation     — a required column was left out.
+ *   23P01 exclusion_violation    — a row conflicts with another under a DB
+ *     EXCLUDE constraint (M3: two overlapping 'scheduled' class_sessions for
+ *     the same tutor/batch). App-level checks normally pre-empt this too;
+ *     reaching the constraint means a genuine concurrent race.
  *   P0001 raise_exception        — a plain `RAISE EXCEPTION` with no explicit SQLSTATE.
  *
  * Plus the class-22 "data exception" codes a malformed request reaches
@@ -162,6 +166,11 @@ const SQLSTATE_STATUS: Record<
   '23503': { status: HttpStatus.CONFLICT, code: ErrorCode.CONFLICT },
   '23514': { status: HttpStatus.CONFLICT, code: ErrorCode.CONFLICT },
   '23502': { status: HttpStatus.BAD_REQUEST, code: ErrorCode.BAD_REQUEST },
+  '23P01': {
+    status: HttpStatus.CONFLICT,
+    code: ErrorCode.CONFLICT,
+    message: 'This time conflicts with an existing scheduled class.',
+  },
   P0001: {
     status: HttpStatus.UNPROCESSABLE_ENTITY,
     code: ErrorCode.UNPROCESSABLE,
@@ -202,7 +211,10 @@ function constraintViolationStatus(
 
 interface Resolved {
   status: number;
-  code: ErrorCodeValue | string;
+  // Usually one of ErrorCodeValue, but any thrower can supply an arbitrary
+  // `{code: '...'}` body (line below reads it verbatim) — `string` alone
+  // already covers that; the union collapses to it either way.
+  code: string;
   message: string;
   details?: string[];
   extra: Record<string, unknown>;

@@ -681,7 +681,8 @@ describe('Cancel + leave/substitute connections (e2e)', () => {
         A.owner.token,
         { body: { substituteTutorId: T2.id } },
       );
-      expect(again.status).toBe(400);
+      // M6: already-decided is a conflict (409), not a plain bad request.
+      expect(again.status).toBe(409);
       expect(await forSession(T2, SUB_ASSIGNED, sid)).toHaveLength(1);
       expect(await forSession(sAcad, 'class_substitute', sid)).toHaveLength(1);
     });

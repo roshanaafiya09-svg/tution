@@ -36,6 +36,7 @@ import type { KycProvider } from './providers/kyc-provider.interface';
 function buildService(overrides: {
   findByOwnerUserId?: jest.Mock;
   setVerificationStatus?: jest.Mock;
+  findAcademyById?: jest.Mock;
   findLatestForAcademy?: jest.Mock;
   hasOpenSubmission?: jest.Mock;
   create?: jest.Mock;
@@ -45,6 +46,7 @@ function buildService(overrides: {
   listQueue?: jest.Mock;
   consentRecord?: jest.Mock;
   auditRecord?: jest.Mock;
+  notify?: jest.Mock;
   verifyPan?: jest.Mock;
   verifyGstin?: jest.Mock;
 }) {
@@ -53,9 +55,18 @@ function buildService(overrides: {
     jest.fn().mockResolvedValue({ id: 'academy_1' });
   const setVerificationStatus =
     overrides.setVerificationStatus ?? jest.fn().mockResolvedValue(undefined);
+  // Distinct from findByOwnerUserId — notifyOwnerOfOutcome looks the
+  // academy up by id (to get owner_user_id), a different repository
+  // method that a leaner mock previously left undefined, silently
+  // throwing a TypeError that notifyOwnerOfOutcome's own try/catch
+  // swallowed as a WARN log (L8).
+  const findAcademyById =
+    overrides.findAcademyById ??
+    jest.fn().mockResolvedValue({ id: 'academy_1', owner_user_id: 'owner_1' });
   const academiesRepository = {
     findByOwnerUserId,
     setVerificationStatus,
+    findById: findAcademyById,
   } as unknown as AcademiesRepository;
 
   const findLatestForAcademy =
@@ -122,14 +133,15 @@ function buildService(overrides: {
     verifyGstin,
   } as unknown as KycProvider;
 
+  const notify = overrides.notify ?? jest.fn().mockResolvedValue([]);
+  const notificationsService = { notify } as unknown as NotificationsService;
+
   const service = new AcademyVerificationService(
     repository,
     academiesRepository,
     consentService,
     auditLog,
-    {
-      notify: jest.fn().mockResolvedValue([]),
-    } as unknown as NotificationsService,
+    notificationsService,
     kycProvider,
   );
 
@@ -137,6 +149,7 @@ function buildService(overrides: {
     service,
     findByOwnerUserId,
     setVerificationStatus,
+    findAcademyById,
     findLatestForAcademy,
     hasOpenSubmission,
     create,
@@ -146,6 +159,7 @@ function buildService(overrides: {
     listQueue,
     consentRecord,
     auditRecord,
+    notify,
     verifyPan,
     verifyGstin,
   };
@@ -354,12 +368,13 @@ describe('AcademyVerificationService.review', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('syncs academies.verification_status to verified on approval', async () => {
-    const { service, setVerificationStatus, auditRecord } = buildService({
-      findById: jest
-        .fn()
-        .mockResolvedValue({ id: 's1', status: 'pending', academy_id: 'a1' }),
-    });
+  it('syncs academies.verification_status to verified on approval and notifies the owner', async () => {
+    const { service, setVerificationStatus, auditRecord, notify } =
+      buildService({
+        findById: jest
+          .fn()
+          .mockResolvedValue({ id: 's1', status: 'pending', academy_id: 'a1' }),
+      });
 
     await service.review('admin_1', 'superadmin', 's1', {
       status: 'verified',
@@ -368,6 +383,12 @@ describe('AcademyVerificationService.review', () => {
     expect(setVerificationStatus).toHaveBeenCalledWith('a1', 'verified');
     expect(auditRecord).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'academy_kyc.verified' }),
+    );
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userIds: ['owner_1'],
+        type: 'academy_verification_approved',
+      }),
     );
   });
 
@@ -428,13 +449,19 @@ describe('AcademyVerificationService.review', () => {
       });
 
     it('can be approved: syncs academies.verification_status and notifies the owner', async () => {
-      const { service, setVerificationStatus } = buildService({
+      const { service, setVerificationStatus, notify } = buildService({
         findById: inManualReview(),
       });
       await service.review('admin_1', 'trust_safety', 's1', {
         status: 'verified',
       });
       expect(setVerificationStatus).toHaveBeenCalledWith('a1', 'verified');
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userIds: ['owner_1'],
+          type: 'academy_verification_approved',
+        }),
+      );
     });
 
     it('can be rejected with a reason: syncs academies.verification_status', async () => {

@@ -1,6 +1,8 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../../identity/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../identity/auth/guards/roles.guard';
+import { UserThrottlerGuard } from '../../../common/http/user-throttler.guard';
 import { Roles } from '../../identity/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../identity/auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../../identity/auth/tokens.service';
@@ -16,6 +18,8 @@ export class AnnouncementsController {
 
   @Post('batch/:batchId')
   @Roles('tutor')
+  @UseGuards(UserThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 3_600_000 } })
   create(
     @CurrentUser() user: AccessTokenPayload,
     @Param('batchId') batchId: string,

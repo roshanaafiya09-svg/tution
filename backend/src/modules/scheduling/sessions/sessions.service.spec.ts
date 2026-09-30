@@ -183,7 +183,7 @@ describe('SessionsService.create — conflict detection', () => {
 
     await service.create(TUTOR_ID, {
       batchId: BATCH_ID,
-      startLocal: '2026-09-21T16:00',
+      startLocal: '2030-09-21T16:00',
       durationMin: 60,
     });
 
@@ -201,7 +201,7 @@ describe('SessionsService.create — conflict detection', () => {
     await expect(
       service.create(TUTOR_ID, {
         batchId: BATCH_ID,
-        startLocal: '2026-09-21T16:00',
+        startLocal: '2030-09-21T16:00',
         durationMin: 60,
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -219,7 +219,7 @@ describe('SessionsService.create — conflict detection', () => {
     await expect(
       service.create(TUTOR_ID, {
         batchId: BATCH_ID,
-        startLocal: '2026-09-21T16:00',
+        startLocal: '2030-09-21T16:00',
         durationMin: 60,
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -242,7 +242,7 @@ describe('SessionsService.create — conflict detection', () => {
     await expect(
       service.create(TUTOR_ID, {
         batchId: BATCH_ID,
-        startLocal: '2026-09-21T16:00',
+        startLocal: '2030-09-21T16:00',
         durationMin: 60,
         recurrenceRule: 'FREQ=WEEKLY;COUNT=5',
       }),
@@ -267,7 +267,7 @@ describe('SessionsService.create — conflict detection', () => {
     await expect(
       service.create(TUTOR_ID, {
         batchId: BATCH_ID,
-        startLocal: '2026-09-21T16:00',
+        startLocal: '2030-09-21T16:00',
         durationMin: 60,
       }),
     ).rejects.toMatchObject({
@@ -291,7 +291,7 @@ describe('SessionsService.create — conflict detection', () => {
     await expect(
       service.createForAcademy('academy-1', {
         batchId: BATCH_ID,
-        startLocal: '2026-09-21T16:00',
+        startLocal: '2030-09-21T16:00',
         durationMin: 60,
       }),
     ).rejects.toMatchObject({

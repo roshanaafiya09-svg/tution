@@ -7,8 +7,10 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../identity/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../identity/auth/guards/roles.guard';
+import { UserThrottlerGuard } from '../../common/http/user-throttler.guard';
 import { Roles } from '../identity/auth/decorators/roles.decorator';
 import { CurrentUser } from '../identity/auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../identity/auth/tokens.service';
@@ -54,6 +56,8 @@ export class MessagesController {
 
   @Post('batch/:batchId/student/:studentId')
   @Roles('tutor', 'student', 'parent')
+  @UseGuards(UserThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   send(
     @CurrentUser() user: AccessTokenPayload,
     @CurrentTeachingContext() ctx: TeachingContext,
