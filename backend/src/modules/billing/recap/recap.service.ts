@@ -32,8 +32,12 @@ export class RecapService {
       attendancesMarked,
       feesTrackedMinor,
       currency: 'INR',
+      /** Raw row status — can still say `active` after the period lapsed.
+       *  Clients should branch on effectiveSubscriptionStatus (audit H2). */
       subscriptionStatus: subscription.status,
+      effectiveSubscriptionStatus: subscription.effectiveStatus,
       trialEndsAt: subscription.trialEndsAt,
+      currentPeriodEnd: subscription.currentPeriodEnd,
     };
   }
 }

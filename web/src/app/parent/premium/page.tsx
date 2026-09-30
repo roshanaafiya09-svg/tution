@@ -65,7 +65,10 @@ export default function ParentPremiumPage() {
     }
   }
 
-  const isActive = status?.status === 'active';
+  // Effective status, not the raw row: a lapsed period still reads 'active'
+  // in the row, which used to hide the plans from an expired parent
+  // (audit H2).
+  const isActive = status?.effectiveStatus === 'active';
 
   return (
     <div>

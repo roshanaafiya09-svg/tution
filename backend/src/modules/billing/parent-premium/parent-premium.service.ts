@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ParentPremiumRepository } from './parent-premium.repository';
 import { ParentLinksRepository } from '../../parents/parent-links.repository';
+import { effectivePremiumStatus } from '../subscriptions/effective-status';
 
 @Injectable()
 export class ParentPremiumService {
@@ -60,6 +61,9 @@ export class ParentPremiumService {
     const subscription = await this.repository.findByParentId(parentId);
     return {
       status: subscription?.status ?? ('inactive' as const),
+      /** What the row means now — `status` can still say `active` after
+       *  the period lapsed (audit H2). */
+      effectiveStatus: effectivePremiumStatus(subscription),
       currentPeriodEnd: subscription?.current_period_end ?? null,
     };
   }

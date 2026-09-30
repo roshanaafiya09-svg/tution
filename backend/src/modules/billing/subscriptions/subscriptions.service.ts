@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { SubscriptionsRepository } from './subscriptions.repository';
+import { effectiveSubscriptionStatus } from './effective-status';
 
 const TRIAL_DAYS = 90;
 
@@ -45,7 +46,9 @@ export class SubscriptionsService {
     const subscription = await this.getOrStartTrial(tutorId);
     return {
       status: subscription.status,
+      effectiveStatus: effectiveSubscriptionStatus(subscription),
       trialEndsAt: subscription.trial_ends_at,
+      currentPeriodEnd: subscription.current_period_end,
     };
   }
 

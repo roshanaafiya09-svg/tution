@@ -409,8 +409,12 @@ export interface SubscriptionRecap {
   attendancesMarked: number;
   feesTrackedMinor: number;
   currency: string;
+  /** Raw row status — can still say 'active' after the period lapsed.
+   *  Branch on effectiveSubscriptionStatus instead (audit H2). */
   subscriptionStatus: 'trialing' | 'active' | 'past_due' | 'cancelled';
+  effectiveSubscriptionStatus: 'trialing' | 'trial_ended' | 'active' | 'expired' | 'past_due' | 'cancelled';
   trialEndsAt: string;
+  currentPeriodEnd: string | null;
 }
 
 export interface SubscriptionPlan {
@@ -1147,7 +1151,10 @@ export interface Digest {
 }
 
 export interface ParentPremiumStatus {
+  /** Raw row status — can still say 'active' after the period lapsed.
+   *  Branch on effectiveStatus instead (audit H2). */
   status: 'inactive' | 'active' | 'past_due' | 'cancelled';
+  effectiveStatus: 'inactive' | 'active' | 'expired' | 'past_due' | 'cancelled';
   currentPeriodEnd: string | null;
 }
 

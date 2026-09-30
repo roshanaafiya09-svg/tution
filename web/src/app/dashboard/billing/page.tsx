@@ -114,11 +114,17 @@ export default function BillingPage() {
     }
   }
 
-  const isPaid = recap?.subscriptionStatus === 'active';
+  // The server's effective status, never the raw row status: a paid period
+  // that has lapsed still reads 'active' in the row, and treating that as
+  // paid hid the plans and left an expired teacher with no way to renew
+  // (audit H2).
+  const effectiveStatus = recap?.effectiveSubscriptionStatus;
+  const isPaid = effectiveStatus === 'active';
+  const isExpired = effectiveStatus === 'expired' || effectiveStatus === 'trial_ended';
   const trialDaysLeft = recap
     ? Math.max(0, Math.ceil((new Date(recap.trialEndsAt).getTime() - Date.now()) / 86_400_000))
     : null;
-  const isTrialing = recap?.subscriptionStatus === 'trialing';
+  const isTrialing = effectiveStatus === 'trialing';
 
   const cheapestPerDay =
     plans && Object.keys(plans).length > 1
@@ -162,8 +168,21 @@ export default function BillingPage() {
                   {isTrialing ? 'Trial plan' : 'Subscription status'}
                 </p>
                 <p className="mt-1 font-display text-2xl font-semibold capitalize text-neutral-900 dark:text-neutral-50">
-                  {recap.subscriptionStatus.replace('_', ' ')}
+                  {recap.effectiveSubscriptionStatus.replace('_', ' ')}
                 </p>
+                {isPaid && recap.currentPeriodEnd && (
+                  <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
+                    Paid through {new Date(recap.currentPeriodEnd).toLocaleDateString('en-IN')}.
+                  </p>
+                )}
+                {isExpired && (
+                  <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
+                    {effectiveStatus === 'expired' && recap.currentPeriodEnd
+                      ? `Your plan ended on ${new Date(recap.currentPeriodEnd).toLocaleDateString('en-IN')}.`
+                      : 'Your trial has ended.'}{' '}
+                    Your data is safe — choose a plan below to keep creating batches and classes.
+                  </p>
+                )}
                 {isTrialing && (
                   <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
                     Your trial includes full access to Scholar — batches, scheduling, attendance, fees, and

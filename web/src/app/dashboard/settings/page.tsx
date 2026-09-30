@@ -129,8 +129,13 @@ export default function SettingsPage() {
               status={
                 recap
                   ? {
-                      label: recap.subscriptionStatus.replace('_', ' '),
-                      variant: recap.subscriptionStatus === 'active' ? 'success' : recap.subscriptionStatus === 'past_due' ? 'warning' : 'brand',
+                      label: recap.effectiveSubscriptionStatus.replace('_', ' '),
+                      variant:
+                        recap.effectiveSubscriptionStatus === 'active'
+                          ? 'success'
+                          : recap.effectiveSubscriptionStatus === 'trialing'
+                            ? 'brand'
+                            : 'warning',
                     }
                   : undefined
               }

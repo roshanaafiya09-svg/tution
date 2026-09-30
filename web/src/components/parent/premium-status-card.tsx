@@ -5,22 +5,30 @@ import type { ParentPremiumStatus } from '@/lib/types';
 
 /** The status header on the Premium page — active or not, with the
  *  renewal date when known. Reused as-is regardless of subscription
- *  state so the page never has two competing "status" treatments. */
+ *  state so the page never has two competing "status" treatments.
+ *  Always reads `effectiveStatus`: the raw row can still say 'active'
+ *  after the paid period lapsed (audit H2). */
 function statusDetail(status: ParentPremiumStatus): string | null {
-  if (status.status === 'active') {
-    return status.currentPeriodEnd
-      ? `Renews ${new Date(status.currentPeriodEnd).toLocaleDateString('en-IN')}`
-      : null;
+  const end = status.currentPeriodEnd
+    ? new Date(status.currentPeriodEnd).toLocaleDateString('en-IN')
+    : null;
+  switch (status.effectiveStatus) {
+    case 'active':
+      return end ? `Renews ${end}` : null;
+    case 'expired':
+      return end
+        ? `Your plan ended on ${end} — resubscribe below to restore access.`
+        : 'Your plan has ended — resubscribe below to restore access.';
+    case 'cancelled':
+    case 'past_due':
+      return 'Your subscription lapsed — resubscribe to restore access.';
+    default:
+      return 'Not subscribed yet — see plans below.';
   }
-  if (status.status === 'cancelled' || status.status === 'past_due') {
-    return 'Your subscription lapsed — resubscribe to restore access.';
-  }
-  // 'inactive'
-  return status.currentPeriodEnd ? null : 'Not subscribed yet — see plans below.';
 }
 
 export function PremiumStatusCard({ status }: { status: ParentPremiumStatus }) {
-  const isActive = status.status === 'active';
+  const isActive = status.effectiveStatus === 'active';
   const detail = statusDetail(status);
 
   return (
@@ -38,12 +46,12 @@ export function PremiumStatusCard({ status }: { status: ParentPremiumStatus }) {
         <div>
           <p className="text-sm text-neutral-500 dark:text-neutral-400">Status</p>
           <p className="mt-1 font-display text-2xl font-semibold capitalize text-neutral-900 dark:text-neutral-50">
-            {status.status.replace(/_/g, ' ')}
+            {status.effectiveStatus.replace(/_/g, ' ')}
           </p>
           {detail && <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{detail}</p>}
         </div>
       </div>
-      <StatusBadge status={status.status} />
+      <StatusBadge status={status.effectiveStatus} />
     </ParentCard>
   );
 }
